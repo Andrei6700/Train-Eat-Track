@@ -41,3 +41,29 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Firebase config
+src/config/firebase.ts
+
+# Cloudinary config
+constants/config.ts
+
+# VSCode settings 
+.vscode/
+
+# Log files
+*.log
+
+# Temp files
+*.tmp
+
+# Environment files
+.env
+.env.*
+.env.local
+
+# Expo cache
+.expo-shared/
+
+# MacOS extra
+*.swp
