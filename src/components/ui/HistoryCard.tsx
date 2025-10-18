@@ -19,15 +19,20 @@ const HistoryCard = () => {
               Your Fitness Stats
             </Typo>
           </View>
-          
+
           {/* Main Stats Row */}
           <View style={styles.mainStatsRow}>
             {/* Total Workouts */}
             <View style={styles.statItem}>
-              <Typo color={"#3B33C4"} size={30} fontWeight="bold" >
+              <Typo color={"#3B33C4"} size={30} fontWeight="bold">
                 2
               </Typo>
-              <Typo color={colors.neutral700} size={14} fontWeight="400" style={styles.labelText}>
+              <Typo
+                color={colors.neutral700}
+                size={14}
+                fontWeight="400"
+                style={styles.labelText}
+              >
                 Total{"\n"}Workouts
               </Typo>
             </View>
@@ -37,7 +42,12 @@ const HistoryCard = () => {
               <Typo color={colors.green} size={30} fontWeight="bold">
                 33m 21s
               </Typo>
-              <Typo color={colors.neutral700} size={14} fontWeight="400" style={styles.labelText}>
+              <Typo
+                color={colors.neutral700}
+                size={14}
+                fontWeight="400"
+                style={styles.labelText}
+              >
                 Total{"\n"}Time
               </Typo>
             </View>
@@ -47,7 +57,12 @@ const HistoryCard = () => {
               <Typo color={"#B413BF"} size={30} fontWeight="bold">
                 5
               </Typo>
-              <Typo color={colors.neutral700} size={14} fontWeight="400" style={styles.labelText}>
+              <Typo
+                color={colors.neutral700}
+                size={14}
+                fontWeight="400"
+                style={styles.labelText}
+              >
                 Days{"\n"}Active
               </Typo>
             </View>
@@ -55,15 +70,15 @@ const HistoryCard = () => {
         </View>
 
         {/* Average Workout Duration */}
-                <View style={styles.averageSection}>
+        <View style={styles.averageSection}>
           <View style={styles.divider} />
-        <View style={styles.averageRow}>
-          <Typo color={colors.neutral700} size={14} fontWeight="400">
-            Average workout duration:
-          </Typo>
-          <Typo color={colors.black} size={16} fontWeight="600">
-            16m 41s
-          </Typo>
+          <View style={styles.averageRow}>
+            <Typo color={colors.neutral700} size={14} fontWeight="400">
+              Average workout duration:
+            </Typo>
+            <Typo color={colors.black} size={16} fontWeight="600">
+              16m 41s
+            </Typo>
           </View>
         </View>
       </View>
@@ -111,10 +126,10 @@ const styles = StyleSheet.create({
     width: "100%",
     opacity: 0.3,
   },
-    averageSection: {
+  averageSection: {
     gap: verticalScale(12),
   },
-    labelText: {
+  labelText: {
     textAlign: "center",
     lineHeight: 16,
   },
