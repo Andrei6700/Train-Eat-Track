@@ -6,12 +6,13 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { addWorkout } from "@/src/services/workoutService";
 import { WorkoutExercise, WorkoutSet } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -19,17 +20,30 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
+
+type LapTime = {
+  lapNumber: number;
+  time: number;
+  timestamp: Date;
+};
 
 const AddWorkout = () => {
   const { user } = useAuth();
   const router = useRouter();
   const { workoutPlan } = useWorkoutPlan();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
-  const [startTime] = useState(new Date()); // momentul când s-a deschis modalul = start workout
+  const [startTime] = useState(new Date());
+  
+  // CRONOMETRU
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [isRunning, setIsRunning] = useState(true);
+  const [laps, setLaps] = useState<LapTime[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
     {
@@ -38,7 +52,7 @@ const AddWorkout = () => {
     },
   ]);
 
-  // Prefill exercises din plan (dacă există) pentru ziua curentă
+  // Prefill din plan
   useEffect(() => {
     if (!workoutPlan) return;
 
@@ -47,7 +61,6 @@ const AddWorkout = () => {
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
     if (planDay && planDay.exercises && planDay.exercises.length > 0) {
-      // clonăm pentru a nu modifica obiectul din context
       const cloned = planDay.exercises.map((ex) => ({
         exerciseName: ex.exerciseName || "",
         sets: ex.sets?.map((s) => ({
@@ -59,8 +72,59 @@ const AddWorkout = () => {
 
       setExercises(cloned);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutPlan]);
+
+  // CRONOMETRU LOGIC
+  useEffect(() => {
+    if (isRunning) {
+      timerRef.current = setInterval(() => {
+        setElapsedTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isRunning]);
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const formatLapTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const toggleTimer = () => {
+    setIsRunning(!isRunning);
+  };
+
+  const handleLap = () => {
+    const lapNumber = laps.length + 1;
+    const newLap: LapTime = {
+      lapNumber,
+      time: elapsedTime,
+      timestamp: new Date(),
+    };
+    
+    setLaps([...laps, newLap]);
+  };
+
+  const clearLaps = () => {
+    setLaps([]);
+  };
 
   const addExercise = () => {
     setExercises([
@@ -117,7 +181,6 @@ const AddWorkout = () => {
     value: any
   ) => {
     const newExercises = [...exercises];
-    // coercăm la number pentru reps/weight
     if (field === "reps") {
       newExercises[exerciseIndex].sets[setIndex][field] = parseInt(value as any) || 0;
     } else if (field === "weight") {
@@ -137,7 +200,6 @@ const AddWorkout = () => {
   };
 
   const handleSaveWorkout = async () => {
-    // Validare
     const hasEmptyExerciseName = exercises.some((ex) => !ex.exerciseName.trim());
     if (hasEmptyExerciseName) {
       Alert.alert("Error", "Please fill in all exercise names");
@@ -157,9 +219,7 @@ const AddWorkout = () => {
       return;
     }
 
-    // Calculează durata
-    const endTime = new Date();
-    const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+    const duration = elapsedTime;
 
     const workoutData = {
       userID: user.uid,
@@ -170,7 +230,9 @@ const AddWorkout = () => {
 
     setLoading(true);
     try {
-      const result = await addWorkout(workoutData);
+      console.log("[AddWorkout] workoutData before addWorkout:", JSON.stringify(workoutData));
+      const result = await addWorkout(workoutData as any);
+      console.log("[AddWorkout] addWorkout result:", result);
       setLoading(false);
 
       if (result.success) {
@@ -204,14 +266,87 @@ const AddWorkout = () => {
           style={{ marginBottom: spacingY._15 }}
         />
 
+        {/* CRONOMETRU */}
+        <View style={styles.timerContainer}>
+          <View>
+            <Typo size={32} fontWeight="700" color={colors.primary}>
+              {formatTime(elapsedTime)}
+            </Typo>
+            {laps.length > 0 && (
+              <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
+                Last lap: {formatLapTime(
+                  laps.length > 1 
+                    ? laps[laps.length - 1].time - laps[laps.length - 2].time
+                    : laps[0].time
+                )}
+              </Typo>
+            )}
+          </View>
+          <View style={styles.timerButtons}>
+            <TouchableOpacity onPress={toggleTimer} style={styles.timerButton}>
+              {isRunning ? (
+                <Icons.PauseIcon size={20} color={colors.white} weight="fill" />
+              ) : (
+                <Icons.PlayIcon size={20} color={colors.white} weight="fill" />
+              )}
+              <Typo size={14} fontWeight="600" color={colors.white}>
+                {isRunning ? "Pause" : "Resume"}
+              </Typo>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
+              <Icons.ClockCountdownIcon size={20} color={colors.primary} />
+              <Typo size={14} fontWeight="600" color={colors.primary}>
+                Lap
+              </Typo>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Laps List */}
+        {laps.length > 0 && (
+          <View style={styles.lapsContainer}>
+            <View style={styles.lapsHeader}>
+              <Typo size={14} fontWeight="600" color={colors.neutral300}>
+                Rest Times
+              </Typo>
+              <TouchableOpacity onPress={clearLaps}>
+                <Typo size={13} color={colors.primary}>
+                  Clear
+                </Typo>
+              </TouchableOpacity>
+            </View>
+            <ScrollView 
+              style={styles.lapsList}
+              showsVerticalScrollIndicator={false}
+            >
+              {[...laps].reverse().map((lap, index) => {
+                const actualIndex = laps.length - 1 - index;
+                const lapDuration = actualIndex > 0 
+                  ? lap.time - laps[actualIndex - 1].time 
+                  : lap.time;
+                
+                return (
+                  <View key={lap.lapNumber} style={styles.lapItem}>
+                    <Typo size={14} color={colors.neutral400}>
+                      Lap {lap.lapNumber}
+                    </Typo>
+                    <Typo size={14} fontWeight="600" color={colors.white}>
+                      {formatLapTime(lapDuration)}
+                    </Typo>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: verticalScale(220) }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Exercises */}
           {exercises.map((exercise, exerciseIndex) => (
             <View key={exerciseIndex} style={styles.exerciseCard}>
-              {/* Exercise Header */}
               <View style={styles.exerciseHeader}>
                 <Typo size={18} fontWeight="600">
                   Exercise {exerciseIndex + 1}
@@ -226,7 +361,6 @@ const AddWorkout = () => {
                 )}
               </View>
 
-              {/* Exercise Name Input */}
               <Input
                 placeholder="Exercise name (e.g., Bench Press)"
                 value={exercise.exerciseName}
@@ -234,7 +368,6 @@ const AddWorkout = () => {
                 containerStyle={{ marginBottom: spacingY._15 }}
               />
 
-              {/* Sets */}
               <Typo size={15} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
                 Sets
               </Typo>
@@ -247,43 +380,30 @@ const AddWorkout = () => {
                     </Typo>
                   </View>
 
-                  {/* Reps Input */}
                   <View style={styles.setInput}>
                     <Input
                       placeholder="Reps"
                       keyboardType="numeric"
                       value={set.reps > 0 ? set.reps.toString() : ""}
                       onChangeText={(text) =>
-                        updateSet(
-                          exerciseIndex,
-                          setIndex,
-                          "reps",
-                          text
-                        )
+                        updateSet(exerciseIndex, setIndex, "reps", text)
                       }
                       containerStyle={styles.smallInput}
                     />
                   </View>
 
-                  {/* Weight Input */}
                   <View style={styles.setInput}>
                     <Input
                       placeholder="Weight"
                       keyboardType="numeric"
                       value={set.weight > 0 ? set.weight.toString() : ""}
                       onChangeText={(text) =>
-                        updateSet(
-                          exerciseIndex,
-                          setIndex,
-                          "weight",
-                          text
-                        )
+                        updateSet(exerciseIndex, setIndex, "weight", text)
                       }
                       containerStyle={styles.smallInput}
                     />
                   </View>
 
-                  {/* Unit Toggle */}
                   <TouchableOpacity
                     onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
                     style={styles.unitButton}
@@ -293,7 +413,6 @@ const AddWorkout = () => {
                     </Typo>
                   </TouchableOpacity>
 
-                  {/* Remove Set */}
                   {exercise.sets.length > 1 && (
                     <TouchableOpacity
                       onPress={() => removeSet(exerciseIndex, setIndex)}
@@ -305,7 +424,6 @@ const AddWorkout = () => {
                 </View>
               ))}
 
-              {/* Add Set Button */}
               <TouchableOpacity
                 onPress={() => addSet(exerciseIndex)}
                 style={styles.addSetButton}
@@ -318,7 +436,6 @@ const AddWorkout = () => {
             </View>
           ))}
 
-          {/* Add Exercise Button */}
           <TouchableOpacity onPress={addExercise} style={styles.addExerciseButton}>
             <Icons.PlusCircleIcon size={24} color={colors.primary} weight="fill" />
             <Typo size={16} fontWeight="600" color={colors.primary}>
@@ -328,10 +445,10 @@ const AddWorkout = () => {
         </ScrollView>
 
         {/* Footer - Save Button */}
-        <View style={styles.footer}>
+        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button onPress={handleSaveWorkout} loading={loading} style={{ flex: 1 }}>
             <Typo color={colors.black} fontWeight="700" size={18}>
-              Save Workout
+              Finish Workout
             </Typo>
           </Button>
         </View>
@@ -346,6 +463,65 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacingX._20,
+  },
+  timerContainer: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    padding: spacingX._20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacingY._15,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  timerButtons: {
+    flexDirection: "row",
+    gap: spacingX._7,
+  },
+  timerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._7,
+    backgroundColor: colors.neutral700,
+    paddingHorizontal: spacingX._15,
+    paddingVertical: verticalScale(8),
+    borderRadius: radius._12,
+  },
+  lapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._7,
+    backgroundColor: colors.neutral700,
+    paddingHorizontal: spacingX._15,
+    paddingVertical: verticalScale(8),
+    borderRadius: radius._12,
+  },
+  lapsContainer: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._15,
+    padding: spacingX._15,
+    marginBottom: spacingY._15,
+    maxHeight: verticalScale(150),
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  lapsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacingY._10,
+  },
+  lapsList: {
+    maxHeight: verticalScale(100),
+  },
+  lapItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: verticalScale(6),
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral700,
   },
   scrollContent: {
     paddingBottom: verticalScale(20),
@@ -422,10 +598,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderStyle: "dashed",
   },
-  footer: {
-    paddingTop: spacingY._15,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral700,
-    marginBottom: spacingY._5,
+  footerSticky: {
+    position: "absolute",
+    left: spacingX._20,
+    right: spacingX._20,
+    zIndex: 30,
   },
 });

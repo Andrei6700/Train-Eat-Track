@@ -8,9 +8,9 @@ import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import {
-    createWorkoutPlan,
-    getUserWorkoutPlan,
-    updateWorkoutPlan
+  createWorkoutPlan,
+  getUserWorkoutPlan,
+  updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
@@ -18,12 +18,14 @@ import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 
 const DAYS_OF_WEEK = [
   "Luni",
@@ -36,10 +38,13 @@ const DAYS_OF_WEEK = [
 ];
 
 const WorkoutPlanScreen = () => {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const router = useRouter();
+  const { refreshPlan, deletePlan } = useWorkoutPlan(); // ← ADĂUGAT deletePlan
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false); // ← NOU
   const [planName, setPlanName] = useState("");
   const [existingPlan, setExistingPlan] = useState<WorkoutPlan | null>(null);
   const [days, setDays] = useState<DayWorkout[]>(
@@ -55,6 +60,7 @@ const WorkoutPlanScreen = () => {
   }, [user?.uid]);
 
   const loadWorkoutPlan = async () => {
+    console.log("[WorkoutPlanScreen] loadWorkoutPlan for user:", user?.uid);
     if (!user?.uid) return;
 
     const result = await getUserWorkoutPlan(user.uid);
@@ -83,6 +89,8 @@ const WorkoutPlanScreen = () => {
   };
 
   const handleSave = async () => {
+    console.log("[WorkoutPlanScreen] handleSave planName:", planName, "existingPlanId:", existingPlan?.id);
+
     if (!planName.trim()) {
       Alert.alert("Error", "Please add a name for your workout plan");
       return;
@@ -110,9 +118,17 @@ const WorkoutPlanScreen = () => {
       result = await createWorkoutPlan(planData);
     }
 
+    console.log("[WorkoutPlanScreen] save result:", result);
     setSaving(false);
 
     if (result.success) {
+      if (!existingPlan?.id && result.data?.id) {
+        setExistingPlan({ ...planData, id: result.data.id } as WorkoutPlan);
+      }
+      
+      // ← ADĂUGAT: Refresh context după save!
+      await refreshPlan();
+      
       Alert.alert("Success", "Workout plan saved successfully!", [
         {
           text: "OK",
@@ -121,6 +137,47 @@ const WorkoutPlanScreen = () => {
       ]);
     } else {
       Alert.alert("Error", result.msg || "Could not save workout plan");
+    }
+  };
+
+  // ← FUNCȚIE NOUĂ: Delete plan
+  const handleDelete = () => {
+    if (!existingPlan?.id) {
+      Alert.alert("Info", "No plan to delete");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Workout Plan",
+      "Are you sure you want to delete this workout plan? This action cannot be undone.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: performDelete,
+        },
+      ]
+    );
+  };
+
+  const performDelete = async () => {
+    setDeleting(true);
+    const result = await deletePlan();
+    setDeleting(false);
+
+    if (result.success) {
+      Alert.alert("Success", "Workout plan deleted successfully!", [
+        {
+          text: "OK",
+          onPress: () => router.back(),
+        },
+      ]);
+    } else {
+      Alert.alert("Error", result.msg || "Could not delete workout plan");
     }
   };
 
@@ -187,19 +244,32 @@ const WorkoutPlanScreen = () => {
                   >
                     {day}
                   </Typo>
-                  <Icons.PlusCircleIcon
-                    size={24}
+                  <Icons.PencilIcon
+                    size={20}
                     color={status === "rest" ? colors.neutral500 : colors.primary}
-                    weight="fill"
                   />
                 </TouchableOpacity>
               );
             })}
           </View>
+
+          {/* Delete Button - doar dacă există plan */}
+          {existingPlan?.id && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDelete}
+              disabled={deleting}
+            >
+              <Icons.TrashIcon size={20} color={colors.rose} />
+              <Typo size={16} fontWeight="600" color={colors.rose}>
+                {deleting ? "Deleting..." : "Delete Workout Plan"}
+              </Typo>
+            </TouchableOpacity>
+          )}
         </ScrollView>
 
         {/* Footer - Save Button */}
-        <View style={styles.footer}>
+        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button onPress={handleSave} loading={saving} style={{ flex: 1 }}>
             <Typo color={colors.black} fontWeight="700" size={18}>
               Save Workout Plan
@@ -219,7 +289,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   scrollContent: {
-    paddingBottom: verticalScale(20),
+    paddingBottom: verticalScale(220),
   },
   inputContainer: {
     marginBottom: spacingY._25,
@@ -248,10 +318,22 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 2,
   },
-  footer: {
-    paddingTop: spacingY._15,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral700,
-    marginBottom: spacingY._5,
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._10,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    padding: spacingY._15,
+    borderWidth: 1,
+    borderColor: colors.rose,
+    marginTop: spacingY._20,
+  },
+  footerSticky: {
+    position: "absolute",
+    left: spacingX._20,
+    right: spacingX._20,
+    zIndex: 30,
   },
 });

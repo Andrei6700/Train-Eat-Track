@@ -1,10 +1,81 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
+import { useAuth } from "@/src/contexts/authContext";
+import { getUserWorkouts } from "@/src/services/workoutService";
+import { WorkoutHistory } from "@/src/types/index";
+import { formatDuration } from "@/src/utils/utils";
 import { scale, verticalScale } from "@/src/utils/styling";
-import React from "react";
-import { ImageBackground, StyleSheet, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, ImageBackground, StyleSheet, View } from "react-native";
 import Typo from "./Typo";
 
 const HistoryCard = () => {
+  const { user } = useAuth();
+  const [stats, setStats] = useState({
+    totalWorkouts: 0,
+    totalTime: 0,
+    daysActive: 0,
+    averageDuration: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadStats();
+  }, [user?.uid]);
+
+  const loadStats = async () => {
+    if (!user?.uid) return;
+
+    try {
+      const result = await getUserWorkouts(user.uid);
+      if (result.success && result.data) {
+        const workouts: WorkoutHistory[] = result.data;
+        
+        // Total workouts
+        const totalWorkouts = workouts.length;
+        
+        // Total time (suma tuturor duration-urilor)
+        const totalTime = workouts.reduce((sum, w) => sum + (w.duration || 0), 0);
+        
+        // Days active (zile unice în care ai făcut workout)
+        const uniqueDays = new Set(
+          workouts.map((w) => {
+            const date = new Date(w.date);
+            return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+          })
+        );
+        const daysActive = uniqueDays.size;
+        
+        // Average duration
+        const averageDuration = totalWorkouts > 0 ? Math.floor(totalTime / totalWorkouts) : 0;
+
+        setStats({
+          totalWorkouts,
+          totalTime,
+          daysActive,
+          averageDuration,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading stats:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <ImageBackground
+        source={require("@/assets/images/card.png")}
+        resizeMode="stretch"
+        style={styles.bgImage}
+      >
+        <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </ImageBackground>
+    );
+  }
+
   return (
     <ImageBackground
       source={require("@/assets/images/card.png")}
@@ -25,7 +96,7 @@ const HistoryCard = () => {
             {/* Total Workouts */}
             <View style={styles.statItem}>
               <Typo color={"#3B33C4"} size={30} fontWeight="bold">
-                2
+                {stats.totalWorkouts}
               </Typo>
               <Typo
                 color={colors.neutral700}
@@ -40,7 +111,7 @@ const HistoryCard = () => {
             {/* Total Time */}
             <View style={styles.statItem}>
               <Typo color={colors.green} size={30} fontWeight="bold">
-                33m 21s
+                {formatDuration(stats.totalTime)}
               </Typo>
               <Typo
                 color={colors.neutral700}
@@ -55,7 +126,7 @@ const HistoryCard = () => {
             {/* Days Active */}
             <View style={styles.statItem}>
               <Typo color={"#B413BF"} size={30} fontWeight="bold">
-                5
+                {stats.daysActive}
               </Typo>
               <Typo
                 color={colors.neutral700}
@@ -77,7 +148,7 @@ const HistoryCard = () => {
               Average workout duration:
             </Typo>
             <Typo color={colors.black} size={16} fontWeight="600">
-              16m 41s
+              {formatDuration(stats.averageDuration)}
             </Typo>
           </View>
         </View>

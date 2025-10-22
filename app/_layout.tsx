@@ -31,7 +31,7 @@ const StackLayout = () => {
         }}
       />
       <Stack.Screen
-        name="workoutDetail"
+        name="(modals)/workoutDetail"
         options={{
           presentation: "modal",
         }}

@@ -1,4 +1,3 @@
-// src/components/ui/WorkoutCard.tsx
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { WorkoutHistory } from "@/src/types/index";
 import { formatDuration } from "@/src/utils/utils";

@@ -1,8 +1,9 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
+  createWorkoutPlan,
+  deleteWorkoutPlan,
   getUserWorkoutPlan,
   updateWorkoutPlan,
-  createWorkoutPlan,
 } from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -12,6 +13,7 @@ type WorkoutPlanContextType = {
   loading: boolean;
   updateDay: (day: string, dayData: DayWorkout) => Promise<void>;
   refreshPlan: () => Promise<void>;
+  deletePlan: () => Promise<{ success: boolean; msg?: string }>;
 };
 
 const WorkoutPlanContext = createContext<WorkoutPlanContextType | null>(null);
@@ -27,11 +29,9 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     if (user?.uid) {
       loadWorkoutPlan();
     } else {
-      // no user
       setWorkoutPlan(null);
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
 
   const loadWorkoutPlan = async () => {
@@ -41,21 +41,27 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoading(true);
+    console.log("[WorkoutPlanContext] loadWorkoutPlan for user:", user.uid);
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
+      console.log("[WorkoutPlanContext] plan found:", result.data.id);
       setWorkoutPlan(result.data);
     } else {
+      console.log("[WorkoutPlanContext] no plan found for user");
       setWorkoutPlan(null);
     }
     setLoading(false);
   };
 
   const updateDay = async (day: string, dayData: DayWorkout) => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      console.log("[WorkoutPlanContext] updateDay aborted, no user");
+      return;
+    }
 
-    // If no local plan exists, create a new one using the updated day
+    console.log("[WorkoutPlanContext] updateDay", day, dayData);
+
     if (!workoutPlan) {
-      // build default 7-day skeleton
       const defaultDays: DayWorkout[] = [
         { day: "Luni", isRestDay: false, exercises: [] },
         { day: "Marti", isRestDay: false, exercises: [] },
@@ -76,19 +82,18 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
         updatedAt: new Date(),
       };
 
+      console.log("[WorkoutPlanContext] creating new plan with payload:", newPlan);
       const createResult = await createWorkoutPlan(newPlan);
       if (createResult.success && createResult.data?.id) {
-        // set local plan with id
+        console.log("[WorkoutPlanContext] created plan id:", createResult.data.id);
         setWorkoutPlan({ ...newPlan, id: createResult.data.id });
       } else {
-        // creation failed - keep nothing but don't throw (UI shows success previously — keep behavior)
         console.error("Failed to create workout plan:", createResult.msg);
       }
 
       return;
     }
 
-    // Update existing plan locally & remote
     const updatedDays = workoutPlan.days.map((d) => (d.day === day ? dayData : d));
 
     const updatedPlan = {
@@ -97,15 +102,16 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       updatedAt: new Date(),
     };
 
-    // Save to firebase (if id exists)
     try {
       if (workoutPlan.id) {
+        console.log("[WorkoutPlanContext] updating plan id:", workoutPlan.id, "payload:", updatedPlan);
         await updateWorkoutPlan(workoutPlan.id, updatedPlan);
       } else {
-        // fallback: create if somehow no id
+        console.log("[WorkoutPlanContext] fallback create plan payload:", updatedPlan);
         const createResult = await createWorkoutPlan(updatedPlan);
         if (createResult.success && createResult.data?.id) {
           updatedPlan.id = createResult.data.id;
+          console.log("[WorkoutPlanContext] created plan id (fallback):", createResult.data.id);
         }
       }
     } catch (err) {
@@ -119,6 +125,24 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     await loadWorkoutPlan();
   };
 
+  const deletePlan = async (): Promise<{ success: boolean; msg?: string }> => {
+    if (!workoutPlan?.id) {
+      return { success: false, msg: "No workout plan to delete" };
+    }
+
+    try {
+      const result = await deleteWorkoutPlan(workoutPlan.id);
+      if (result.success) {
+        setWorkoutPlan(null);
+        return { success: true, msg: "Workout plan deleted successfully" };
+      }
+      return result;
+    } catch (error: any) {
+      console.error("[WorkoutPlanContext] error deleting plan:", error);
+      return { success: false, msg: error?.message || "Could not delete workout plan" };
+    }
+  };
+
   return (
     <WorkoutPlanContext.Provider
       value={{
@@ -126,6 +150,7 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
         loading,
         updateDay,
         refreshPlan,
+        deletePlan,
       }}
     >
       {children}

@@ -18,13 +18,15 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { KeyboardAvoidingView, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DayWorkout = () => {
   const { day } = useLocalSearchParams();
   const router = useRouter();
   const { workoutPlan, updateDay, loading: contextLoading } = useWorkoutPlan();
   const [saving, setSaving] = useState(false);
-
+  const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
     {
       exerciseName: "",
@@ -112,13 +114,16 @@ const DayWorkout = () => {
 
   const handleMarkRestDay = async () => {
     setSaving(true);
-
-    await updateDay(day as string, {
+    const payload: DayWorkout = {
       day: day as string,
       isRestDay: true,
       exercises: [],
-    });
+    };
+    console.log("[DayWorkout] mark rest day payload:", payload);
 
+    await updateDay(day as string, payload);
+
+    console.log("[DayWorkout] rest day saved locally, going back");
     setSaving(false);
     Alert.alert("Success", "Rest day saved!", [
       {
@@ -144,12 +149,15 @@ const DayWorkout = () => {
     }
 
     setSaving(true);
-
-    await updateDay(day as string, {
+    const payload: DayWorkout = {
       day: day as string,
       isRestDay: false,
       exercises,
-    });
+    };
+
+    console.log("[DayWorkout] saving exercises payload:", JSON.stringify(payload));
+    await updateDay(day as string, payload);
+    console.log("[DayWorkout] updateDay finished - local context should be updated");
 
     setSaving(false);
     Alert.alert("Success", "Exercises saved successfully!", [
@@ -309,13 +317,13 @@ const DayWorkout = () => {
         </ScrollView>
 
         {/* Footer - Save Button */}
-        <View style={styles.footer}>
-          <Button onPress={handleAddExercises} loading={saving} style={{ flex: 1 }}>
-            <Typo color={colors.black} fontWeight="700" size={16}>
-              Save Exercises
-            </Typo>
-          </Button>
-        </View>
+<View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
+  <Button onPress={handleAddExercises} loading={saving} style={{ flex: 1 }}>
+    <Typo color={colors.black} fontWeight="700" size={16}>
+      Save Exercises
+    </Typo>
+  </Button>
+</View>
       </View>
     </ModalWrapper>
   );
@@ -427,4 +435,10 @@ const styles = StyleSheet.create({
     borderTopColor: colors.neutral700,
     marginBottom: spacingY._5,
   },
+  footerSticky: {
+  position: "absolute",
+  left: spacingX._20,
+  right: spacingX._20,
+  zIndex: 30,
+},
 });

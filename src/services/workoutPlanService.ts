@@ -1,9 +1,9 @@
-// src/services/workoutPlanService.ts
 import { firestore } from "@/src/config/firebase";
 import { ResponseType, WorkoutPlan } from '@/src/types/index';
 import {
     addDoc,
     collection,
+    deleteDoc,  // ← ADĂUGAT
     doc,
     getDoc,
     getDocs,
@@ -74,6 +74,21 @@ export const updateWorkoutPlan = async (
     return { success: true, msg: "Workout plan updated successfully" };
   } catch (error: any) {
     console.log("Error updating workout plan:", error);
+    return { success: false, msg: error?.message };
+  }
+};
+
+// Șterge planul de workout - NOU!
+export const deleteWorkoutPlan = async (
+  planId: string
+): Promise<ResponseType> => {
+  try {
+    const planRef = doc(firestore, COLLECTION_NAME, planId);
+    await deleteDoc(planRef);
+    
+    return { success: true, msg: "Workout plan deleted successfully" };
+  } catch (error: any) {
+    console.log("Error deleting workout plan:", error);
     return { success: false, msg: error?.message };
   }
 };

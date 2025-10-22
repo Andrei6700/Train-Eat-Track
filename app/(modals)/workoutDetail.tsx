@@ -67,7 +67,6 @@ const WorkoutDetail = () => {
     setIsLoading(false);
     
     if (result.success) {
-      // Navigăm înapoi la history cu refresh
       router.push({
         pathname: "/(tabs)/history",
         params: { refresh: "true" },

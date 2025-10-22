@@ -8,9 +8,9 @@ import { useAuth } from "@/src/contexts/authContext";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -48,17 +48,21 @@ const History = () => {
     }
   };
 
+  // Auto-refresh when coming back from delete
+  useFocusEffect(
+    useCallback(() => {
+      if (refresh === "true") {
+        setIsRefreshing(true);
+        fetchWorkoutsHistory();
+        // Clear the refresh param
+        router.setParams({ refresh: undefined });
+      }
+    }, [refresh])
+  );
+
   useEffect(() => {
     fetchWorkoutsHistory();
   }, [user?.uid]);
-
-  useEffect(() => {
-    if (refresh === "true") {
-      fetchWorkoutsHistory();
-      router.replace("/(tabs)/history");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh]);
 
   const onRefresh = () => {
     setIsRefreshing(true);
@@ -66,7 +70,6 @@ const History = () => {
   };
 
   const handlePlus = () => {
-    // If there's no plan, redirect to create a plan first
     if (!workoutPlan) {
       router.push("/(modals)/workoutPlan");
     } else {
