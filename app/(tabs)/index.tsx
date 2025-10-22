@@ -17,19 +17,12 @@ const Home = () => {
         <View style={styles.header}>
           <View style={{ gap: 4 }}>
             <Typo size={16} color={colors.neutral400}>
-              Hello,
+              Welcome back,
             </Typo>
             <Typo size={20} fontWeight="500">
               {user?.name}
             </Typo>
           </View>
-          {/* <TouchableOpacity>
-            <Icons.MagnifyingGlassIcon
-              size={verticalScale(22)}
-              color={colors.neutral200}
-              weight="bold"
-            />
-          </TouchableOpacity> */}
         </View>
         <ScrollView
           contentContainerStyle={styles.scrollViewStyle}

@@ -31,6 +31,13 @@ export default function CustomTabs({
         color={isFocused ? colors.primary : colors.neutral400}
       />
     ),
+    history: (isFocused: boolean) => (
+      <Icons.ClockUserIcon
+        size={verticalScale(28)}
+        weight={isFocused ? "fill" : "regular"}
+        color={isFocused ? colors.primary : colors.neutral400}
+      />
+    ),
     profile: (isFocused: boolean) => (
       <Icons.UserIcon
         size={verticalScale(28)}

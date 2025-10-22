@@ -1,12 +1,12 @@
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-    TextInput,
-    TextInputProps,
-    TextProps,
-    TextStyle,
-    TouchableOpacityProps,
-    ViewStyle
+  TextInput,
+  TextInputProps,
+  TextProps,
+  TextStyle,
+  TouchableOpacityProps,
+  ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
@@ -165,3 +165,46 @@ export type ResponseType = {
 //   uid?: string;
 //   created?: Date;
 // };
+
+export type WorkoutSet = {
+  reps: number;
+  weight: number;
+  weightUnit: "kg" | "lbs";
+};
+
+export type WorkoutExercise = {
+  exerciseName: string; // numele exercițiului introdus manual de user
+  sets: WorkoutSet[];
+};
+
+export type WorkoutHistory = {
+  id?: string;
+  userID: string;
+  date: Date | string;
+  duration: number; // in secunde
+  exercises: WorkoutExercise[];
+};
+
+export type WorkoutHistoryListProps = {
+  workouts: WorkoutHistory[];
+  loading?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+};
+
+// Workout Plan Types
+export type DayWorkout = {
+  day: string; // "Luni", "Marti", etc.
+  isRestDay: boolean;
+  exercises: WorkoutExercise[];
+  notes?: string;
+};
+
+export type WorkoutPlan = {
+  id?: string;
+  userID: string;
+  planName: string;
+  days: DayWorkout[];
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
