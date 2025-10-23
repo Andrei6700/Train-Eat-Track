@@ -5,11 +5,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  endAt,
   getDoc,
   getDocs,
   orderBy,
   query,
-  serverTimestamp,  // ← ADĂUGAT ACEST IMPORT!
+  serverTimestamp,
+  startAt,
   where
 } from "firebase/firestore";
 
@@ -49,13 +51,52 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
   }
 };
 
+// NOUĂ FUNCȚIE: Verifică dacă există deja workout în ziua respectivă
+export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseType> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+      where("date", ">=", today),
+      where("date", "<", tomorrow)
+    );
+
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      return { 
+        success: false, 
+        msg: "You already have a workout logged for today. You can only log one workout per day.",
+        data: { exists: true }
+      };
+    }
+
+    return { success: true, data: { exists: false } };
+  } catch (error: any) {
+    console.log("Error checking existing workout:", error);
+    return { success: false, msg: error?.message };
+  }
+};
+
 export const addWorkout = async (workout: WorkoutHistory): Promise<ResponseType> => {
   try {
     console.log("[workoutService] addWorkout payload:", JSON.stringify(workout));
 
+    // VALIDARE: Verifică dacă există deja un workout azi
+    const existsCheck = await checkWorkoutExistsToday(workout.userID);
+    if (!existsCheck.success) {
+      return existsCheck; // Returnează eroarea
+    }
+
     const payload: any = {
       ...workout,
-      date: serverTimestamp(),  // Acum funcționează!
+      date: serverTimestamp(),
     };
 
     const docRef = await addDoc(collection(firestore, COLLECTION_NAME), payload);

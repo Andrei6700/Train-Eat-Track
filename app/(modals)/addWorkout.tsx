@@ -7,7 +7,7 @@ import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import { addWorkout } from "@/src/services/workoutService";
+import { addWorkout, checkWorkoutExistsToday } from "@/src/services/workoutService";
 import { WorkoutExercise, WorkoutSet } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
@@ -199,63 +199,74 @@ const AddWorkout = () => {
     setExercises(newExercises);
   };
 
-  const handleSaveWorkout = async () => {
-    const hasEmptyExerciseName = exercises.some((ex) => !ex.exerciseName.trim());
-    if (hasEmptyExerciseName) {
-      Alert.alert("Error", "Please fill in all exercise names");
-      return;
-    }
+  // limitare la doar un singur workout pe zi
+const handleSaveWorkout = async () => {
+  const hasEmptyExerciseName = exercises.some((ex) => !ex.exerciseName.trim());
+  if (hasEmptyExerciseName) {
+    Alert.alert("Error", "Please fill in all exercise names");
+    return;
+  }
 
-    const hasInvalidSets = exercises.some((ex) =>
-      ex.sets.some((set) => set.reps <= 0 || set.weight < 0)
+  const hasInvalidSets = exercises.some((ex) =>
+    ex.sets.some((set) => set.reps <= 0 || set.weight < 0)
+  );
+  if (hasInvalidSets) {
+    Alert.alert("Error", "Please fill in valid reps and weight for all sets");
+    return;
+  }
+
+  if (!user?.uid) {
+    Alert.alert("Error", "User not authenticated");
+    return;
+  }
+
+   const existsCheck = await checkWorkoutExistsToday(user.uid);
+  if (!existsCheck.success && existsCheck.data?.exists) {
+    Alert.alert(
+      "Already Logged", 
+      "You already have a workout logged for today. You can only log one workout per day.",
+      [{ text: "OK" }]
     );
-    if (hasInvalidSets) {
-      Alert.alert("Error", "Please fill in valid reps and weight for all sets");
-      return;
-    }
+    return;
+  }
 
-    if (!user?.uid) {
-      Alert.alert("Error", "User not authenticated");
-      return;
-    }
+  const duration = elapsedTime;
 
-    const duration = elapsedTime;
-
-    const workoutData = {
-      userID: user.uid,
-      date: new Date(),
-      duration,
-      exercises,
-    };
-
-    setLoading(true);
-    try {
-      console.log("[AddWorkout] workoutData before addWorkout:", JSON.stringify(workoutData));
-      const result = await addWorkout(workoutData as any);
-      console.log("[AddWorkout] addWorkout result:", result);
-      setLoading(false);
-
-      if (result.success) {
-        Alert.alert("Success", "Workout saved successfully!", [
-          {
-            text: "OK",
-            onPress: () => {
-              router.push({
-                pathname: "/(tabs)/history",
-                params: { refresh: "true" },
-              });
-            },
-          },
-        ]);
-      } else {
-        Alert.alert("Error", result.msg || "Could not save workout");
-      }
-    } catch (err: any) {
-      setLoading(false);
-      console.error("Error saving workout:", err);
-      Alert.alert("Error", err?.message || "Could not save workout");
-    }
+  const workoutData = {
+    userID: user.uid,
+    date: new Date(),
+    duration,
+    exercises,
   };
+
+setLoading(true);
+  try {
+    console.log("[AddWorkout] workoutData before addWorkout:", JSON.stringify(workoutData));
+    const result = await addWorkout(workoutData as any);
+    console.log("[AddWorkout] addWorkout result:", result);
+    setLoading(false);
+
+    if (result.success) {
+      Alert.alert("Success", "Workout saved successfully!", [
+        {
+          text: "OK",
+          onPress: () => {
+            router.push({
+              pathname: "/(tabs)/history",
+              params: { refresh: "true" },
+            });
+          },
+        },
+      ]);
+    } else {
+      Alert.alert("Error", result.msg || "Could not save workout");
+    }
+  } catch (err: any) {
+    setLoading(false);
+    console.error("Error saving workout:", err);
+    Alert.alert("Error", err?.message || "Could not save workout");
+  }
+};
 
   return (
     <ModalWrapper>

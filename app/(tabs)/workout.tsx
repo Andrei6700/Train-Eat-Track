@@ -3,7 +3,7 @@ import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
-import { getUserWorkouts } from "@/src/services/workoutService";
+import { checkWorkoutExistsToday, getUserWorkouts } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -20,21 +20,25 @@ const Workout = () => {
   const { user } = useAuth();
   const { workoutPlan } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
   const [todayIndex, setTodayIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
   const [todayWorkout, setTodayWorkout] = useState<DayWorkout | null>(null);
-  const [previousWorkout, setPreviousWorkout] = useState<WorkoutHistory | null>(null);
   const [workoutPlanName, setWorkoutPlanName] = useState("");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(null);
+  const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
 
-  // Only reset selected day when screen gains focus (no auto-reload)
+  // Only reset selected day when screen gains focus
   useFocusEffect(
     useCallback(() => {
       const today = new Date();
       setSelectedDay(today);
+      
+      // Refresh workout check when returning to screen
+      if (user?.uid) {
+        checkTodayWorkout();
+      }
       
       // Update today index if week is already generated
       if (currentWeek.length > 0) {
@@ -45,7 +49,7 @@ const Workout = () => {
       }
       
       return () => {};
-    }, [currentWeek])
+    }, [currentWeek, user?.uid])
   );
 
   useEffect(() => {
@@ -73,10 +77,20 @@ const Workout = () => {
     setSelectedDay(today);
   };
 
+  const checkTodayWorkout = async () => {
+    if (!user?.uid) return;
+    
+    const existsCheck = await checkWorkoutExistsToday(user.uid);
+    setHasWorkoutToday(existsCheck.data?.exists || false);
+  };
+
   const loadTodayWorkout = async () => {
     if (!user?.uid) return;
 
     setLoading(true);
+
+    // Check if workout exists today
+    await checkTodayWorkout();
 
     if (workoutPlan) {
       setWorkoutPlanName(workoutPlan.planName || "");
@@ -91,16 +105,6 @@ const Workout = () => {
       if (historyResult.success && historyResult.data) {
         const history: WorkoutHistory[] = historyResult.data;
         setWorkoutsHistory(history);
-
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const lastWeekWorkout = history.find((w) => {
-          const workoutDate = new Date(w.date);
-          return workoutDate.toDateString() === sevenDaysAgo.toDateString();
-        });
-
-        setPreviousWorkout(lastWeekWorkout || null);
       } else {
         setWorkoutsHistory([]);
       }
@@ -155,6 +159,11 @@ const Workout = () => {
   };
 
   const handleStartWorkout = () => {
+    if (hasWorkoutToday) {
+      // Optional: navigate to history instead
+      router.push("/(tabs)/history");
+      return;
+    }
     router.push("/(modals)/addWorkout");
   };
 
@@ -328,11 +337,29 @@ const Workout = () => {
               </View>
             ))}
 
-            <TouchableOpacity style={styles.startButton} onPress={handleStartWorkout}>
-              <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
-              <Typo size={18} fontWeight="700" color={colors.black}>
-                Start Workout
-              </Typo>
+            {/* BUTONUL MODIFICAT CU STATUSUL */}
+            <TouchableOpacity 
+              style={[
+                styles.startButton,
+                hasWorkoutToday && styles.completedButton
+              ]} 
+              onPress={handleStartWorkout}
+            >
+              {hasWorkoutToday ? (
+                <>
+                  <Icons.CheckCircleIcon size={24} color={colors.primary} weight="fill" />
+                  <Typo size={18} fontWeight="700" color={colors.white}>
+                    Completed Today
+                  </Typo>
+                </>
+              ) : (
+                <>
+                  <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
+                  <Typo size={18} fontWeight="700" color={colors.black}>
+                    Start Workout
+                  </Typo>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         ) : todayWorkout?.isRestDay ? (
@@ -444,12 +471,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  previousWorkoutSection: {
-    marginTop: spacingY._12,
-    paddingTop: spacingY._12,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral700,
-  },
   startButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -459,6 +480,11 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     paddingVertical: spacingY._17,
     marginTop: spacingY._15,
+  },
+  completedButton: {
+    backgroundColor: colors.neutral700,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   restDayContainer: {
     alignItems: "center",
