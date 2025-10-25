@@ -33,10 +33,10 @@ const HistoryCard = () => {
         // Total workouts
         const totalWorkouts = workouts.length;
         
-        // Total time (suma tuturor duration-urilor)
+        // Total time 
         const totalTime = workouts.reduce((sum, w) => sum + (w.duration || 0), 0);
         
-        // Days active (zile unice în care ai făcut workout)
+        // Days active
         const uniqueDays = new Set(
           workouts.map((w) => {
             const date = new Date(w.date);

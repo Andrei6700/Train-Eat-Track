@@ -29,18 +29,15 @@ const Workout = () => {
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(null);
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
 
-  // Only reset selected day when screen gains focus
   useFocusEffect(
     useCallback(() => {
       const today = new Date();
       setSelectedDay(today);
       
-      // Refresh workout check when returning to screen
       if (user?.uid) {
         checkTodayWorkout();
       }
       
-      // Update today index if week is already generated
       if (currentWeek.length > 0) {
         const todayIdx = currentWeek.findIndex((d) => d.toDateString() === today.toDateString());
         if (todayIdx !== -1) {
@@ -84,12 +81,38 @@ const Workout = () => {
     setHasWorkoutToday(existsCheck.data?.exists || false);
   };
 
+  const checkWorkoutOnDay = async (date: Date) => {
+    if (!user?.uid) return false;
+    
+    try {
+      let history = workoutsHistory;
+      if (!history || history.length === 0) {
+        const res = await getUserWorkouts(user.uid);
+        if (res.success && res.data) {
+          history = res.data;
+          setWorkoutsHistory(history);
+        } else {
+          history = [];
+        }
+      }
+
+      const found = history.find((w) => {
+        const workoutDate = new Date(w.date);
+        return workoutDate.toDateString() === date.toDateString();
+      });
+
+      return !!found;
+    } catch (err) {
+      console.error("[Workout] error checking workout for day:", err);
+      return false;
+    }
+  };
+
   const loadTodayWorkout = async () => {
     if (!user?.uid) return;
 
     setLoading(true);
 
-    // Check if workout exists today
     await checkTodayWorkout();
 
     if (workoutPlan) {
@@ -142,10 +165,8 @@ const Workout = () => {
       });
 
       if (found) {
-        console.log("[Workout] selected day has logged workout:", day.toDateString(), found.id);
         setSelectedWorkout(found);
       } else {
-        console.log("[Workout] no logged workout for:", day.toDateString());
         setSelectedWorkout(null);
       }
 
@@ -159,12 +180,31 @@ const Workout = () => {
   };
 
   const handleStartWorkout = () => {
-    if (hasWorkoutToday) {
-      // Optional: navigate to history instead
-      router.push("/(tabs)/history");
+    const today = new Date();
+    const isToday = selectedDay.toDateString() === today.toDateString();
+    
+    if (isToday && hasWorkoutToday) {
+      router.push({
+        pathname: "/(tabs)/history",
+        params: { 
+          selectedDate: today.toISOString(),
+          refresh: "true" 
+        }
+      });
       return;
     }
-    router.push("/(modals)/addWorkout");
+    
+    if (isToday) {
+      router.push("/(modals)/addWorkout");
+    }
+  };
+
+  const isPastDay = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDay);
+    selected.setHours(0, 0, 0, 0);
+    return selected < today;
   };
 
   const handleEditPlan = () => {
@@ -186,6 +226,8 @@ const Workout = () => {
     );
   }
 
+  const isToday = selectedDay.toDateString() === new Date().toDateString();
+
   return (
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -193,15 +235,18 @@ const Workout = () => {
           <Typo size={28} fontWeight="700">
             {workoutPlanName || "Workout"}
           </Typo>
-          <TouchableOpacity onPress={handleEditPlan}>
-            <Icons.PencilIcon size={24} color={colors.primary} />
-          </TouchableOpacity>
+          {/* ✅ FIX: Afișează creionul DOAR dacă există un plan */}
+          {workoutPlan && (
+            <TouchableOpacity onPress={handleEditPlan}>
+              <Icons.PencilIcon size={24} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Week Calendar */}
         <View style={styles.weekContainer}>
           {currentWeek.map((day, index) => {
-            const isToday = index === todayIndex;
+            const isTodayCard = index === todayIndex;
             const isSelected = day.toDateString() === selectedDay.toDateString();
 
             const dayName = DAYS_FULL[index];
@@ -213,16 +258,22 @@ const Workout = () => {
                 key={index}
                 style={[
                   styles.dayCard,
-                  isToday && styles.dayCardToday,
+                  isTodayCard && styles.dayCardToday,
                   isSelected && styles.dayCardSelected,
                   isRest && styles.dayCardRest,
                 ]}
                 onPress={() => handleDayPress(day, index)}
                 activeOpacity={0.7}
               >
+                {isTodayCard && hasWorkoutToday && (
+                  <View style={styles.completedIndicator}>
+                    <Icons.CheckCircleIcon size={16} color={colors.green} weight="fill" />
+                  </View>
+                )}
+                
                 <Typo
                   size={12}
-                  color={isToday || isSelected || isRest ? colors.white : colors.neutral400}
+                  color={isTodayCard || isSelected || isRest ? colors.white : colors.neutral400}
                   style={{ marginBottom: verticalScale(4) }}
                 >
                   {DAYS_SHORT[index]}
@@ -230,7 +281,7 @@ const Workout = () => {
                 <Typo
                   size={16}
                   fontWeight="600"
-                  color={isToday || isSelected || isRest ? colors.white : colors.text}
+                  color={isTodayCard || isSelected || isRest ? colors.white : colors.text}
                 >
                   {day.getDate()}
                 </Typo>
@@ -239,12 +290,12 @@ const Workout = () => {
           })}
         </View>
 
-        {/* Selected logged workout (if any) */}
+        {/* Content based on selected day */}
         {selectedWorkout ? (
           <View style={styles.workoutSection}>
             <View style={styles.sectionHeader}>
               <Typo size={20} fontWeight="600">
-                Logged Workout
+                {isToday ? "Today's Workout" : "Logged Workout"}
               </Typo>
               <View style={styles.exerciseCountBadge}>
                 <Typo size={14} color={colors.white}>
@@ -290,9 +341,9 @@ const Workout = () => {
                 })
               }
             >
-              <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
+              <Icons.EyeIcon size={24} color={colors.black} weight="fill" />
               <Typo size={18} fontWeight="700" color={colors.black}>
-                Open
+                View Details
               </Typo>
             </TouchableOpacity>
           </View>
@@ -300,7 +351,7 @@ const Workout = () => {
           <View style={styles.workoutSection}>
             <View style={styles.sectionHeader}>
               <Typo size={20} fontWeight="600">
-                Today's Workout
+                {isToday ? "Today's Workout" : "Planned Workout"}
               </Typo>
               <View style={styles.exerciseCountBadge}>
                 <Typo size={14} color={colors.white}>
@@ -337,30 +388,33 @@ const Workout = () => {
               </View>
             ))}
 
-            {/* BUTONUL MODIFICAT CU STATUSUL */}
-            <TouchableOpacity 
-              style={[
-                styles.startButton,
-                hasWorkoutToday && styles.completedButton
-              ]} 
-              onPress={handleStartWorkout}
-            >
-              {hasWorkoutToday ? (
-                <>
-                  <Icons.CheckCircleIcon size={24} color={colors.primary} weight="fill" />
-                  <Typo size={18} fontWeight="700" color={colors.white}>
-                    Completed Today
-                  </Typo>
-                </>
-              ) : (
-                <>
-                  <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
-                  <Typo size={18} fontWeight="700" color={colors.black}>
-                    Start Workout
-                  </Typo>
-                </>
-              )}
-            </TouchableOpacity>
+            {isToday ? (
+              <TouchableOpacity style={styles.startButton} onPress={handleStartWorkout}>
+                <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
+                <Typo size={18} fontWeight="700" color={colors.black}>
+                  {hasWorkoutToday ? "View in History" : "Start Workout"}
+                </Typo>
+              </TouchableOpacity>
+            ) : isPastDay() ? (
+              <View style={styles.noWorkoutContainer}>
+                <View style={styles.emptyIconContainer}>
+                  <Icons.CalendarBlankIcon size={48} color={colors.neutral500} weight="fill" />
+                </View>
+                <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15, textAlign: "center" }}>
+                  No workout logged on this day
+                </Typo>
+                <Typo size={15} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
+                  This day has passed
+                </Typo>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.startButton} onPress={handleStartWorkout}>
+                <Icons.PlayIcon size={24} color={colors.black} weight="fill" />
+                <Typo size={18} fontWeight="700" color={colors.black}>
+                  Start Workout
+                </Typo>
+              </TouchableOpacity>
+            )}
           </View>
         ) : todayWorkout?.isRestDay ? (
           <View style={styles.restDayContainer}>
@@ -372,6 +426,18 @@ const Workout = () => {
             </Typo>
             <Typo size={16} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
               Recovery is just as important as training
+            </Typo>
+          </View>
+        ) : isPastDay() ? (
+          <View style={styles.noWorkoutContainer}>
+            <View style={styles.emptyIconContainer}>
+              <Icons.CalendarBlankIcon size={48} color={colors.neutral500} weight="fill" />
+            </View>
+            <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15, textAlign: "center" }}>
+              No workout logged on this day
+            </Typo>
+            <Typo size={15} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
+              This day has passed
             </Typo>
           </View>
         ) : (
@@ -414,6 +480,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     backgroundColor: colors.neutral800,
     minWidth: scale(45),
+    position: 'relative',
   },
   dayCardToday: {
     backgroundColor: colors.primary,
@@ -425,6 +492,12 @@ const styles = StyleSheet.create({
   },
   dayCardRest: {
     backgroundColor: "#FFD54F",
+  },
+  completedIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    zIndex: 10,
   },
   workoutSection: {
     marginBottom: spacingY._30,
@@ -481,11 +554,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._17,
     marginTop: spacingY._15,
   },
-  completedButton: {
-    backgroundColor: colors.neutral700,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
   restDayContainer: {
     alignItems: "center",
     paddingVertical: spacingY._50,
@@ -497,6 +565,12 @@ const styles = StyleSheet.create({
   },
   noWorkoutContainer: {
     paddingTop: spacingY._30,
+    alignItems: "center",
+  },
+  emptyIconContainer: {
+    backgroundColor: colors.neutral800,
+    padding: spacingX._25,
+    borderRadius: 100,
   },
   addButton: {
     borderWidth: 2,
@@ -507,5 +581,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.neutral800,
+    width: "100%",
   },
 });

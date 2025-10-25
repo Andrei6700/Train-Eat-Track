@@ -7,6 +7,7 @@ import Input from "@/src/components/ui/Input";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   createWorkoutPlan,
   getUserWorkoutPlan,
@@ -14,9 +15,9 @@ import {
 } from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -25,7 +26,6 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 
 const DAYS_OF_WEEK = [
   "Luni",
@@ -41,10 +41,10 @@ const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const router = useRouter();
-  const { refreshPlan, deletePlan } = useWorkoutPlan(); // ← ADĂUGAT deletePlan
+  const { workoutPlan, refreshPlan, deletePlan } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false); // ← NOU
+  const [deleting, setDeleting] = useState(false);
   const [planName, setPlanName] = useState("");
   const [existingPlan, setExistingPlan] = useState<WorkoutPlan | null>(null);
   const [days, setDays] = useState<DayWorkout[]>(
@@ -53,6 +53,12 @@ const WorkoutPlanScreen = () => {
       isRestDay: false,
       exercises: [],
     }))
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWorkoutPlan();
+    }, [user?.uid, workoutPlan])
   );
 
   useEffect(() => {
@@ -66,7 +72,9 @@ const WorkoutPlanScreen = () => {
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
       setExistingPlan(result.data);
-      setPlanName(result.data.planName);
+      if (result.data.planName && (!planName || planName === "")) {
+        setPlanName(result.data.planName);
+      }
       setDays(result.data.days);
     }
     setLoading(false);
@@ -126,7 +134,6 @@ const WorkoutPlanScreen = () => {
         setExistingPlan({ ...planData, id: result.data.id } as WorkoutPlan);
       }
       
-      // ← ADĂUGAT: Refresh context după save!
       await refreshPlan();
       
       Alert.alert("Success", "Workout plan saved successfully!", [
@@ -140,7 +147,6 @@ const WorkoutPlanScreen = () => {
     }
   };
 
-  // ← FUNCȚIE NOUĂ: Delete plan
   const handleDelete = () => {
     if (!existingPlan?.id) {
       Alert.alert("Info", "No plan to delete");
@@ -209,7 +215,6 @@ const WorkoutPlanScreen = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Plan Name Input */}
           <View style={styles.inputContainer}>
             <Input
               placeholder="ex. Push/Pull/Legs"
@@ -222,7 +227,6 @@ const WorkoutPlanScreen = () => {
             </Typo>
           </View>
 
-          {/* Days of Week */}
           <View style={styles.daysContainer}>
             {DAYS_OF_WEEK.map((day) => {
               const status = getDayStatus(day);
@@ -253,7 +257,6 @@ const WorkoutPlanScreen = () => {
             })}
           </View>
 
-          {/* Delete Button - doar dacă există plan */}
           {existingPlan?.id && (
             <TouchableOpacity
               style={styles.deleteButton}
@@ -268,7 +271,6 @@ const WorkoutPlanScreen = () => {
           )}
         </ScrollView>
 
-        {/* Footer - Save Button */}
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button onPress={handleSave} loading={saving} style={{ flex: 1 }}>
             <Typo color={colors.black} fontWeight="700" size={18}>

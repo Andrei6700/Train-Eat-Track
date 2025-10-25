@@ -3,7 +3,7 @@ import { ResponseType, WorkoutPlan } from '@/src/types/index';
 import {
     addDoc,
     collection,
-    deleteDoc,  // ← ADĂUGAT
+    deleteDoc,  
     doc,
     getDoc,
     getDocs,
@@ -14,7 +14,7 @@ import {
 
 const COLLECTION_NAME = "workoutPlans";
 
-// Obține planul de workout al user-ului
+// ia planul de workout al user-ului
 export const getUserWorkoutPlan = async (
   userID: string
 ): Promise<ResponseType> => {
@@ -78,7 +78,7 @@ export const updateWorkoutPlan = async (
   }
 };
 
-// Șterge planul de workout - NOU!
+// sterge planul de workout
 export const deleteWorkoutPlan = async (
   planId: string
 ): Promise<ResponseType> => {
@@ -93,7 +93,7 @@ export const deleteWorkoutPlan = async (
   }
 };
 
-// Obține un plan specific
+// ia un plan de workout după ID
 export const getWorkoutPlan = async (
   planId: string
 ): Promise<ResponseType> => {

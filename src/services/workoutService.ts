@@ -5,18 +5,17 @@ import {
   collection,
   deleteDoc,
   doc,
-  endAt,
   getDoc,
   getDocs,
   orderBy,
   query,
   serverTimestamp,
-  startAt,
   where
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "workoutsHistory";
 
+// ia toate workout-urile unui user
 export const getUserWorkouts = async (userID: string): Promise<ResponseType> => {
   try {
     console.log("[workoutService] getUserWorkouts userID:", userID);
@@ -51,7 +50,7 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
   }
 };
 
-// NOUĂ FUNCȚIE: Verifică dacă există deja workout în ziua respectivă
+// verifica daca exista deja un workout pentru ziua curenta
 export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseType> => {
   try {
     const today = new Date();
@@ -84,14 +83,67 @@ export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseT
   }
 };
 
+// ia workout-ul de acum o saptamâna pentru ziua specificată
+export const getLastWeekWorkout = async (userID: string, dayName: string): Promise<ResponseType> => {
+  try {
+    console.log("[workoutService] getLastWeekWorkout userID:", userID, "dayName:", dayName);
+    
+    // Calculam data de acum 7 zile
+    const today = new Date();
+    const lastWeek = new Date(today);
+    lastWeek.setDate(today.getDate() - 7);
+    
+    // intervalul de timp pentru ziua respectiva acum o saptamâna
+    const startOfDay = new Date(lastWeek);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(lastWeek);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+      where("date", ">=", startOfDay),
+      where("date", "<=", endOfDay),
+      orderBy("date", "desc")
+    );
+
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      const doc = querySnapshot.docs[0];
+      const data = doc.data() as any;
+      const dateField = data.date;
+      const date = dateField && typeof (dateField as any).toDate === "function"
+        ? (dateField as any).toDate()
+        : dateField || null;
+
+      const workout = {
+        id: doc.id,
+        ...data,
+        date,
+      } as WorkoutHistory;
+
+      console.log("[workoutService] found last week workout:", workout.id);
+      return { success: true, data: workout };
+    }
+
+    console.log("[workoutService] no workout found for last week");
+    return { success: true, data: null };
+  } catch (error: any) {
+    console.log("Error getting last week workout:", error);
+    return { success: false, msg: error?.message };
+  }
+};
+
 export const addWorkout = async (workout: WorkoutHistory): Promise<ResponseType> => {
   try {
     console.log("[workoutService] addWorkout payload:", JSON.stringify(workout));
 
-    // VALIDARE: Verifică dacă există deja un workout azi
+    //  Verifica daca exista deja un workout azi
     const existsCheck = await checkWorkoutExistsToday(workout.userID);
     if (!existsCheck.success) {
-      return existsCheck; // Returnează eroarea
+      return existsCheck; 
     }
 
     const payload: any = {

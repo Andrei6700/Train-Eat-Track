@@ -30,6 +30,9 @@ const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Dum
 
 const DAY_WIDTH = scale(50);
 
+const ITEM_SPACING = spacingX._10 ?? 8;
+const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
+
 const History = () => {
   const { user } = useAuth();
   const { workoutPlan } = useWorkoutPlan();
@@ -39,9 +42,11 @@ const History = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [initialIndex, setInitialIndex] = useState<number | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const didInitialScrollRef = useRef(false);
 
-  const { refresh } = useLocalSearchParams();
+  const { refresh, selectedDate: paramDate } = useLocalSearchParams();
   const router = useRouter();
 
   const fetchWorkoutsHistory = async () => {
@@ -62,27 +67,36 @@ const History = () => {
     }
   };
 
+  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
   const generateCalendarDays = () => {
+    const today = new Date();
+
     if (workoutsHistory.length === 0) {
-      const today = new Date();
       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
       const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      
+
       const days: Date[] = [];
       for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
         days.push(new Date(d));
       }
-      
+
       setCalendarDays(days);
+
+      const targetDate = paramDate ? new Date(paramDate as string) : today;
+      // gaseste index, daca nu exista => foloseste index-ul apropiat (clamp)
+      const found = days.findIndex(d => d.toDateString() === targetDate.toDateString());
+      const safeIndex = found !== -1 ? found : clamp(days.length - 1, 0, days.length - 1);
+      setInitialIndex(safeIndex);
+      setSelectedDate(days[safeIndex]);
+      setCurrentMonth(days[safeIndex]);
       return;
     }
 
     const workoutDates = workoutsHistory.map(w => new Date(w.date));
     const firstWorkoutDate = new Date(Math.min(...workoutDates.map(d => d.getTime())));
-    const today = new Date();
-
     const startDate = new Date(firstWorkoutDate.getFullYear(), firstWorkoutDate.getMonth(), 1);
-    
+
     const days: Date[] = [];
     for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
       days.push(new Date(d));
@@ -90,18 +104,16 @@ const History = () => {
 
     setCalendarDays(days);
 
-    setTimeout(() => {
-      const todayIndex = days.findIndex(
-        d => d.toDateString() === today.toDateString()
-      );
-      if (todayIndex !== -1 && flatListRef.current) {
-        flatListRef.current.scrollToIndex({
-          index: todayIndex,
-          animated: true,
-          viewPosition: 0.5
-        });
-      }
-    }, 100);
+    const targetDate = paramDate ? new Date(paramDate as string) : today;
+    let foundIndex = days.findIndex(d => d.toDateString() === targetDate.toDateString());
+    if (foundIndex === -1) {
+      // data param > today, center pe today (ultimul)
+      foundIndex = days.length - 1;
+    }
+    const safeIndex = clamp(foundIndex, 0, days.length - 1);
+    setInitialIndex(safeIndex);
+    setSelectedDate(days[safeIndex]);
+    setCurrentMonth(days[safeIndex]);
   };
 
   useFocusEffect(
@@ -111,7 +123,14 @@ const History = () => {
         fetchWorkoutsHistory();
         router.setParams({ refresh: undefined });
       }
-    }, [refresh])
+
+      if (paramDate) {
+        const dateFromParam = new Date(paramDate as string);
+        setSelectedDate(dateFromParam);
+        setCurrentMonth(dateFromParam);
+        router.setParams({ selectedDate: undefined });
+      }
+    }, [refresh, paramDate])
   );
 
   useEffect(() => {
@@ -120,9 +139,39 @@ const History = () => {
 
   useEffect(() => {
     if (!isLoading) {
+      // reseteaza flagul pentru scroll initial 
+      didInitialScrollRef.current = false;
       generateCalendarDays();
     }
   }, [workoutsHistory, isLoading]);
+
+  // scroll initial — folosim onContentSizeChange + requestAnimationFrame pentru a ne asigura ca layout-ul e gata
+  const handleContentSizeChange = () => {
+    if (initialIndex === null || didInitialScrollRef.current) return;
+    if (!flatListRef.current) return;
+
+    const idx = clamp(initialIndex, 0, Math.max(0, calendarDays.length - 1));
+    requestAnimationFrame(() => {
+      try {
+        flatListRef.current?.scrollToIndex({
+          index: idx,
+          animated: true,
+          viewPosition: 0.5,
+        });
+        didInitialScrollRef.current = true;
+      } catch (err) {
+        try {
+          flatListRef.current?.scrollToOffset({
+            offset: Math.max(0, idx * ITEM_WIDTH),
+            animated: true,
+          });
+          didInitialScrollRef.current = true;
+        } catch (e) {
+          console.warn("Couldn't perform initial scroll:", e);
+        }
+      }
+    });
+  };
 
   const onRefresh = () => {
     setIsRefreshing(true);
@@ -151,11 +200,11 @@ const History = () => {
 
   const isRestDay = (date: Date): boolean => {
     if (!workoutPlan) return false;
-    
+
     const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
     const dayName = DAYS_FULL[dayIndex];
     const planDay = workoutPlan.days?.find(d => d.day === dayName);
-    
+
     return planDay?.isRestDay || false;
   };
 
@@ -179,6 +228,7 @@ const History = () => {
           isToday && styles.dayCardToday,
           isSelected && styles.dayCardSelected,
           isRest && styles.dayCardRest,
+          { marginRight: index === calendarDays.length - 1 ? 0 : ITEM_SPACING },
         ]}
         onPress={() => handleDayPress(date)}
         activeOpacity={0.7}
@@ -186,11 +236,11 @@ const History = () => {
         <Typo
           size={12}
           color={
-            isRest 
+            isRest
               ? colors.rose
-              : isToday || isSelected 
-              ? colors.white 
-              : colors.neutral400
+              : isToday || isSelected
+                ? colors.white
+                : colors.neutral400
           }
           style={{ marginBottom: verticalScale(4) }}
         >
@@ -202,9 +252,9 @@ const History = () => {
           color={
             isRest
               ? colors.rose
-              : isToday || isSelected 
-              ? colors.white 
-              : colors.text
+              : isToday || isSelected
+                ? colors.white
+                : colors.text
           }
         >
           {date.getDate()}
@@ -257,18 +307,23 @@ const History = () => {
             contentContainerStyle={styles.calendarContainer}
             style={styles.calendar}
             getItemLayout={(data, index) => ({
-              length: DAY_WIDTH,
-              offset: DAY_WIDTH * index,
+              length: ITEM_WIDTH,
+              offset: ITEM_WIDTH * index,
               index,
             })}
             onScroll={(e) => {
               const offsetX = e.nativeEvent.contentOffset.x;
-              const index = Math.round(offsetX / DAY_WIDTH);
+              const index = Math.round(offsetX / ITEM_WIDTH);
               if (calendarDays[index]) {
                 setCurrentMonth(calendarDays[index]);
               }
             }}
             scrollEventThrottle={16}
+            initialNumToRender={14}
+            onContentSizeChange={handleContentSizeChange}
+            snapToInterval={ITEM_WIDTH}
+            decelerationRate="fast"
+            showsVerticalScrollIndicator={false}
           />
         )}
 
@@ -403,7 +458,7 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     paddingVertical: spacingY._10,
-    gap: spacingX._10,
+    paddingLeft: 0,
   },
   dayCard: {
     alignItems: "center",
@@ -411,7 +466,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(8),
     borderRadius: radius._12,
     backgroundColor: colors.neutral800,
-    minWidth: scale(50),
+    minWidth: DAY_WIDTH,
     height: verticalScale(75),
     justifyContent: "center",
     position: "relative",

@@ -16,7 +16,7 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { KeyboardAvoidingView, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -72,7 +72,10 @@ const DayWorkout = () => {
 
   const addSet = (exerciseIndex: number) => {
     const newExercises = [...exercises];
-    const lastSet = newExercises[exerciseIndex].sets[newExercises[exerciseIndex].sets.length - 1];
+    const lastSet =
+      newExercises[exerciseIndex].sets[
+        newExercises[exerciseIndex].sets.length - 1
+      ];
     newExercises[exerciseIndex].sets.push({
       reps: lastSet?.reps || 0,
       weight: lastSet?.weight || 0,
@@ -134,7 +137,9 @@ const DayWorkout = () => {
   };
 
   const handleAddExercises = async () => {
-    const hasEmptyExerciseName = exercises.some((ex) => !ex.exerciseName.trim());
+    const hasEmptyExerciseName = exercises.some(
+      (ex) => !ex.exerciseName.trim()
+    );
     if (hasEmptyExerciseName) {
       Alert.alert("Error", "Please fill in all exercise names");
       return;
@@ -155,9 +160,14 @@ const DayWorkout = () => {
       exercises,
     };
 
-    console.log("[DayWorkout] saving exercises payload:", JSON.stringify(payload));
+    console.log(
+      "[DayWorkout] saving exercises payload:",
+      JSON.stringify(payload)
+    );
     await updateDay(day as string, payload);
-    console.log("[DayWorkout] updateDay finished - local context should be updated");
+    console.log(
+      "[DayWorkout] updateDay finished - local context should be updated"
+    );
 
     setSaving(false);
     Alert.alert("Success", "Exercises saved successfully!", [
@@ -194,7 +204,11 @@ const DayWorkout = () => {
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Typo size={14} color={colors.neutral400} style={{ paddingHorizontal: spacingX._10 }}>
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={{ paddingHorizontal: spacingX._10 }}
+            >
               or
             </Typo>
             <View style={styles.dividerLine} />
@@ -202,7 +216,11 @@ const DayWorkout = () => {
 
           {/* Exercises Section */}
           <>
-            <Typo size={18} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
+            <Typo
+              size={18}
+              fontWeight="600"
+              style={{ marginBottom: spacingY._15 }}
+            >
               Exercises
             </Typo>
 
@@ -225,11 +243,17 @@ const DayWorkout = () => {
                 <Input
                   placeholder="Exercise name (e.g., Bench Press)"
                   value={exercise.exerciseName}
-                  onChangeText={(text) => updateExerciseName(exerciseIndex, text)}
+                  onChangeText={(text) =>
+                    updateExerciseName(exerciseIndex, text)
+                  }
                   containerStyle={{ marginBottom: spacingY._15 }}
                 />
 
-                <Typo size={14} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
+                <Typo
+                  size={14}
+                  fontWeight="500"
+                  style={{ marginBottom: spacingY._10 }}
+                >
                   Sets
                 </Typo>
 
@@ -307,8 +331,15 @@ const DayWorkout = () => {
               </View>
             ))}
 
-            <TouchableOpacity onPress={addExercise} style={styles.addExerciseButton}>
-              <Icons.PlusCircleIcon size={22} color={colors.primary} weight="fill" />
+            <TouchableOpacity
+              onPress={addExercise}
+              style={styles.addExerciseButton}
+            >
+              <Icons.PlusCircleIcon
+                size={22}
+                color={colors.primary}
+                weight="fill"
+              />
               <Typo size={15} fontWeight="600" color={colors.primary}>
                 Add Exercise
               </Typo>
@@ -317,13 +348,17 @@ const DayWorkout = () => {
         </ScrollView>
 
         {/* Footer - Save Button */}
-<View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-  <Button onPress={handleAddExercises} loading={saving} style={{ flex: 1 }}>
-    <Typo color={colors.black} fontWeight="700" size={16}>
-      Save Exercises
-    </Typo>
-  </Button>
-</View>
+        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
+          <Button
+            onPress={handleAddExercises}
+            loading={saving}
+            style={{ flex: 1 }}
+          >
+            <Typo color={colors.black} fontWeight="700" size={16}>
+              Save Exercises
+            </Typo>
+          </Button>
+        </View>
       </View>
     </ModalWrapper>
   );
@@ -436,9 +471,9 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._5,
   },
   footerSticky: {
-  position: "absolute",
-  left: spacingX._20,
-  right: spacingX._20,
-  zIndex: 30,
-},
+    position: "absolute",
+    left: spacingX._20,
+    right: spacingX._20,
+    zIndex: 30,
+  },
 });
