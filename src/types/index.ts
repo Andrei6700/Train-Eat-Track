@@ -1,12 +1,12 @@
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-    TextInput,
-    TextInputProps,
-    TextProps,
-    TextStyle,
-    TouchableOpacityProps,
-    ViewStyle
+  TextInput,
+  TextInputProps,
+  TextProps,
+  TextStyle,
+  TouchableOpacityProps,
+  ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
@@ -62,18 +62,6 @@ export type BackButtonProps = {
   iconSize?: number;
 };
 
-// export type TransactionType = {
-//   id?: string;
-//   type: string;
-//   amount: number;
-//   category?: string;
-//   date: Date | Timestamp | string;
-//   description?: string;
-//   image?: any;
-//   uid?: string;
-//   walletId: string;
-// };
-
 export type CategoryType = {
   label: string;
   value: string;
@@ -83,19 +71,6 @@ export type CategoryType = {
 export type ExpenseCategoriesType = {
   [key: string]: CategoryType;
 };
-
-// export type TransactionListType = {
-//   data: TransactionType[];
-//   title?: string;
-//   loading?: boolean;
-//   emptyListMessage?: string;
-// };
-
-// export type TransactionItemProps = {
-//   item: TransactionType;
-//   index: number;
-//   handleClick: Function;
-// };
 
 export interface InputProps extends TextInputProps {
   icon?: React.ReactNode;
@@ -155,13 +130,46 @@ export type ResponseType = {
   msg?: string;
 };
 
-// export type WalletType = {
-//   id?: string;
-//   name: string;
-//   amount?: number;
-//   totalIncome?: number;
-//   totalExpenses?: number;
-//   image: any;
-//   uid?: string;
-//   created?: Date;
-// };
+
+export type WorkoutSet = {
+  reps: number;
+  weight: number;
+  weightUnit: "kg" | "lbs";
+};
+
+export type WorkoutExercise = {
+  exerciseName: string; 
+  sets: WorkoutSet[];
+};
+
+export type WorkoutHistory = {
+  id?: string;
+  userID: string;
+  date: Date | string;
+  duration: number; // in secunde
+  exercises: WorkoutExercise[];
+};
+
+export type WorkoutHistoryListProps = {
+  workouts: WorkoutHistory[];
+  loading?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+};
+
+// Workout Plan Types
+export type DayWorkout = {
+  day: string; // "Luni", "Marti", etc.
+  isRestDay: boolean;
+  exercises: WorkoutExercise[];
+  notes?: string;
+};
+
+export type WorkoutPlan = {
+  id?: string;
+  userID: string;
+  planName: string;
+  days: DayWorkout[];
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
