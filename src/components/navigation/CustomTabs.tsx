@@ -2,7 +2,7 @@ import { colors, spacingY } from "@/constants/theme";
 import { verticalScale } from '@/src/utils/styling';
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Icons from "phosphor-react-native";
-import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, TouchableOpacity, View, Text } from "react-native";
 
 export default function CustomTabs({
   state,
@@ -47,6 +47,14 @@ export default function CustomTabs({
     ),
   };
 
+  const tabbarLabels: any = {
+    index: "Home",
+    statistics: "Statistics",
+    workout: "Workout",
+    history: "History",
+    profile: "Profile",
+  };
+
   return (
     <View style={styles.tabbar}>
       {state.routes.map((route, index) => {
@@ -80,6 +88,12 @@ export default function CustomTabs({
             style={styles.tabbarItem}
           >
             {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
+            <Text style={[
+              styles.tabLabel,
+              { color: isFocused ? colors.primary : colors.neutral400 }
+            ]}>
+              {tabbarLabels[route.name]}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -91,16 +105,22 @@ const styles = StyleSheet.create({
   tabbar: {
     flexDirection: "row",
     width: "100%",
-    height: Platform.OS === "ios" ? verticalScale(73) : verticalScale(60),
+    height: Platform.OS === "ios" ? verticalScale(85) : verticalScale(70),
     backgroundColor: colors.black,
     justifyContent: "space-around",
     alignItems: "center",
     borderTopColor: colors.neutral700,
     borderTopWidth: 1,
+    paddingBottom: Platform.OS === "ios" ? spacingY._15 : spacingY._10,
   },
   tabbarItem: {
-    marginBottom: Platform.OS === "ios" ? spacingY._10 : spacingY._5,
     justifyContent: "center",
     alignItems: "center",
+    flex: 1,
+  },
+  tabLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "500",
   },
 });

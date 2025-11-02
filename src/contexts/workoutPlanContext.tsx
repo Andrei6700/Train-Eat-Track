@@ -53,6 +53,12 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(false);
   };
 
+  /**
+   * updateDay:
+   * - dacă există un workoutPlan salvat (workoutPlan && workoutPlan.id), persistăm update-ul pe backend (updateWorkoutPlan)
+   * - dacă nu există plan salvat, nu creăm automat planul pe backend — actualizăm doar starea locală (setWorkoutPlan)
+   *   astfel modificările rămân locale până când utilizatorul apasă Save în ecranul principal.
+   */
   const updateDay = async (day: string, dayData: DayWorkout) => {
     if (!user?.uid) {
       console.log("[WorkoutPlanContext] updateDay aborted, no user");
@@ -61,6 +67,7 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
 
     console.log("[WorkoutPlanContext] updateDay", day, dayData);
 
+    // Dacă nu există încă un plan salvat pe context, nu facem create pe backend — doar setăm starea locală
     if (!workoutPlan) {
       const defaultDays: DayWorkout[] = [
         { day: "Luni", isRestDay: false, exercises: [] },
@@ -74,48 +81,39 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const updatedDays = defaultDays.map((d) => (d.day === day ? dayData : d));
 
-      const newPlan: WorkoutPlan = {
+      const newLocalPlan: WorkoutPlan = {
         userID: user.uid,
-        planName: "My Plan",
+        planName: "", // rămâne gol până când userul apasă Save și completează numele
         days: updatedDays,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      console.log("[WorkoutPlanContext] creating new plan with payload:", newPlan);
-      const createResult = await createWorkoutPlan(newPlan);
-      if (createResult.success && createResult.data?.id) {
-        console.log("[WorkoutPlanContext] created plan id:", createResult.data.id);
-        setWorkoutPlan({ ...newPlan, id: createResult.data.id });
-      } else {
-        console.error("Failed to create workout plan:", createResult.msg);
-      }
-
+      console.log("[WorkoutPlanContext] set local plan (no backend call). Payload:", newLocalPlan);
+      setWorkoutPlan(newLocalPlan);
       return;
     }
 
+    // Dacă există un plan local (salvat anterior sau creat local), actualizăm zilele local
     const updatedDays = workoutPlan.days.map((d) => (d.day === day ? dayData : d));
 
-    const updatedPlan = {
+    const updatedPlan: WorkoutPlan = {
       ...workoutPlan,
       days: updatedDays,
       updatedAt: new Date(),
     };
 
-    try {
-      if (workoutPlan.id) {
+    // Dacă planul are id (este salvat pe backend), persistăm modificarea
+    if (workoutPlan.id) {
+      try {
         console.log("[WorkoutPlanContext] updating plan id:", workoutPlan.id, "payload:", updatedPlan);
         await updateWorkoutPlan(workoutPlan.id, updatedPlan);
-      } else {
-        console.log("[WorkoutPlanContext] fallback create plan payload:", updatedPlan);
-        const createResult = await createWorkoutPlan(updatedPlan);
-        if (createResult.success && createResult.data?.id) {
-          updatedPlan.id = createResult.data.id;
-          console.log("[WorkoutPlanContext] created plan id (fallback):", createResult.data.id);
-        }
+      } catch (err) {
+        console.error("[WorkoutPlanContext] error updating plan on backend:", err);
       }
-    } catch (err) {
-      console.error("Error updating/creating plan:", err);
+    } else {
+      // planul exista local, dar fără id (ex: creat local anterior) -> nu persistăm automat
+      console.log("[WorkoutPlanContext] updated local plan (no id) — waiting for explicit Save:", updatedPlan);
     }
 
     setWorkoutPlan(updatedPlan);

@@ -1,6 +1,6 @@
 import { colors, radius, spacingX } from '@/constants/theme';
 import { InputProps } from '@/src/types/index';
-import { verticalScale } from '@/src/utils/styling';
+import { verticalScale, scale } from '@/src/utils/styling';
 import React from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 
@@ -26,14 +26,16 @@ const styles = StyleSheet.create({
     container:{
         flexDirection: 'row',
         height: verticalScale(54),
+        minHeight: verticalScale(48),
         alignItems: 'center',
         justifyContent: "center",
         borderWidth: 1,
         borderColor: colors.neutral300,
         borderRadius: radius._17,
         borderCurve: 'continuous',
-        paddingHorizontal: spacingX._15,
-        gap: spacingX._10,
+        paddingHorizontal: scale(15),
+        gap: scale(10),
+        width: '100%',
     },
     input:{
         flex: 1,

@@ -29,6 +29,42 @@ const Workout = () => {
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(null);
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
 
+    useFocusEffect(
+    useCallback(() => {
+      const today = new Date();
+      setSelectedDay(today);
+      
+      if (user?.uid) {
+        checkTodayWorkout();
+      }
+      
+      if (currentWeek.length > 0) {
+        const todayIdx = currentWeek.findIndex((d) => d.toDateString() === today.toDateString());
+        if (todayIdx !== -1) {
+          setTodayIndex(todayIdx);
+        }
+      }
+      
+      // Reîncarcă datele când revii pe tab
+      loadTodayWorkout();
+      
+      return () => {};
+    }, [currentWeek, user?.uid])
+  );
+
+  useEffect(() => {
+    generateWeek();
+    loadTodayWorkout();
+  }, [user?.uid, workoutPlan]);
+  
+  // Resetează workout-ul zilei când planul e șters
+  useEffect(() => {
+    if (workoutPlan === null) {
+      setTodayWorkout(null);
+      setWorkoutPlanName("");
+    }
+  }, [workoutPlan]);
+  
   useFocusEffect(
     useCallback(() => {
       const today = new Date();

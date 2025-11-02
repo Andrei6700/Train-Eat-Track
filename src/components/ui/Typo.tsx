@@ -1,6 +1,6 @@
 import { colors } from "@/constants/theme";
 import { TypoProps } from '@/src/types/index';
-import { verticalScale } from '@/src/utils/styling';
+import { verticalScale, scale } from '@/src/utils/styling';
 import { StyleSheet, Text, TextStyle } from "react-native";
 
 const Typo = ({
@@ -12,9 +12,10 @@ const Typo = ({
     textProps = {},
 }: TypoProps) => {
     const textStyle : TextStyle = {
-        fontSize: size ? verticalScale(size) : verticalScale(18),
+        fontSize: size ? Math.min(verticalScale(size), scale(24)) : verticalScale(18),
         color,
         fontWeight,
+        flexWrap: 'wrap',
     };
     return (
         <Text style ={[textStyle, style]} {...textProps}>

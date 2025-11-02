@@ -1,7 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { WorkoutHistory } from "@/src/types/index";
 import { formatDuration } from "@/src/utils/utils";
-import { verticalScale } from "@/src/utils/styling";
+import { verticalScale, scale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React from "react";
@@ -127,10 +127,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     borderCurve: "continuous",
-    padding: spacingX._20,
-    marginBottom: spacingY._15,
+    padding: scale(20),
+    marginBottom: verticalScale(15),
     borderWidth: 1,
     borderColor: colors.neutral700,
+    width: '100%',
+    minHeight: verticalScale(120),
   },
   header: {
     flexDirection: "row",

@@ -128,12 +128,7 @@ const DayWorkout = () => {
 
     console.log("[DayWorkout] rest day saved locally, going back");
     setSaving(false);
-    Alert.alert("Success", "Rest day saved!", [
-      {
-        text: "OK",
-        onPress: () => router.back(),
-      },
-    ]);
+    router.back();
   };
 
   const handleAddExercises = async () => {
@@ -170,12 +165,7 @@ const DayWorkout = () => {
     );
 
     setSaving(false);
-    Alert.alert("Success", "Exercises saved successfully!", [
-      {
-        text: "OK",
-        onPress: () => router.back(),
-      },
-    ]);
+    router.back();
   };
 
   return (

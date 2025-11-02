@@ -46,7 +46,7 @@ const WorkoutPlanScreen = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [planName, setPlanName] = useState("");
-  const [existingPlan, setExistingPlan] = useState<WorkoutPlan | null>(null);
+  const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const [days, setDays] = useState<DayWorkout[]>(
     DAYS_OF_WEEK.map((day) => ({
       day,
@@ -65,17 +65,28 @@ const WorkoutPlanScreen = () => {
     loadWorkoutPlan();
   }, [user?.uid]);
 
+  // Sincronizează zilele din context cu state-ul local
+  useEffect(() => {
+    if (workoutPlan?.days) {
+      setDays(workoutPlan.days);
+    }
+  }, [workoutPlan?.days]);
+
   const loadWorkoutPlan = async () => {
     console.log("[WorkoutPlanScreen] loadWorkoutPlan for user:", user?.uid);
     if (!user?.uid) return;
 
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
-      setExistingPlan(result.data);
+      // Plan existent în Firebase
+      setExistingPlanId(result.data.id || null);
       if (result.data.planName && (!planName || planName === "")) {
         setPlanName(result.data.planName);
       }
       setDays(result.data.days);
+    } else {
+      // Nu există plan în Firebase
+      setExistingPlanId(null);
     }
     setLoading(false);
   };
@@ -83,7 +94,7 @@ const WorkoutPlanScreen = () => {
   const handleDayPress = (day: string) => {
     router.push({
       pathname: "/(modals)/dayWorkout",
-      params: { day, planId: existingPlan?.id || "new" },
+      params: { day, planId: existingPlanId || "new" },
     });
   };
 
@@ -97,7 +108,7 @@ const WorkoutPlanScreen = () => {
   };
 
   const handleSave = async () => {
-    console.log("[WorkoutPlanScreen] handleSave planName:", planName, "existingPlanId:", existingPlan?.id);
+    console.log("[WorkoutPlanScreen] handleSave planName:", planName, "existingPlanId:", existingPlanId);
 
     if (!planName.trim()) {
       Alert.alert("Error", "Please add a name for your workout plan");
@@ -115,13 +126,13 @@ const WorkoutPlanScreen = () => {
       userID: user.uid,
       planName: planName.trim(),
       days,
-      createdAt: existingPlan?.createdAt || new Date(),
+      createdAt: existingPlanId ? workoutPlan?.createdAt || new Date() : new Date(),
       updatedAt: new Date(),
     };
 
     let result;
-    if (existingPlan?.id) {
-      result = await updateWorkoutPlan(existingPlan.id, planData);
+    if (existingPlanId) {
+      result = await updateWorkoutPlan(existingPlanId, planData);
     } else {
       result = await createWorkoutPlan(planData);
     }
@@ -130,8 +141,9 @@ const WorkoutPlanScreen = () => {
     setSaving(false);
 
     if (result.success) {
-      if (!existingPlan?.id && result.data?.id) {
-        setExistingPlan({ ...planData, id: result.data.id } as WorkoutPlan);
+      if (!existingPlanId && result.data?.id) {
+        // Plan nou creat - setează ID-ul
+        setExistingPlanId(result.data.id);
       }
       
       await refreshPlan();
@@ -148,7 +160,7 @@ const WorkoutPlanScreen = () => {
   };
 
   const handleDelete = () => {
-    if (!existingPlan?.id) {
+    if (!existingPlanId) {
       Alert.alert("Info", "No plan to delete");
       return;
     }
@@ -257,7 +269,8 @@ const WorkoutPlanScreen = () => {
             })}
           </View>
 
-          {existingPlan?.id && (
+          {/* Afișează butonul DELETE doar dacă planul există în Firebase */}
+          {existingPlanId && (
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={handleDelete}

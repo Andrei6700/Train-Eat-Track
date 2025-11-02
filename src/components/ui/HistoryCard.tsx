@@ -162,7 +162,7 @@ export default HistoryCard;
 const styles = StyleSheet.create({
   bgImage: {
     width: "100%",
-    height: scale(210),
+    height: verticalScale(210),
   },
   container: {
     padding: spacingX._20,
