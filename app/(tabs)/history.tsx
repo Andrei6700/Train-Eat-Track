@@ -9,7 +9,7 @@ import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -47,7 +47,6 @@ const History = () => {
   const didInitialScrollRef = useRef(false);
 
   const { refresh, selectedDate: paramDate } = useLocalSearchParams();
-  const router = useRouter();
 
   const fetchWorkoutsHistory = async () => {
     if (!user?.uid) return;
@@ -84,7 +83,6 @@ const History = () => {
       setCalendarDays(days);
 
       const targetDate = paramDate ? new Date(paramDate as string) : today;
-      // gaseste index, daca nu exista => foloseste index-ul apropiat (clamp)
       const found = days.findIndex(d => d.toDateString() === targetDate.toDateString());
       const safeIndex = found !== -1 ? found : clamp(days.length - 1, 0, days.length - 1);
       setInitialIndex(safeIndex);
@@ -107,7 +105,6 @@ const History = () => {
     const targetDate = paramDate ? new Date(paramDate as string) : today;
     let foundIndex = days.findIndex(d => d.toDateString() === targetDate.toDateString());
     if (foundIndex === -1) {
-      // data param > today, center pe today (ultimul)
       foundIndex = days.length - 1;
     }
     const safeIndex = clamp(foundIndex, 0, days.length - 1);
@@ -121,14 +118,12 @@ const History = () => {
       if (refresh === "true") {
         setIsRefreshing(true);
         fetchWorkoutsHistory();
-        router.setParams({ refresh: undefined });
       }
 
       if (paramDate) {
         const dateFromParam = new Date(paramDate as string);
         setSelectedDate(dateFromParam);
         setCurrentMonth(dateFromParam);
-        router.setParams({ selectedDate: undefined });
       }
     }, [refresh, paramDate])
   );
@@ -139,13 +134,11 @@ const History = () => {
 
   useEffect(() => {
     if (!isLoading) {
-      // reseteaza flagul pentru scroll initial 
       didInitialScrollRef.current = false;
       generateCalendarDays();
     }
   }, [workoutsHistory, isLoading]);
 
-  // scroll initial — folosim onContentSizeChange + requestAnimationFrame pentru a ne asigura ca layout-ul e gata
   const handleContentSizeChange = () => {
     if (initialIndex === null || didInitialScrollRef.current) return;
     if (!flatListRef.current) return;
@@ -176,14 +169,6 @@ const History = () => {
   const onRefresh = () => {
     setIsRefreshing(true);
     fetchWorkoutsHistory();
-  };
-
-  const handlePlus = () => {
-    if (!workoutPlan) {
-      router.push("/(modals)/workoutPlan");
-    } else {
-      router.push("/(modals)/addWorkout");
-    }
   };
 
   const hasWorkoutOnDate = (date: Date) => {
@@ -327,9 +312,7 @@ const History = () => {
           />
         )}
 
-        <TouchableOpacity style={styles.floatingButton} onPress={handlePlus}>
-          <Icons.PlusIcon size={28} color={colors.black} weight="bold" />
-        </TouchableOpacity>
+        {/* ✅ ELIMINAT COMPLET BUTONUL + */}
 
         <ScrollView
           contentContainerStyle={styles.scrollViewContent}
@@ -493,7 +476,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.green,
   },
   scrollViewContent: {
-    paddingBottom: scale(300),
+    paddingBottom: scale(120), // ✅ Redus de la 300 la 120
   },
   selectedWorkoutSection: {
     marginTop: spacingY._10,
@@ -507,17 +490,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     padding: spacingX._25,
     borderRadius: 100,
-  },
-  floatingButton: {
-    position: "absolute",
-    right: 24,
-    bottom: 110,
-    zIndex: 10,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

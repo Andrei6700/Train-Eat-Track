@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "workoutPlans";
+const WORKOUTS_COLLECTION = "workoutsHistory";
 
 // ia planul de workout al user-ului
 export const getUserWorkoutPlan = async (
@@ -78,15 +79,37 @@ export const updateWorkoutPlan = async (
   }
 };
 
-// sterge planul de workout
+// ✅ MODIFICAT: Șterge planul și TOATE workout-urile din history
 export const deleteWorkoutPlan = async (
-  planId: string
+  planId: string,
+  userID: string
 ): Promise<ResponseType> => {
   try {
+    // 1. Șterge planul
     const planRef = doc(firestore, COLLECTION_NAME, planId);
     await deleteDoc(planRef);
     
-    return { success: true, msg: "Workout plan deleted successfully" };
+    // 2. Șterge toate workout-urile din history pentru acest user
+    const workoutsQuery = query(
+      collection(firestore, WORKOUTS_COLLECTION),
+      where("userID", "==", userID)
+    );
+    
+    const workoutsSnapshot = await getDocs(workoutsQuery);
+    
+    // Șterge fiecare workout în parte
+    const deletePromises = workoutsSnapshot.docs.map(workoutDoc => 
+      deleteDoc(doc(firestore, WORKOUTS_COLLECTION, workoutDoc.id))
+    );
+    
+    await Promise.all(deletePromises);
+    
+    console.log(`Deleted workout plan and ${workoutsSnapshot.size} workouts from history`);
+    
+    return { 
+      success: true, 
+      msg: `Workout plan and ${workoutsSnapshot.size} workout(s) deleted successfully` 
+    };
   } catch (error: any) {
     console.log("Error deleting workout plan:", error);
     return { success: false, msg: error?.message };
