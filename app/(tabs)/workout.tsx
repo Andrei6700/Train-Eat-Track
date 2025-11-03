@@ -9,8 +9,9 @@ import { scale, verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View, RefreshControl } from "react-native";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
@@ -20,6 +21,7 @@ const Workout = () => {
   const { user } = useAuth();
   const { workoutPlan } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
   const [todayIndex, setTodayIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -29,42 +31,6 @@ const Workout = () => {
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(null);
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
 
-    useFocusEffect(
-    useCallback(() => {
-      const today = new Date();
-      setSelectedDay(today);
-      
-      if (user?.uid) {
-        checkTodayWorkout();
-      }
-      
-      if (currentWeek.length > 0) {
-        const todayIdx = currentWeek.findIndex((d) => d.toDateString() === today.toDateString());
-        if (todayIdx !== -1) {
-          setTodayIndex(todayIdx);
-        }
-      }
-      
-      // Reîncarcă datele când revii pe tab
-      loadTodayWorkout();
-      
-      return () => {};
-    }, [currentWeek, user?.uid])
-  );
-
-  useEffect(() => {
-    generateWeek();
-    loadTodayWorkout();
-  }, [user?.uid, workoutPlan]);
-  
-  // Resetează workout-ul zilei când planul e șters
-  useEffect(() => {
-    if (workoutPlan === null) {
-      setTodayWorkout(null);
-      setWorkoutPlanName("");
-    }
-  }, [workoutPlan]);
-  
   useFocusEffect(
     useCallback(() => {
       const today = new Date();
@@ -81,6 +47,8 @@ const Workout = () => {
         }
       }
       
+      loadTodayWorkout();
+      
       return () => {};
     }, [currentWeek, user?.uid])
   );
@@ -89,6 +57,13 @@ const Workout = () => {
     generateWeek();
     loadTodayWorkout();
   }, [user?.uid, workoutPlan]);
+  
+  useEffect(() => {
+    if (workoutPlan === null) {
+      setTodayWorkout(null);
+      setWorkoutPlanName("");
+    }
+  }, [workoutPlan]);
 
   const generateWeek = () => {
     const today = new Date();
@@ -115,33 +90,6 @@ const Workout = () => {
     
     const existsCheck = await checkWorkoutExistsToday(user.uid);
     setHasWorkoutToday(existsCheck.data?.exists || false);
-  };
-
-  const checkWorkoutOnDay = async (date: Date) => {
-    if (!user?.uid) return false;
-    
-    try {
-      let history = workoutsHistory;
-      if (!history || history.length === 0) {
-        const res = await getUserWorkouts(user.uid);
-        if (res.success && res.data) {
-          history = res.data;
-          setWorkoutsHistory(history);
-        } else {
-          history = [];
-        }
-      }
-
-      const found = history.find((w) => {
-        const workoutDate = new Date(w.date);
-        return workoutDate.toDateString() === date.toDateString();
-      });
-
-      return !!found;
-    } catch (err) {
-      console.error("[Workout] error checking workout for day:", err);
-      return false;
-    }
   };
 
   const loadTodayWorkout = async () => {
@@ -173,6 +121,7 @@ const Workout = () => {
     }
 
     setLoading(false);
+    setRefreshing(false);
   };
 
   const handleDayPress = async (day: Date, index: number) => {
@@ -247,6 +196,11 @@ const Workout = () => {
     router.push("/(modals)/workoutPlan");
   };
 
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadTodayWorkout();
+  }, [user?.uid]);
+
   if (loading) {
     return (
       <ScreenWrapper>
@@ -266,21 +220,37 @@ const Workout = () => {
 
   return (
     <ScreenWrapper>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
+      <ScrollView 
+        style={styles.container} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {/* Header cu animație */}
+        <Animated.View 
+          entering={FadeIn.duration(400)}
+          style={styles.header}
+        >
           <Typo size={28} fontWeight="700">
             {workoutPlanName || "Workout"}
           </Typo>
-          {/* ✅ FIX: Afișează creionul DOAR dacă există un plan */}
           {workoutPlan && (
             <TouchableOpacity onPress={handleEditPlan}>
               <Icons.PencilIcon size={24} color={colors.primary} />
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
 
-        {/* Week Calendar */}
-        <View style={styles.weekContainer}>
+        {/* Week Calendar cu animație */}
+        <Animated.View 
+          entering={FadeInDown.duration(400).delay(100)}
+          style={styles.weekContainer}
+        >
           {currentWeek.map((day, index) => {
             const isTodayCard = index === todayIndex;
             const isSelected = day.toDateString() === selectedDay.toDateString();
@@ -324,11 +294,14 @@ const Workout = () => {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </Animated.View>
 
         {/* Content based on selected day */}
         {selectedWorkout ? (
-          <View style={styles.workoutSection}>
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(200)}
+            style={styles.workoutSection}
+          >
             <View style={styles.sectionHeader}>
               <Typo size={20} fontWeight="600">
                 {isToday ? "Today's Workout" : "Logged Workout"}
@@ -382,9 +355,12 @@ const Workout = () => {
                 View Details
               </Typo>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         ) : todayWorkout && !todayWorkout.isRestDay ? (
-          <View style={styles.workoutSection}>
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(200)}
+            style={styles.workoutSection}
+          >
             <View style={styles.sectionHeader}>
               <Typo size={20} fontWeight="600">
                 {isToday ? "Today's Workout" : "Planned Workout"}
@@ -451,21 +427,27 @@ const Workout = () => {
                 </Typo>
               </TouchableOpacity>
             )}
-          </View>
+          </Animated.View>
         ) : todayWorkout?.isRestDay ? (
-          <View style={styles.restDayContainer}>
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(200)}
+            style={styles.restDayContainer}
+          >
             <View style={styles.restDayIcon}>
               <Icons.BedIcon size={48} color={colors.primary} weight="fill" />
             </View>
             <Typo size={24} fontWeight="600" style={{ marginTop: spacingY._15 }}>
               Rest Day
             </Typo>
-            <Typo size={16} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
+            <Typo size={16} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
               Recovery is just as important as training
             </Typo>
-          </View>
+          </Animated.View>
         ) : isPastDay() ? (
-          <View style={styles.noWorkoutContainer}>
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(200)}
+            style={styles.noWorkoutContainer}
+          >
             <View style={styles.emptyIconContainer}>
               <Icons.CalendarBlankIcon size={48} color={colors.neutral500} weight="fill" />
             </View>
@@ -475,15 +457,19 @@ const Workout = () => {
             <Typo size={15} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
               This day has passed
             </Typo>
-          </View>
+          </Animated.View>
         ) : (
-          <View style={styles.noWorkoutContainer}>
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(200)}
+            style={styles.noWorkoutContainer}
+          >
             <TouchableOpacity style={styles.addButton} onPress={handleEditPlan}>
-              <Typo size={16} color={colors.neutral400}>
-                + Add Workout Plan
+              <Icons.PlusCircleIcon size={32} color={colors.primary} weight="fill" />
+              <Typo size={16} fontWeight="600" color={colors.primary} style={{ marginTop: spacingY._10 }}>
+                Create Workout Plan
               </Typo>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         )}
       </ScrollView>
     </ScreenWrapper>
@@ -610,7 +596,7 @@ const styles = StyleSheet.create({
   },
   addButton: {
     borderWidth: 2,
-    borderColor: colors.neutral600,
+    borderColor: colors.primary,
     borderStyle: "dashed",
     borderRadius: radius._17,
     paddingVertical: spacingY._35,
