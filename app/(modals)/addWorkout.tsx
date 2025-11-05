@@ -24,12 +24,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
 
-type LapTime = {
-  lapNumber: number;
-  time: number;
-  timestamp: Date;
-};
-
 const AddWorkout = () => {
   const { user } = useAuth();
   const router = useRouter();
@@ -37,11 +31,10 @@ const AddWorkout = () => {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
-  const [startTime] = useState(new Date());
   
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [isRunning, setIsRunning] = useState(true);
-  const [laps, setLaps] = useState<LapTime[]>([]);
+  // Timer states
+  const [currentTime, setCurrentTime] = useState(0); // Timpul curent (resetabil cu LAP)
+  const [totalTime, setTotalTime] = useState(0); // Timpul TOTAL acumulat
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
@@ -50,9 +43,8 @@ const AddWorkout = () => {
       sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
     },
   ]);
-  const [hasLastWeekData, setHasLastWeekData] = useState(false);
 
-  // Prefill din plan + date din saptamana trecuta
+  // Prefill din plan + date din săptămâna trecută
   useEffect(() => {
     loadWorkoutData();
   }, [workoutPlan, user?.uid]);
@@ -68,18 +60,15 @@ const AddWorkout = () => {
       return;
     }
 
-    // incarca antrenamentul din saptamana trecuta
     const lastWeekResult = await getLastWeekWorkout(user.uid, dayName);
     
     if (lastWeekResult.success && lastWeekResult.data) {
-      // uneste datele din plan cu cele din saptamana trecuta
       const mergedExercises = planDay.exercises.map((planEx) => {
         const lastWeekEx = lastWeekResult.data.exercises?.find(
           (ex: WorkoutExercise) => ex.exerciseName.toLowerCase() === planEx.exerciseName.toLowerCase()
         );
 
         if (lastWeekEx) {
-          // folose datele din saptamana trecuta ca si placeholder
           return {
             exerciseName: planEx.exerciseName,
             sets: lastWeekEx.sets.map((s: WorkoutSet) => ({
@@ -90,7 +79,6 @@ const AddWorkout = () => {
           };
         }
 
-        // daca nu exista exercitiul in saptamana trecuta, foloseste planul
         return {
           exerciseName: planEx.exerciseName,
           sets: planEx.sets?.map((s) => ({
@@ -103,7 +91,6 @@ const AddWorkout = () => {
 
       setExercises(mergedExercises as WorkoutExercise[]);
     } else {
-      // Nu există antrenament din săptămâna trecută, folosește planul
       const cloned = planDay.exercises.map((ex) => ({
         exerciseName: ex.exerciseName || "",
         sets: ex.sets?.map((s) => ({
@@ -117,55 +104,34 @@ const AddWorkout = () => {
     }
   };
 
+  // Timer automat
   useEffect(() => {
-    if (isRunning) {
-      timerRef.current = setInterval(() => {
-        setElapsedTime((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    }
+    timerRef.current = setInterval(() => {
+      setCurrentTime((prev) => prev + 1);
+      setTotalTime((prev) => prev + 1);
+    }, 1000);
 
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
     };
-  }, [isRunning]);
+  }, []);
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
 
-    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  };
-
-  const formatLapTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  const toggleTimer = () => {
-    setIsRunning(!isRunning);
-  };
-
+  // ✅ Functia LAP - resetează currentTime
   const handleLap = () => {
-    const lapNumber = laps.length + 1;
-    const newLap: LapTime = {
-      lapNumber,
-      time: elapsedTime,
-      timestamp: new Date(),
-    };
-    
-    setLaps([...laps, newLap]);
-  };
-
-  const clearLaps = () => {
-    setLaps([]);
+    setCurrentTime(0);
   };
 
   const addExercise = () => {
@@ -271,16 +237,14 @@ const AddWorkout = () => {
       return;
     }
 
-    const duration = elapsedTime;
-
+    // ✅ Salvează totalTime (timpul TOTAL acumulat)
     const workoutData = {
       userID: user.uid,
       date: new Date(),
-      duration,
+      duration: totalTime,
       exercises,
     };
 
-    // Salvare antrenament
     setLoading(true);
     try {
       const result = await addWorkout(workoutData as any);
@@ -317,89 +281,39 @@ const AddWorkout = () => {
           style={{ marginBottom: spacingY._15 }}
         />
 
-        {/* CRONOMETRU */}
-<View style={styles.timerContainer}>
-  <View style={styles.timerContent}>
-    {/* Main Timer */}
-    <View style={styles.mainTimerSection}>
-      <Typo size={40} fontWeight="700" color={colors.primary}>
-        {formatTime(elapsedTime)}
-      </Typo>
-      
-      {/* Current Lap Time - afișat sub cronometrul principal */}
-      {laps.length > 0 && (
-        <Typo size={16} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
-          Current: {formatLapTime(
-            elapsedTime - laps[laps.length - 1].time
-          )}
-        </Typo>
-      )}
-    </View>
-    {/* Timer Control Buttons */}
-    <View style={styles.timerButtons}>
-      <TouchableOpacity onPress={toggleTimer} style={styles.timerButton}>
-        {isRunning ? (
-          <Icons.PauseIcon size={24} color={colors.white} weight="fill" />
-        ) : (
-          <Icons.PlayIcon size={24} color={colors.white} weight="fill" />
-        )}
-      </TouchableOpacity>
-      
-      <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
-        <Icons.ClockCountdownIcon size={24} color={colors.primary} weight="fill" />
-      </TouchableOpacity>
-    </View>
-  </View>
-</View>
-
-{/* Laps List - înafara containerului principal */}
-{laps.length > 0 && (
-  <View style={styles.lapsContainer}>
-    <View style={styles.lapsHeader}>
-      <Typo size={14} fontWeight="600" color={colors.neutral300}>
-        Rest Times ({laps.length})
-      </Typo>
-      <TouchableOpacity onPress={clearLaps}>
-        <Typo size={13} color={colors.primary}>
-          Clear All
-        </Typo>
-      </TouchableOpacity>
-    </View>
-    <ScrollView 
-      style={styles.lapsList}
-      showsVerticalScrollIndicator={false}
-    >
-      {[...laps].reverse().map((lap, index) => {
-        const actualIndex = laps.length - 1 - index;
-        const lapDuration = actualIndex > 0 
-          ? lap.time - laps[actualIndex - 1].time 
-          : lap.time;
-        
-        return (
-          <View key={lap.lapNumber} style={styles.lapItem}>
-            <View style={styles.lapNumberBadge}>
-              <Typo size={12} fontWeight="600" color={colors.white}>
-                #{lap.lapNumber}
-              </Typo>
-            </View>
-            <Typo size={15} fontWeight="600" color={colors.white}>
-              {formatLapTime(lapDuration)}
+        {/* Timer Container */}
+        <View style={styles.timerContainer}>
+          {/* Current Time (resetabil cu LAP) */}
+          <View style={styles.currentTimeSection}>
+            <Typo size={11} color={colors.neutral400} style={{ marginBottom: spacingY._5 }}>
+              REST TIME
             </Typo>
-            <Typo size={12} color={colors.neutral500}>
-              {lap.timestamp.toLocaleTimeString('ro-RO', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
+            <Typo size={40} fontWeight="700" color={colors.primary}>
+              {formatTime(currentTime)}
             </Typo>
           </View>
-        );
-      })}
-    </ScrollView>
-  </View>
-)}
+
+          {/* LAP Button */}
+          <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
+            <Icons.ArrowCounterClockwiseIcon size={20} color={colors.white} weight="bold" />
+            <Typo size={14} fontWeight="600" color={colors.white}>
+              Lap 
+            </Typo>
+          </TouchableOpacity>
+
+          {/* Total Time (acumulat) */}
+          <View style={styles.totalTimeSection}>
+            <Typo size={11} color={colors.neutral400}>
+              TOTAL TIME
+            </Typo>
+            <Typo size={16} fontWeight="600" color={colors.white}>
+              {formatTime(totalTime)}
+            </Typo>
+          </View>
+        </View>
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: verticalScale(220) }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: verticalScale(100) }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Exercises */}
@@ -529,62 +443,30 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
+    alignItems: "center",
+    gap: spacingY._12,
   },
-  timerButtons: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: spacingX._15,
-  },
-  timerButton: {
-    backgroundColor: colors.neutral700,
-    width: verticalScale(56),
-    height: verticalScale(56),
-    borderRadius: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.neutral600,
+  currentTimeSection: {
+    alignItems: "center",
   },
   lapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._7,
     backgroundColor: colors.neutral700,
-    width: verticalScale(56),
-    height: verticalScale(56),
-    borderRadius: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: spacingY._10,
+    paddingHorizontal: spacingX._20,
+    borderRadius: radius._12,
     borderWidth: 2,
     borderColor: colors.primary,
   },
-  lapsContainer: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._15,
-    padding: spacingX._15,
-    marginBottom: spacingY._15,
-    maxHeight: verticalScale(180),
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  lapsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  totalTimeSection: {
     alignItems: "center",
-    marginBottom: spacingY._12,
-    paddingBottom: spacingY._10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral700,
-  },
-  lapsList: {
-    maxHeight: verticalScale(120),
-  },
-  lapItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: spacingX._10,
-    borderRadius: radius._10,
-    backgroundColor: colors.neutral700,
-    marginBottom: spacingY._7,
+    paddingTop: spacingY._10,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral700,
+    width: "100%",
   },
   scrollContent: {
     paddingBottom: verticalScale(20),
@@ -667,20 +549,4 @@ const styles = StyleSheet.create({
     right: spacingX._20,
     zIndex: 30,
   },
-    lapNumberBadge: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacingX._10,
-    paddingVertical: verticalScale(4),
-    borderRadius: radius._10,
-    minWidth: verticalScale(40),
-    alignItems: 'center',
-  },
-    mainTimerSection: {
-    alignItems: 'center',
-    paddingVertical: spacingY._10,
-  },
-   timerContent: {
-    gap: spacingY._15,
-  },
-
 });
