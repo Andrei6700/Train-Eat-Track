@@ -4,7 +4,7 @@ import Typo from "@/src/components/ui/Typo";
 import WaterWave from "@/src/components/ui/WaterWave";
 import { useAuth } from "@/src/contexts/authContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
-import { scale, verticalScale } from "@/src/utils/styling";
+import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";

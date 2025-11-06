@@ -1,18 +1,14 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import Header from "@/src/components/layout/Header";
 import ModalWrapper from "@/src/components/layout/ModalWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
-import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
-import { useNutrition } from "@/src/contexts/nutritionContext";
-import { Food } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -20,310 +16,243 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// Meal types
+const MEALS = [
+  { id: "breakfast", name: "Mic Dejun" },
+  { id: "lunch", name: "Pranz" },
+  { id: "dinner", name: "Cina" },
+  { id: "snacks", name: "Gustari" },
+];
+
 const MealDetail = () => {
-  const { mealName, date } = useLocalSearchParams();
+  const { mealName } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { todayNutrition, addFoodToMeal, removeFoodFromMeal } = useNutrition();
+  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMeal, setSelectedMeal] = useState(mealName as string || "breakfast");
+  const [showMealDropdown, setShowMealDropdown] = useState(false);
+  const [recentFoods, setRecentFoods] = useState<any[]>([]);
+  const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0, width: 0 });
+  
+  const mealDropdownRef = useRef<TouchableOpacity>(null);
 
-  const [showAddFood, setShowAddFood] = useState(false);
-  const [newFood, setNewFood] = useState<Food>({
-    name: "",
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    servingSize: "100g",
-  });
-
-  const meal = todayNutrition?.meals.find((m) => m.mealName === mealName);
-
-  const getTotalMacros = () => {
-    if (!meal) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    return meal.foods.reduce(
-      (totals, food) => ({
-        calories: totals.calories + (food.calories || 0),
-        protein: totals.protein + (food.protein || 0),
-        carbs: totals.carbs + (food.carbs || 0),
-        fat: totals.fat + (food.fat || 0),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 }
-    );
-  };
-
-  const handleAddFood = async () => {
-    if (!newFood.name.trim()) {
-      Alert.alert("Error", "Please enter a food name");
-      return;
+  const measureDropdown = () => {
+    if (mealDropdownRef.current) {
+      mealDropdownRef.current.measure((x, y, width, height, pageX, pageY) => {
+        setDropdownPosition({
+          x: pageX,
+          y: pageY + height,
+          width: width
+        });
+        setShowMealDropdown(true);
+      });
     }
-
-    if (newFood.calories <= 0) {
-      Alert.alert("Error", "Please enter valid calories");
-      return;
-    }
-
-    await addFoodToMeal(mealName as string, newFood);
-    
-    setNewFood({
-      name: "",
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      servingSize: "100g",
-    });
-    setShowAddFood(false);
   };
 
-  const handleDeleteFood = (index: number) => {
-    Alert.alert(
-      "Delete Food",
-      "Are you sure you want to remove this food?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => removeFoodFromMeal(mealName as string, index),
-        },
-      ]
-    );
-  };
+  const currentMeal = MEALS.find(meal => meal.id === selectedMeal) || MEALS[0];
 
-  const totals = getTotalMacros();
+  const handleMealSelect = (mealId: string) => {
+    setSelectedMeal(mealId);
+    setShowMealDropdown(false);
+  };
 
   return (
     <ModalWrapper>
       <View style={styles.container}>
-        <Header
-          title={mealName as string}
-          leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._15 }}
-        />
+        {/* Custom Header with Dropdown */}
+        <View style={styles.header}>
+          <BackButton />
+          <TouchableOpacity 
+            ref={mealDropdownRef}
+            style={styles.mealDropdown}
+            onPress={measureDropdown}
+          >
+            <Typo size={18} fontWeight="700" style={styles.mealTitle}>
+              {currentMeal.name}
+            </Typo>
+            <Icons.CaretDownIcon size={16} color={colors.neutral400} weight="bold" />
+          </TouchableOpacity>
+          <View style={{ width: 24 }} />
+        </View>
 
-        {/* Summary Card */}
-        <View style={styles.summaryCard}>
-          <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._10 }}>
-            Meal Summary
-          </Typo>
-          
-          <View style={styles.macrosGrid}>
-            <View style={styles.macroBox}>
-              <Typo size={24} fontWeight="700" color={colors.primary}>
-                {Math.round(totals.calories)}
-              </Typo>
-              <Typo size={12} color={colors.neutral400}>
-                Calories
-              </Typo>
+        {/* Meal Dropdown Modal - Positioned under the button */}
+        <Modal
+          visible={showMealDropdown}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowMealDropdown(false)}
+        >
+          <TouchableOpacity 
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowMealDropdown(false)}
+          >
+            <View style={[
+              styles.dropdownContainer,
+              {
+                position: 'absolute',
+                top: dropdownPosition.y,
+                left: dropdownPosition.x,
+                width: dropdownPosition.width,
+              }
+            ]}>
+              {MEALS.map((meal) => (
+                <TouchableOpacity
+                  key={meal.id}
+                  style={[
+                    styles.dropdownItem,
+                    selectedMeal === meal.id && styles.dropdownItemActive
+                  ]}
+                  onPress={() => handleMealSelect(meal.id)}
+                >
+                  <Typo 
+                    size={16} 
+                    fontWeight="600"
+                    color={selectedMeal === meal.id ? colors.primary : colors.text}
+                  >
+                    {meal.name}
+                  </Typo>
+                  {selectedMeal === meal.id && (
+                    <Icons.CheckIcon size={16} color={colors.primary} weight="bold" />
+                  )}
+                </TouchableOpacity>
+              ))}
             </View>
+          </TouchableOpacity>
+        </Modal>
 
-            <View style={styles.macroBox}>
-              <Typo size={24} fontWeight="700" color={"#3B33C4"}>
-                {Math.round(totals.protein)}g
-              </Typo>
-              <Typo size={12} color={colors.neutral400}>
-                Protein
-              </Typo>
-            </View>
-
-            <View style={styles.macroBox}>
-              <Typo size={24} fontWeight="700" color={colors.green}>
-                {Math.round(totals.carbs)}g
-              </Typo>
-              <Typo size={12} color={colors.neutral400}>
-                Carbs
-              </Typo>
-            </View>
-
-            <View style={styles.macroBox}>
-              <Typo size={24} fontWeight="700" color={"#B413BF"}>
-                {Math.round(totals.fat)}g
-              </Typo>
-              <Typo size={12} color={colors.neutral400}>
-                Fat
-              </Typo>
-            </View>
+        {/* Search Bar - Fixed spacing */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <Icons.MagnifyingGlassIcon 
+              size={20} 
+              color={colors.neutral400} 
+              style={styles.searchIcon}
+            />
+            <Input
+              placeholder="Caută alimente (ex. Piept de pui)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              containerStyle={styles.searchInput}
+              inputStyle={styles.searchInputText}
+            />
           </View>
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Foods List */}
-          {meal && meal.foods.length > 0 ? (
-            <View style={styles.foodsSection}>
-              <Typo size={18} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-                Foods ({meal.foods.length})
-              </Typo>
-
-              {meal.foods.map((food, index) => (
-                <View key={index} style={styles.foodCard}>
-                  <View style={styles.foodHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Typo size={16} fontWeight="600">
-                        {food.name}
-                      </Typo>
-                      <Typo size={13} color={colors.neutral400}>
-                        {food.servingSize}
-                      </Typo>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteFood(index)}
-                      style={styles.deleteButton}
-                    >
-                      <Icons.TrashIcon size={20} color={colors.rose} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.foodMacros}>
-                    <View style={styles.foodMacroItem}>
-                      <Typo size={14} fontWeight="600">
-                        {food.calories}
-                      </Typo>
-                      <Typo size={11} color={colors.neutral400}>
-                        cal
-                      </Typo>
-                    </View>
-                    <View style={styles.foodMacroItem}>
-                      <Typo size={14} fontWeight="600">
-                        {food.protein}g
-                      </Typo>
-                      <Typo size={11} color={colors.neutral400}>
-                        protein
-                      </Typo>
-                    </View>
-                    <View style={styles.foodMacroItem}>
-                      <Typo size={14} fontWeight="600">
-                        {food.carbs}g
-                      </Typo>
-                      <Typo size={11} color={colors.neutral400}>
-                        carbs
-                      </Typo>
-                    </View>
-                    <View style={styles.foodMacroItem}>
-                      <Typo size={14} fontWeight="600">
-                        {food.fat}g
-                      </Typo>
-                      <Typo size={11} color={colors.neutral400}>
-                        fat
-                      </Typo>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Icons.ForkKnifeIcon size={48} color={colors.neutral500} weight="fill" />
-              <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15 }}>
-                No food added yet
-              </Typo>
-              <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
-                Tap the button below to add food
-              </Typo>
-            </View>
-          )}
-
-          {/* Add Food Form */}
-          {showAddFood && (
-            <View style={styles.addFoodForm}>
-              <Typo size={18} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-                Add Food
-              </Typo>
-
-              <Input
-                placeholder="Food name"
-                value={newFood.name}
-                onChangeText={(text) => setNewFood({ ...newFood, name: text })}
-                containerStyle={{ marginBottom: spacingY._12 }}
-              />
-
-              <View style={styles.inputRow}>
-                <Input
-                  placeholder="Calories"
-                  keyboardType="numeric"
-                  value={newFood.calories > 0 ? newFood.calories.toString() : ""}
-                  onChangeText={(text) =>
-                    setNewFood({ ...newFood, calories: parseFloat(text) || 0 })
-                  }
-                  containerStyle={styles.smallInput}
-                />
-                <Input
-                  placeholder="Serving"
-                  value={newFood.servingSize}
-                  onChangeText={(text) =>
-                    setNewFood({ ...newFood, servingSize: text })
-                  }
-                  containerStyle={styles.smallInput}
-                />
-              </View>
-
-              <View style={styles.inputRow}>
-                <Input
-                  placeholder="Protein (g)"
-                  keyboardType="numeric"
-                  value={newFood.protein > 0 ? newFood.protein.toString() : ""}
-                  onChangeText={(text) =>
-                    setNewFood({ ...newFood, protein: parseFloat(text) || 0 })
-                  }
-                  containerStyle={styles.macroInput}
-                />
-                <Input
-                  placeholder="Carbs (g)"
-                  keyboardType="numeric"
-                  value={newFood.carbs > 0 ? newFood.carbs.toString() : ""}
-                  onChangeText={(text) =>
-                    setNewFood({ ...newFood, carbs: parseFloat(text) || 0 })
-                  }
-                  containerStyle={styles.macroInput}
-                />
-                <Input
-                  placeholder="Fat (g)"
-                  keyboardType="numeric"
-                  value={newFood.fat > 0 ? newFood.fat.toString() : ""}
-                  onChangeText={(text) =>
-                    setNewFood({ ...newFood, fat: parseFloat(text) || 0 })
-                  }
-                  containerStyle={styles.macroInput}
-                />
-              </View>
-
-              <View style={styles.formButtons}>
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={() => setShowAddFood(false)}
-                >
-                  <Typo size={16} fontWeight="600" color={colors.neutral400}>
-                    Cancel
-                  </Typo>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleAddFood}
-                >
-                  <Typo size={16} fontWeight="600" color={colors.black}>
-                    Add Food
-                  </Typo>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Add Button */}
-        {!showAddFood && (
-          <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-            <Button onPress={() => setShowAddFood(true)} style={{ flex: 1 }}>
-              <View style={styles.addButtonContent}>
-                <Icons.PlusIcon size={20} color={colors.black} weight="bold" />
-                <Typo color={colors.black} fontWeight="700" size={18}>
-                  Add Food
+        {/* Action Buttons - HORIZONTAL with icons EXACT 1:1 with image.png */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.actionButton}>
+            <View style={styles.actionButtonContent}>
+              <Icons.Calculator size={24} color={colors.primary} weight="fill" />
+              <View style={styles.actionTextContainer}>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  Introdu
+                </Typo>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  calorii manual
                 </Typo>
               </View>
-            </Button>
-          </View>
-        )}
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton}>
+            <View style={styles.actionButtonContent}>
+              <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
+              <View style={styles.actionTextContainer}>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  Creează
+                </Typo>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  aliment/rețetă
+                </Typo>
+              </View>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton}>
+            <View style={styles.actionButtonContent}>
+              <Icons.Barcode size={24} color={colors.primary} weight="fill" />
+              <View style={styles.actionTextContainer}>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  Caută după
+                </Typo>
+                <Typo size={13} fontWeight="700" style={styles.actionButtonText}>
+                  cod de bare
+                </Typo>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Recent Foods Section */}
+        <View style={styles.recentFoodsSection}>
+          <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
+            Alimente recente
+          </Typo>
+
+          <ScrollView 
+            style={styles.foodsList}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.foodsListContent,
+              recentFoods.length === 0 && styles.emptyFoodsListContent
+            ]}
+          >
+            {recentFoods.length > 0 ? (
+              recentFoods.map((food) => (
+                <TouchableOpacity
+                  key={food.id}
+                  style={styles.foodItem}
+                  onPress={() => {}}
+                >
+                  <View style={styles.foodItemLeft}>
+                    <View style={[
+                      styles.checkbox,
+                      food.checked && styles.checkboxChecked
+                    ]}>
+                      {food.checked && (
+                        <Icons.CheckIcon size={12} color={colors.black} weight="bold" />
+                      )}
+                    </View>
+                    
+                    <View style={styles.foodInfo}>
+                      <Typo size={15} fontWeight="600" style={styles.foodName}>
+                        {food.name}
+                      </Typo>
+                      {(food.calories > 0 || food.amount) && (
+                        <Typo size={13} color={colors.neutral400}>
+                          {food.calories > 0 && `${food.calories} kCal`}
+                          {food.calories > 0 && food.amount && ', '}
+                          {food.amount}
+                        </Typo>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Icons.ForkKnifeIcon size={48} color={colors.neutral500} weight="fill" />
+                <Typo 
+                  size={16} 
+                  fontWeight="600" 
+                  color={colors.neutral400} 
+                  style={{ marginTop: spacingY._15, textAlign: 'center' }}
+                >
+                  Nu ai alimente recente
+                </Typo>
+                <Typo 
+                  size={14} 
+                  color={colors.neutral500} 
+                  style={{ marginTop: spacingY._7, textAlign: 'center' }}
+                >
+                  Alimentele pe care le adaugi vor apărea aici
+                </Typo>
+              </View>
+            )}
+          </ScrollView>
+        </View>
       </View>
     </ModalWrapper>
   );
@@ -336,112 +265,157 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
-  summaryCard: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacingY._20,
+    paddingTop: spacingY._10,
+  },
+  mealDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    paddingVertical: spacingY._8,
+  },
+  mealTitle: {
+    marginRight: spacingX._5,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  dropdownContainer: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    paddingVertical: spacingY._5,
     borderWidth: 1,
     borderColor: colors.neutral700,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  macrosGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacingY._12,
+    paddingHorizontal: spacingX._15,
+  },
+  dropdownItemActive: {
+    backgroundColor: colors.neutral700,
+  },
+  searchContainer: {
+    marginBottom: spacingY._20,
+  },
+  searchInputContainer: {
+    position: 'relative',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: spacingX._15,
+    top: '50%',
+    marginTop: -10,
+    zIndex: 2,
+  },
+  searchInput: {
+    marginBottom: 0,
+  },
+  searchInputText: {
+    paddingLeft: spacingX._35,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacingY._20,
     gap: spacingX._10,
   },
-  macroBox: {
+  actionButton: {
     flex: 1,
-    minWidth: "22%",
-    backgroundColor: colors.neutral700,
-    borderRadius: radius._12,
-    padding: spacingX._12,
-    alignItems: "center",
-  },
-  scrollContent: {
-    paddingBottom: verticalScale(100),
-  },
-  foodsSection: {
-    marginBottom: spacingY._20,
-  },
-  foodCard: {
     backgroundColor: colors.neutral800,
-    borderRadius: radius._15,
-    padding: spacingX._15,
-    marginBottom: spacingY._12,
     borderWidth: 1,
     borderColor: colors.neutral700,
-  },
-  foodHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacingY._12,
-  },
-  deleteButton: {
-    padding: spacingX._5,
-  },
-  foodMacros: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: colors.neutral700,
     borderRadius: radius._12,
-    padding: spacingX._12,
+    paddingVertical: spacingY._12,
   },
-  foodMacroItem: {
-    alignItems: "center",
+  actionButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: spacingY._50,
+  actionTextContainer: {
+    alignItems: 'center',
+    marginTop: spacingY._5,
   },
-  addFoodForm: {
+  actionButtonText: {
+    textAlign: 'center',
+    color: colors.text,
+    lineHeight: 16,
+  },
+  recentFoodsSection: {
+    flex: 1,
+  },
+  sectionTitle: {
+    marginBottom: spacingY._15,
+    color: colors.text,
+  },
+  foodsList: {
+    flex: 1,
+  },
+  foodsListContent: {
+    paddingBottom: verticalScale(20),
+  },
+  emptyFoodsListContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  foodItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    marginBottom: spacingY._20,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._12,
+    padding: spacingX._15,
+    marginBottom: spacingY._10,
+  },
+  foodItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
     borderWidth: 2,
+    borderColor: colors.neutral500,
+    borderRadius: radius._3,
+    marginRight: spacingX._12,
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  inputRow: {
-    flexDirection: "row",
-    gap: spacingX._10,
-    marginBottom: spacingY._12,
-  },
-  smallInput: {
+  foodInfo: {
     flex: 1,
   },
-  macroInput: {
-    flex: 1,
+  foodName: {
+    marginBottom: spacingY._4,
+    color: colors.text,
   },
-  formButtons: {
-    flexDirection: "row",
-    gap: spacingX._10,
-    marginTop: spacingY._10,
-  },
-  cancelButton: {
-    flex: 1,
-    backgroundColor: colors.neutral700,
-    borderRadius: radius._12,
-    paddingVertical: spacingY._12,
-    alignItems: "center",
-  },
-  saveButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: radius._12,
-    paddingVertical: spacingY._12,
-    alignItems: "center",
-  },
-  footerSticky: {
-    position: "absolute",
-    left: spacingX._20,
-    right: spacingX._20,
-    zIndex: 30,
-  },
-  addButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._7,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacingY._50,
+    paddingHorizontal: spacingX._20,
   },
 });
