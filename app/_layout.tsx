@@ -1,10 +1,10 @@
 import { AuthProvider } from "@/src/contexts/authContext";
+import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { Stack } from "expo-router";
-import React, { useEffect } from "react";
+import React from "react";
 import 'react-native-reanimated';
 
-// Configurare pentru a dezactiva warning-urile Layout Animations
 if (__DEV__) {
   const originalWarn = console.warn;
   console.warn = (...args) => {
@@ -51,6 +51,18 @@ const StackLayout = () => {
           presentation: "modal",
         }}
       />
+      <Stack.Screen
+        name="(modals)/mealDetail"
+        options={{
+          presentation: "modal",
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/nutritionSettings"
+        options={{
+          presentation: "modal",
+        }}
+      />
     </Stack>
   );
 };
@@ -59,7 +71,9 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <WorkoutPlanProvider>
-        <StackLayout />
+        <NutritionProvider>
+          <StackLayout />
+        </NutritionProvider>
       </WorkoutPlanProvider>
     </AuthProvider>
   );

@@ -173,3 +173,43 @@ export type WorkoutPlan = {
   createdAt: Date | string;
   updatedAt: Date | string;
 };
+
+// Nutrition Types
+export type Food = {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  servingSize: string; 
+};
+
+export type Meal = {
+  mealName: string; 
+  foods: Food[];
+};
+
+export type DailyNutrition = {
+  id?: string;
+  userID: string;
+  date: Date | string;
+  calorieGoal: number;
+  proteinGoal: number;
+  carbsGoal: number;
+  fatGoal: number;
+  meals: Meal[];
+};
+
+export type WaterIntake = {
+  amount: number;
+  timestamp: Date;
+};
+
+export type DailyWater = {
+  id?: string;
+  userID: string;
+  date: Date | string;
+  goal: number;
+  intakes: WaterIntake[];
+  total: number;
+};

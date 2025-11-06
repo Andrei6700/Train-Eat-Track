@@ -1,8 +1,14 @@
 import { colors, spacingY } from "@/constants/theme";
-import { verticalScale } from '@/src/utils/styling';
+import { verticalScale } from "@/src/utils/styling";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Icons from "phosphor-react-native";
-import { Platform, StyleSheet, TouchableOpacity, View, Text } from "react-native";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function CustomTabs({
   state,
@@ -38,6 +44,13 @@ export default function CustomTabs({
         color={isFocused ? colors.primary : colors.neutral400}
       />
     ),
+    nutrition: (isFocused: boolean) => (
+      <Icons.ForkKnifeIcon
+        size={verticalScale(28)}
+        weight={isFocused ? "fill" : "regular"}
+        color={isFocused ? colors.primary : colors.neutral400}
+      />
+    ),
     profile: (isFocused: boolean) => (
       <Icons.UserIcon
         size={verticalScale(28)}
@@ -52,6 +65,7 @@ export default function CustomTabs({
     statistics: "Statistics",
     workout: "Workout",
     history: "History",
+    nutrition: "Nutrition",
     profile: "Profile",
   };
 
@@ -88,10 +102,12 @@ export default function CustomTabs({
             style={styles.tabbarItem}
           >
             {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
-            <Text style={[
-              styles.tabLabel,
-              { color: isFocused ? colors.primary : colors.neutral400 }
-            ]}>
+            <Text
+              style={[
+                styles.tabLabel,
+                { color: isFocused ? colors.primary : colors.neutral400 },
+              ]}
+            >
               {tabbarLabels[route.name]}
             </Text>
           </TouchableOpacity>
