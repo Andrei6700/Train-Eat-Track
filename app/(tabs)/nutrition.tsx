@@ -1,15 +1,21 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import Button from "@/src/components/ui/Button";
+import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import WaterWave from "@/src/components/ui/WaterWave";
 import { useAuth } from "@/src/contexts/authContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { Food } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -17,22 +23,46 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"];
 
 const Nutrition = () => {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const { 
     todayNutrition, 
     todayWater,
     loading, 
     refreshNutrition,
     addWaterIntake,
-    resetWaterIntake
+    resetWaterIntake,
+    removeFoodFromMeal,
+    updateFoodQuantity,
+    copyFoodToMeal,
+    moveFoodToMeal,
   } = useNutrition();
+
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Modal pentru editare cantitate
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingFood, setEditingFood] = useState<{
+    mealName: string;
+    foodIndex: number;
+    food: Food;
+  } | null>(null);
+  const [editQuantity, setEditQuantity] = useState("");
+
+  // Modal pentru acțiuni (long-press)
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  const [actionFood, setActionFood] = useState<{
+    mealName: string;
+    foodIndex: number;
+    food: Food;
+  } | null>(null);
 
   useEffect(() => {
     if (user?.uid) {
@@ -65,6 +95,78 @@ const Nutrition = () => {
           style: "destructive",
           onPress: async () => {
             await resetWaterIntake();
+          },
+        },
+      ]
+    );
+  };
+
+  // ✅ Deschide modal pentru editare cantitate (simplu click)
+  const handleFoodPress = (mealName: string, foodIndex: number, food: Food) => {
+    const currentQuantity = parseFloat(food.servingSize) || 100;
+    setEditingFood({ mealName, foodIndex, food });
+    setEditQuantity(currentQuantity.toString());
+    setShowEditModal(true);
+  };
+
+  // ✅ Salvează cantitatea actualizată
+  const handleSaveQuantity = async () => {
+    if (!editingFood || !editQuantity || parseFloat(editQuantity) <= 0) {
+      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
+      return;
+    }
+
+    await updateFoodQuantity(
+      editingFood.mealName,
+      editingFood.foodIndex,
+      parseFloat(editQuantity)
+    );
+
+    setShowEditModal(false);
+    setEditingFood(null);
+    Alert.alert("Success", "Cantitatea a fost actualizată!");
+  };
+
+  // ✅ Deschide modal pentru acțiuni (long-press)
+  const handleFoodLongPress = (mealName: string, foodIndex: number, food: Food) => {
+    setActionFood({ mealName, foodIndex, food });
+    setShowActionsModal(true);
+  };
+
+  // ✅ Copiază la altă masă
+  const handleCopyFood = (toMeal: string) => {
+    if (!actionFood) return;
+    
+    copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
+    setShowActionsModal(false);
+    Alert.alert("Success", `${actionFood.food.name} copiat la ${toMeal}`);
+  };
+
+  // ✅ Mută la altă masă
+  const handleMoveFood = (toMeal: string) => {
+    if (!actionFood) return;
+    
+    moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
+    setShowActionsModal(false);
+    Alert.alert("Success", `${actionFood.food.name} mutat la ${toMeal}`);
+  };
+
+  // ✅ Șterge alimentul
+  const handleDeleteFood = () => {
+    if (!actionFood) return;
+
+    Alert.alert(
+      "Șterge aliment",
+      `Ești sigur că vrei să ștergi ${actionFood.food.name}?`,
+      [
+        { text: "Anulează", style: "cancel" },
+        {
+          text: "Șterge",
+          style: "destructive",
+          onPress: async () => {
+            await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
+            setShowActionsModal(false);
+            Alert.alert("Success", "Alimentul a fost șters!");
           },
         },
       ]
@@ -125,7 +227,6 @@ const Nutrition = () => {
     ? Math.min((todayWater.total / todayWater.goal) * 100, 100)
     : 0;
 
-  // Calcule pentru barele de progres ale macronutrienților
   const proteinProgress = Math.min((totalMacros.protein / proteinGoal) * 100, 100);
   const carbsProgress = Math.min((totalMacros.carbs / carbsGoal) * 100, 100);
   const fatProgress = Math.min((totalMacros.fat / fatGoal) * 100, 100);
@@ -160,9 +261,7 @@ const Nutrition = () => {
           entering={FadeInDown.duration(400).delay(100)}
           style={styles.objectiveCard}
         >
-          {/* Continut principal */}
           <View style={styles.mainContent}>
-            {/* Partea stanga */}
             <View style={styles.leftSection}>
               <View style={styles.objectivesContainer}>
                 <View style={styles.objectiveItem}>
@@ -190,7 +289,6 @@ const Nutrition = () => {
               </View>
             </View>
 
-            {/* Partea dreaptă - Cerc progres mare cu caloriile rămase */}
             <View style={styles.rightSection}>
               <View style={styles.progressCircleContainer}>
                 <View style={styles.progressCircle}>
@@ -208,9 +306,7 @@ const Nutrition = () => {
             </View>
           </View>
 
-          {/* Macronutrienți */}
           <View style={styles.macrosContainer}>
-            {/* Proteine */}
             <View style={styles.macroItem}>
               <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
                 Proteine
@@ -231,7 +327,6 @@ const Nutrition = () => {
               </Typo>
             </View>
 
-            {/* Carbohidrați */}
             <View style={styles.macroItem}>
               <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
                 Carbohidrați
@@ -252,7 +347,6 @@ const Nutrition = () => {
               </Typo>
             </View>
 
-            {/* Grăsimi */}
             <View style={styles.macroItem}>
               <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
                 Grăsimi
@@ -290,16 +384,12 @@ const Nutrition = () => {
             const hasFoods = meal && meal.foods.length > 0;
 
             return (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.mealCard,
-                  hasFoods && styles.mealCardActive
-                ]}
-                onPress={() => handleMealPress(mealName)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.mealHeader}>
+              <View key={index} style={[styles.mealCard, hasFoods && styles.mealCardActive]}>
+                <TouchableOpacity
+                  style={styles.mealHeader}
+                  onPress={() => handleMealPress(mealName)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.mealInfo}>
                     <Typo size={18} fontWeight="600">
                       {mealName}
@@ -333,26 +423,32 @@ const Nutrition = () => {
                       </View>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {hasFoods && (
                   <View style={styles.foodsList}>
-                    {meal.foods.slice(0, 3).map((food, idx) => (
-                      <View key={idx} style={styles.foodItem}>
-                        <View style={styles.foodDot} />
-                        <Typo size={14} color={colors.neutral300} numberOfLines={1}>
-                          {food.name}
-                        </Typo>
-                      </View>
+                    {meal.foods.map((food, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.foodItemContainer}
+                        onPress={() => handleFoodPress(mealName, idx, food)}
+                        onLongPress={() => handleFoodLongPress(mealName, idx, food)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.foodItem}>
+                          <View style={styles.foodDot} />
+                          <Typo size={14} color={colors.neutral300} numberOfLines={1} style={{ flex: 1 }}>
+                            {food.name}
+                          </Typo>
+                          <Typo size={13} color={colors.primary} style={{ marginLeft: spacingX._10 }}>
+                            {food.calories} kcal
+                          </Typo>
+                        </View>
+                      </TouchableOpacity>
                     ))}
-                    {meal.foods.length > 3 && (
-                      <Typo size={13} color={colors.neutral400} style={{ marginLeft: spacingX._20 }}>
-                        +{meal.foods.length - 3} more
-                      </Typo>
-                    )}
                   </View>
                 )}
-              </TouchableOpacity>
+              </View>
             );
           })}
         </Animated.View>
@@ -408,6 +504,189 @@ const Nutrition = () => {
           </View>
         </Animated.View>
       </ScrollView>
+
+      {/* ✅ MODAL PENTRU EDITARE CANTITATE */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity 
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowEditModal(false)}
+          />
+          
+          <View style={[styles.editModal, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.handleBar} />
+
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Icons.XIcon size={24} color={colors.white} weight="bold" />
+              </TouchableOpacity>
+              <Typo size={20} fontWeight="700">
+                Editează cantitatea
+              </Typo>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {editingFood && (
+                <View style={styles.modalContent}>
+                  <View style={styles.foodInfoModal}>
+                    <Typo size={18} fontWeight="700" style={{ textAlign: 'center' }}>
+                      {editingFood.food.name}
+                    </Typo>
+                    <Typo size={14} color={colors.neutral400} style={{ textAlign: 'center', marginTop: spacingY._5 }}>
+                      {editingFood.mealName}
+                    </Typo>
+                  </View>
+
+                  <View style={styles.quantitySection}>
+                    <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
+                      Cantitate (grame)
+                    </Typo>
+                    <Input
+                      placeholder="100"
+                      value={editQuantity}
+                      onChangeText={setEditQuantity}
+                      keyboardType="numeric"
+                      containerStyle={styles.quantityInput}
+                    />
+                  </View>
+
+                  <View style={styles.adjustedNutrition}>
+                    <Typo size={15} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
+                      Valori calculate pentru {editQuantity || '0'}g:
+                    </Typo>
+                    
+                    <View style={styles.nutritionGrid}>
+                      <View style={styles.nutritionItem}>
+                        <Typo size={24} fontWeight="700" color={colors.primary}>
+                          {Math.round(editingFood.food.calories * (parseFloat(editQuantity) || 0) / 100)}
+                        </Typo>
+                        <Typo size={12} color={colors.neutral400}>kcal</Typo>
+                      </View>
+
+                      <View style={styles.nutritionItem}>
+                        <Typo size={20} fontWeight="600">
+                          {Math.round(editingFood.food.protein * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
+                        </Typo>
+                        <Typo size={12} color={colors.neutral400}>Proteine</Typo>
+                      </View>
+
+                      <View style={styles.nutritionItem}>
+                        <Typo size={20} fontWeight="600">
+                          {Math.round(editingFood.food.carbs * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
+                        </Typo>
+                        <Typo size={12} color={colors.neutral400}>Carbohidrați</Typo>
+                      </View>
+
+                      <View style={styles.nutritionItem}>
+                        <Typo size={20} fontWeight="600">
+                          {Math.round(editingFood.food.fat * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
+                        </Typo>
+                        <Typo size={12} color={colors.neutral400}>Grăsimi</Typo>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Button 
+                    onPress={handleSaveQuantity}
+                    style={{ marginTop: spacingY._20 }}
+                  >
+                    <Typo size={18} fontWeight="700" color={colors.black}>
+                      Salvează
+                    </Typo>
+                  </Button>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ✅ MODAL PENTRU ACȚIUNI (LONG-PRESS) CU ICONIȚE */}
+      <Modal
+        visible={showActionsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionsModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.actionsOverlay}
+          activeOpacity={1}
+          onPress={() => setShowActionsModal(false)}
+        >
+          <View style={[styles.actionsModal, { bottom: insets.bottom + 20 }]}>
+            {actionFood && (
+              <>
+                <View style={styles.actionsHeader}>
+                  <Typo size={18} fontWeight="700">
+                    {actionFood.food.name}
+                  </Typo>
+                </View>
+
+                <View style={styles.actionsList}>
+                  {/* Copiază la altă masă */}
+                  <View style={styles.actionGroup}>
+                    <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
+                      Copiază la:
+                    </Typo>
+                    {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
+                      <TouchableOpacity
+                        key={`copy-${idx}`}
+                        style={styles.actionButton}
+                        onPress={() => handleCopyFood(meal)}
+                      >
+                        <Icons.CopyIcon size={20} color={colors.primary} weight="bold" />
+                        <Typo size={16} fontWeight="500">
+                          {meal}
+                        </Typo>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Mută la altă masă */}
+                  <View style={styles.actionGroup}>
+                    <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
+                      Mută la:
+                    </Typo>
+                    {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
+                      <TouchableOpacity
+                        key={`move-${idx}`}
+                        style={styles.actionButton}
+                        onPress={() => handleMoveFood(meal)}
+                      >
+                        <Icons.ArrowsDownUpIcon size={20} color={colors.green} weight="bold" />
+                        <Typo size={16} fontWeight="500">
+                          {meal}
+                        </Typo>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Șterge */}
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.deleteAction]}
+                    onPress={handleDeleteFood}
+                  >
+                    <Icons.TrashIcon size={20} color={colors.rose} weight="bold" />
+                    <Typo size={16} fontWeight="600" color={colors.rose}>
+                      Șterge aliment
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScreenWrapper>
   );
 };
@@ -603,6 +882,9 @@ const styles = StyleSheet.create({
     marginTop: spacingY._12,
     gap: verticalScale(6),
   },
+  foodItemContainer: {
+    paddingVertical: verticalScale(4),
+  },
   foodItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -614,4 +896,107 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.primary,
   },
-}); 
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  editModal: {
+    backgroundColor: colors.neutral900,
+    borderTopLeftRadius: radius._20,
+    borderTopRightRadius: radius._20,
+    maxHeight: '85%',
+    paddingTop: spacingY._15,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.neutral600,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacingY._15,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacingX._20,
+    marginBottom: spacingY._20,
+  },
+  modalContent: {
+    paddingHorizontal: spacingX._20,
+  },
+  foodInfoModal: {
+    alignItems: 'center',
+    marginBottom: spacingY._25,
+  },
+  quantitySection: {
+    marginBottom: spacingY._25,
+  },
+  quantityInput: {
+    backgroundColor: colors.neutral800,
+  },
+  adjustedNutrition: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    padding: spacingX._20,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  nutritionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacingX._15,
+    justifyContent: 'space-between',
+  },
+  nutritionItem: {
+    alignItems: 'center',
+    width: '45%',
+    backgroundColor: colors.neutral900,
+    padding: spacingX._15,
+    borderRadius: radius._12,
+  },
+  actionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionsModal: {
+    position: 'absolute',
+    left: spacingX._20,
+    right: spacingX._20,
+    backgroundColor: colors.neutral900,
+    borderRadius: radius._17,
+    padding: spacingX._20,
+    maxHeight: '70%',
+  },
+  actionsHeader: {
+    paddingBottom: spacingY._15,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral700,
+    marginBottom: spacingY._15,
+  },
+  actionsList: {
+    gap: spacingY._20,
+  },
+  actionGroup: {
+    gap: spacingY._10,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacingX._12,
+    backgroundColor: colors.neutral800,
+    padding: spacingX._15,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  deleteAction: {
+    borderColor: colors.rose,
+    marginTop: spacingY._10,
+  },
+});

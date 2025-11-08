@@ -1,6 +1,7 @@
 import { ResponseType } from '@/src/types/index';
 
 const OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl";
+const PRODUCT_API = "https://world.openfoodfacts.org/api/v2/product";
 
 export type OpenFoodFactsProduct = {
   code: string;
@@ -9,7 +10,7 @@ export type OpenFoodFactsProduct = {
   quantity?: string;
   serving_size?: string;
   nutriments?: {
-    energy_kcal_100g?: number;
+    'energy-kcal_100g'?: number;
     proteins_100g?: number;
     carbohydrates_100g?: number;
     fat_100g?: number;
@@ -36,9 +37,6 @@ export type SimplifiedFood = {
 
 /**
  * Caută alimente în baza de date Open Food Facts
- * @param query - termenul de căutare
- * @param page - numărul paginii (default: 1)
- * @param pageSize - numărul de rezultate per pagină (default: 20)
  */
 export const searchFood = async (
   query: string,
@@ -47,6 +45,7 @@ export const searchFood = async (
 ): Promise<SimplifiedFood[]> => {
   try {
     if (!query || query.trim().length < 2) {
+      console.log('[FoodAPI] Query too short');
       return [];
     }
 
@@ -56,7 +55,6 @@ export const searchFood = async (
       page_size: pageSize.toString(),
       json: '1',
       fields: 'code,product_name,brands,quantity,serving_size,nutriments,image_url',
-      // Filtrează doar produsele care au informații nutriționale
       tagtype_0: 'states',
       tag_contains_0: 'contains',
       tag_0: 'en:nutrition-facts-completed'
@@ -65,14 +63,23 @@ export const searchFood = async (
     const url = `${OPEN_FOOD_FACTS_API}?${params.toString()}`;
     console.log('[FoodAPI] Searching:', url);
 
+    // ✅ Timeout pentru request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 secunde timeout
+
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'FitnessApp/1.0 (Contact: your@email.com)',
+        'User-Agent': 'FitnessApp/1.0 (fitness.app@example.com)',
+        'Accept': 'application/json',
       },
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.error('[FoodAPI] Error response:', response.status);
+      console.error('[FoodAPI] Error response:', response.status, response.statusText);
       return [];
     }
 
@@ -85,23 +92,20 @@ export const searchFood = async (
 
     console.log(`[FoodAPI] Found ${data.products.length} products`);
 
-    // Transformă rezultatele în formatul nostru simplificat
+    // Transformă rezultatele în formatul nostru
     const simplifiedFoods: SimplifiedFood[] = data.products
       .filter((product: OpenFoodFactsProduct) => {
-        // Filtrează produsele care au date nutriționale
         return product.nutriments && 
-               (product.nutriments.energy_kcal_100g || product.nutriments['energy-kcal_serving']);
+               (product.nutriments['energy-kcal_100g'] || product.nutriments['energy-kcal_serving']);
       })
       .map((product: OpenFoodFactsProduct) => {
         const nutriments = product.nutriments || {};
         
-        // Preferă valorile per serving dacă sunt disponibile, altfel folosește per 100g
-        const calories = nutriments['energy-kcal_serving'] || nutriments.energy_kcal_100g || 0;
+        const calories = nutriments['energy-kcal_serving'] || nutriments['energy-kcal_100g'] || 0;
         const protein = nutriments.proteins_serving || nutriments.proteins_100g || 0;
         const carbs = nutriments.carbohydrates_serving || nutriments.carbohydrates_100g || 0;
         const fat = nutriments.fat_serving || nutriments.fat_100g || 0;
         
-        // Determină serving size
         let servingSize = '100g';
         if (product.serving_size) {
           servingSize = product.serving_size;
@@ -125,29 +129,42 @@ export const searchFood = async (
 
     return simplifiedFoods;
   } catch (error: any) {
-    console.error('[FoodAPI] Search error:', error);
+    if (error.name === 'AbortError') {
+      console.error('[FoodAPI] Request timeout');
+    } else {
+      console.error('[FoodAPI] Search error:', error.message);
+    }
     return [];
   }
 };
 
 /**
  * Obține detalii despre un produs specific după barcode
- * @param barcode - codul de bare al produsului
  */
 export const getFoodByBarcode = async (
   barcode: string
 ): Promise<ResponseType> => {
   try {
-    const url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
+    const url = `${PRODUCT_API}/${barcode}`;
     console.log('[FoodAPI] Fetching barcode:', url);
 
+    // ✅ Timeout pentru request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'FitnessApp/1.0 (Contact: your@email.com)',
+        'User-Agent': 'FitnessApp/1.0 (fitness.app@example.com)',
+        'Accept': 'application/json',
       },
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
+      console.error('[FoodAPI] Error response:', response.status);
       return { success: false, msg: 'Product not found' };
     }
 
@@ -164,7 +181,7 @@ export const getFoodByBarcode = async (
       code: product.code,
       product_name: product.product_name || 'Unknown Product',
       name: product.product_name || 'Unknown Product',
-      calories: Math.round(nutriments.energy_kcal_100g || 0),
+      calories: Math.round(nutriments['energy-kcal_100g'] || 0),
       protein: Math.round((nutriments.proteins_100g || 0) * 10) / 10,
       carbs: Math.round((nutriments.carbohydrates_100g || 0) * 10) / 10,
       fat: Math.round((nutriments.fat_100g || 0) * 10) / 10,
@@ -175,7 +192,11 @@ export const getFoodByBarcode = async (
 
     return { success: true, data: simplifiedFood };
   } catch (error: any) {
-    console.error('[FoodAPI] Barcode search error:', error);
+    if (error.name === 'AbortError') {
+      console.error('[FoodAPI] Barcode request timeout');
+      return { success: false, msg: 'Request timeout' };
+    }
+    console.error('[FoodAPI] Barcode search error:', error.message);
     return { success: false, msg: error?.message || 'Error fetching product' };
   }
 };

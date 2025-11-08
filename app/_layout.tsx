@@ -3,14 +3,14 @@ import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { Stack } from "expo-router";
 import React from "react";
-import 'react-native-reanimated';
+import "react-native-reanimated";
 
 if (__DEV__) {
   const originalWarn = console.warn;
   console.warn = (...args) => {
     if (
-      typeof args[0] === 'string' &&
-      args[0].includes('setLayoutAnimationEnabledExperimental')
+      typeof args[0] === "string" &&
+      args[0].includes("setLayoutAnimationEnabledExperimental")
     ) {
       return;
     }
@@ -20,7 +20,9 @@ if (__DEV__) {
 
 const StackLayout = () => {
   return (
-    <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+    <Stack
+      screenOptions={{ headerShown: false, animation: "slide_from_right" }}
+    >
       <Stack.Screen
         name="(modals)/profileModal"
         options={{
@@ -61,6 +63,27 @@ const StackLayout = () => {
         name="(modals)/nutritionSettings"
         options={{
           presentation: "modal",
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/manualCalories"
+        options={{
+          presentation: "modal",
+          animation: "fade_from_bottom",
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/barcodeScanner"
+        options={{
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/createFood"
+        options={{
+          presentation: "modal",
+          animation: "slide_from_bottom",
         }}
       />
     </Stack>
