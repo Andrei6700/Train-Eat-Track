@@ -24,6 +24,7 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"];
 
@@ -47,7 +48,6 @@ const Nutrition = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Modal pentru editare cantitate
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingFood, setEditingFood] = useState<{
     mealName: string;
@@ -56,7 +56,6 @@ const Nutrition = () => {
   } | null>(null);
   const [editQuantity, setEditQuantity] = useState("");
 
-  // Modal pentru acțiuni (long-press)
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [actionFood, setActionFood] = useState<{
     mealName: string;
@@ -101,7 +100,6 @@ const Nutrition = () => {
     );
   };
 
-  // ✅ Deschide modal pentru editare cantitate (simplu click)
   const handleFoodPress = (mealName: string, foodIndex: number, food: Food) => {
     const currentQuantity = parseFloat(food.servingSize) || 100;
     setEditingFood({ mealName, foodIndex, food });
@@ -109,7 +107,6 @@ const Nutrition = () => {
     setShowEditModal(true);
   };
 
-  // ✅ Salvează cantitatea actualizată
   const handleSaveQuantity = async () => {
     if (!editingFood || !editQuantity || parseFloat(editQuantity) <= 0) {
       Alert.alert("Eroare", "Te rog introdu o cantitate validă");
@@ -127,13 +124,11 @@ const Nutrition = () => {
     Alert.alert("Success", "Cantitatea a fost actualizată!");
   };
 
-  // ✅ Deschide modal pentru acțiuni (long-press)
   const handleFoodLongPress = (mealName: string, foodIndex: number, food: Food) => {
     setActionFood({ mealName, foodIndex, food });
     setShowActionsModal(true);
   };
 
-  // ✅ Copiază la altă masă
   const handleCopyFood = (toMeal: string) => {
     if (!actionFood) return;
     
@@ -142,7 +137,6 @@ const Nutrition = () => {
     Alert.alert("Success", `${actionFood.food.name} copiat la ${toMeal}`);
   };
 
-  // ✅ Mută la altă masă
   const handleMoveFood = (toMeal: string) => {
     if (!actionFood) return;
     
@@ -151,7 +145,6 @@ const Nutrition = () => {
     Alert.alert("Success", `${actionFood.food.name} mutat la ${toMeal}`);
   };
 
-  // ✅ Șterge alimentul
   const handleDeleteFood = () => {
     if (!actionFood) return;
 
@@ -204,6 +197,18 @@ const Nutrition = () => {
     return meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
   };
 
+  const getMealMacros = (mealName: string) => {
+    const meal = getMealData(mealName);
+    if (!meal) return { protein: 0, carbs: 0, fat: 0 };
+    
+    return meal.foods.reduce((totals, food) => {
+      totals.protein += food.protein || 0;
+      totals.carbs += food.carbs || 0;
+      totals.fat += food.fat || 0;
+      return totals;
+    }, { protein: 0, carbs: 0, fat: 0 });
+  };
+
   const handleMealPress = (mealName: string) => {
     router.push({
       pathname: "/(modals)/mealDetail",
@@ -212,6 +217,60 @@ const Nutrition = () => {
         date: selectedDate.toISOString()
       }
     });
+  };
+
+  // ✅ Icon mapping exact ca în imagine
+  const getFoodIcon = (foodName: string, brand?: string) => {
+    const name = foodName.toLowerCase();
+    const brandName = brand?.toLowerCase() || '';
+
+    // Powerjack / Protein products
+    if (name.includes('protein') || name.includes('proteine') || name.includes('powerjack') || name.includes('whey')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Peanut butter / Unt de arahide
+    if (name.includes('unt') || name.includes('butter') || name.includes('peanut') || name.includes('arahide')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Corn Flakes / Cereale
+    if (name.includes('fulgi') || name.includes('flakes') || name.includes('corn') || name.includes('cereale')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Lapte / Milk
+    if (name.includes('lapte') || name.includes('milk') || brandName.includes('pilos')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Meat & Poultry
+    if (name.includes('pui') || name.includes('piept') || name.includes('carne') || name.includes('chicken') || name.includes('beef') || name.includes('pork')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Fish
+    if (name.includes('somon') || name.includes('peste') || name.includes('fish') || name.includes('ton')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Eggs
+    if (name.includes('ou') || name.includes('egg') || name.includes('oua')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Bread
+    if (name.includes('pâine') || name.includes('bread') || name.includes('paine')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Fruits
+    if (name.includes('fruct') || name.includes('fruit') || name.includes('banana') || name.includes('apple') || name.includes('mar')) {
+      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
+    }
+    
+    // Default icon
+    return <Icons.Package size={20} color={colors.primary} weight="fill" />;
   };
 
   const totalCalories = getTotalCalories();
@@ -230,6 +289,10 @@ const Nutrition = () => {
   const proteinProgress = Math.min((totalMacros.protein / proteinGoal) * 100, 100);
   const carbsProgress = Math.min((totalMacros.carbs / carbsGoal) * 100, 100);
   const fatProgress = Math.min((totalMacros.fat / fatGoal) * 100, 100);
+
+  const proteinColor = '#10B981';
+  const carbsColor = '#EF4444';
+  const fatColor = '#F59E0B';
 
   return (
     <ScreenWrapper>
@@ -252,7 +315,7 @@ const Nutrition = () => {
             Nutrition
           </Typo>
           <TouchableOpacity onPress={() => router.push("/(modals)/nutritionSettings")}>
-            <Icons.GearSixIcon size={24} color={colors.primary} />
+            <Icons.Gear size={24} color={colors.primary} />
           </TouchableOpacity>
         </Animated.View>
 
@@ -266,7 +329,7 @@ const Nutrition = () => {
               <View style={styles.objectivesContainer}>
                 <View style={styles.objectiveItem}>
                   <View style={styles.objectiveHeader}>
-                    <Icons.TargetIcon size={20} color={colors.primary} weight="fill" />
+                    <Icons.Target size={20} color={colors.primary} weight="fill" />
                     <Typo size={16} fontWeight="600" color={colors.white}>
                       Obiectiv
                     </Typo>
@@ -277,7 +340,7 @@ const Nutrition = () => {
                 </View>
                 <View style={styles.objectiveItem}>
                   <View style={styles.objectiveHeader}>
-                    <Icons.FireIcon size={20} color="#FF6B35" weight="fill" />
+                    <Icons.Fire size={20} color="#FF6B35" weight="fill" />
                     <Typo size={16} fontWeight="600" color={colors.white}>
                       Consumat
                     </Typo>
@@ -317,7 +380,7 @@ const Nutrition = () => {
                     styles.macroProgressFill,
                     { 
                       width: `${proteinProgress}%`,
-                      backgroundColor: '#3B33C4'
+                      backgroundColor: proteinColor
                     }
                   ]} 
                 />
@@ -337,7 +400,7 @@ const Nutrition = () => {
                     styles.macroProgressFill,
                     { 
                       width: `${carbsProgress}%`,
-                      backgroundColor: '#10B981'
+                      backgroundColor: carbsColor
                     }
                   ]} 
                 />
@@ -357,7 +420,7 @@ const Nutrition = () => {
                     styles.macroProgressFill,
                     { 
                       width: `${fatProgress}%`,
-                      backgroundColor: '#B413BF'
+                      backgroundColor: fatColor
                     }
                   ]} 
                 />
@@ -374,80 +437,205 @@ const Nutrition = () => {
           entering={FadeInDown.duration(400).delay(300)}
           style={styles.mealsSection}
         >
-          <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-            Meals
-          </Typo>
-
           {MEALS.map((mealName, index) => {
             const meal = getMealData(mealName);
             const mealCalories = getMealCalories(mealName);
+            const mealMacros = getMealMacros(mealName);
             const hasFoods = meal && meal.foods.length > 0;
 
+            const proteinPercentage = Math.min(Math.round((mealMacros.protein / proteinGoal) * 100), 100);
+            const carbsPercentage = Math.min(Math.round((mealMacros.carbs / carbsGoal) * 100), 100);
+            const fatPercentage = Math.min(Math.round((mealMacros.fat / fatGoal) * 100), 100);
+
+            const circumference = 2 * Math.PI * 40;
+            const proteinArc = (proteinPercentage / 100) * circumference;
+            const carbsArc = (carbsPercentage / 100) * circumference;
+            const fatArc = (fatPercentage / 100) * circumference;
+
             return (
-              <View key={index} style={[styles.mealCard, hasFoods && styles.mealCardActive]}>
-                <TouchableOpacity
-                  style={styles.mealHeader}
-                  onPress={() => handleMealPress(mealName)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.mealInfo}>
-                    <Typo size={18} fontWeight="600">
-                      {mealName}
-                    </Typo>
-                    {hasFoods ? (
-                      <View style={styles.foodCount}>
-                        <Typo size={13} color={colors.neutral400}>
-                          {meal.foods.length} food{meal.foods.length !== 1 ? 's' : ''}
-                        </Typo>
-                      </View>
-                    ) : (
-                      <Typo size={13} color={colors.neutral400}>
-                        No food added
+              <View
+                key={index}
+                style={styles.mealCardExact}
+              >
+                <View style={styles.mealHeaderExact}>
+                  <Typo size={18} fontWeight="700" color={colors.white}>
+                    {mealName}
+                  </Typo>
+                </View>
+
+                <View style={styles.nutritionRow}>
+                  <View style={styles.circleContainerRow}>
+                    <Svg width={80} height={80} viewBox="0 0 100 100">
+                      <Circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        stroke={colors.neutral700}
+                        strokeWidth="8"
+                        fill="none"
+                      />
+                      <Circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        stroke={proteinColor}
+                        strokeWidth="8"
+                        fill="none"
+                        strokeDasharray={`${proteinArc} ${circumference}`}
+                        strokeDashoffset="0"
+                        transform="rotate(-90 50 50)"
+                      />
+                      <Circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        stroke={carbsColor}
+                        strokeWidth="8"
+                        fill="none"
+                        strokeDasharray={`${carbsArc} ${circumference}`}
+                        strokeDashoffset={-proteinArc}
+                        transform="rotate(-90 50 50)"
+                      />
+                      <Circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        stroke={fatColor}
+                        strokeWidth="8"
+                        fill="none"
+                        strokeDasharray={`${fatArc} ${circumference}`}
+                        strokeDashoffset={-(proteinArc + carbsArc)}
+                        transform="rotate(-90 50 50)"
+                      />
+                    </Svg>
+                    
+                    <View style={styles.circleTextRow}>
+                      <Typo size={16} fontWeight="600" color={colors.white} style={styles.calorieValueText}>
+                        {mealCalories.toFixed(0)}
                       </Typo>
-                    )}
+                      <Typo size={10} color={colors.neutral400} style={styles.calorieLabelText}>
+                        kCal
+                      </Typo>
+                    </View>
                   </View>
 
-                  <View style={styles.mealRight}>
-                    {hasFoods ? (
-                      <View style={styles.caloriesBadge}>
-                        <Typo size={16} fontWeight="600" color={colors.white}>
-                          {mealCalories}
-                        </Typo>
-                        <Typo size={11} color={colors.neutral400}>
-                          kcal
-                        </Typo>
-                      </View>
-                    ) : (
-                      <View style={styles.addIcon}>
-                        <Icons.PlusIcon size={20} color={colors.primary} weight="bold" />
-                      </View>
-                    )}
+                  <View style={styles.macrosContainerRow}>
+                    <View style={styles.macroItemRow}>
+                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
+                        {proteinPercentage}%
+                      </Typo>
+                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
+                        {Math.round(mealMacros.protein)} g
+                      </Typo>
+                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
+                        Prot.
+                      </Typo>
+                    </View>
+
+                    <View style={styles.macroItemRow}>
+                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
+                        {carbsPercentage}%
+                      </Typo>
+                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
+                        {Math.round(mealMacros.carbs)} g
+                      </Typo>
+                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
+                        Carb.
+                      </Typo>
+                    </View>
+
+                    <View style={styles.macroItemRow}>
+                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
+                        {fatPercentage}%
+                      </Typo>
+                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
+                        {Math.round(mealMacros.fat)} g
+                      </Typo>
+                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
+                        Grăsimi
+                      </Typo>
+                    </View>
                   </View>
-                </TouchableOpacity>
+                </View>
 
                 {hasFoods && (
                   <View style={styles.foodsList}>
-                    {meal.foods.map((food, idx) => (
+                    {meal.foods.map((food, foodIndex) => (
                       <TouchableOpacity
-                        key={idx}
-                        style={styles.foodItemContainer}
-                        onPress={() => handleFoodPress(mealName, idx, food)}
-                        onLongPress={() => handleFoodLongPress(mealName, idx, food)}
-                        activeOpacity={0.7}
+                        key={foodIndex}
+                        style={styles.foodItemImage}
+                        onPress={() => handleFoodPress(mealName, foodIndex, food)}
+                        onLongPress={() => handleFoodLongPress(mealName, foodIndex, food)}
                       >
-                        <View style={styles.foodItem}>
-                          <View style={styles.foodDot} />
-                          <Typo size={14} color={colors.neutral300} numberOfLines={1} style={{ flex: 1 }}>
-                            {food.name}
-                          </Typo>
-                          <Typo size={13} color={colors.primary} style={{ marginLeft: spacingX._10 }}>
-                            {food.calories} kcal
-                          </Typo>
+                        <View style={styles.foodMainRow}>
+                          <View style={styles.foodIconBox}>
+                            {getFoodIcon(food.name, (food as any).brand)}
+                          </View>
+                          
+                          <View style={styles.foodContentColumn}>
+                            <Typo size={14} fontWeight="600" color={colors.white} numberOfLines={1}>
+                              {food.name}
+                            </Typo>
+                            {(food as any).brand && (
+                              <Typo size={11} color={colors.neutral400} numberOfLines={1}>
+                                {(food as any).brand}
+                              </Typo>
+                            )}
+                            
+                            <View style={styles.foodMetricsRow}>
+                              <View style={styles.metricItem}>
+                                <Icons.Scales size={12} color={colors.neutral400} weight="fill" />
+                                <Typo size={11} color={colors.white}>
+                                  {food.servingSize || '100'} Grame
+                                </Typo>
+                              </View>
+                              
+                              <View style={styles.metricItem}>
+                                <Icons.Flame size={12} color={colors.neutral400} weight="fill" />
+                                <Typo size={11} color={colors.white}>
+                                  {Math.round(food.calories)}kCal
+                                </Typo>
+                              </View>
+                            </View>
+                            
+                            <View style={styles.macrosRow}>
+                              <View style={styles.macroTag}>
+                                <Icons.Drop size={12} color={proteinColor} weight="fill" />
+                                <Typo size={11} color={colors.white}>
+                                  {Math.round(food.protein)}g
+                                </Typo>
+                              </View>
+                              
+                              <View style={styles.macroTag}>
+                                <Icons.GrainsSlash size={12} color={carbsColor} weight="fill" />
+                                <Typo size={11} color={colors.white}>
+                                  {Math.round(food.carbs)}g
+                                </Typo>
+                              </View>
+                              
+                              <View style={styles.macroTag}>
+                                <Icons.Nut size={12} color={fatColor} weight="fill" />
+                                <Typo size={11} color={colors.white}>
+                                  {Math.round(food.fat)}g
+                                </Typo>
+                              </View>
+                            </View>
+                          </View>
                         </View>
                       </TouchableOpacity>
                     ))}
                   </View>
                 )}
+
+                <TouchableOpacity 
+                  style={styles.addButtonExact}
+                  onPress={() => handleMealPress(mealName)}
+                >
+                  <Icons.Plus size={18} color={colors.primary} weight="bold" />
+                  <Typo size={15} fontWeight="600" color={colors.primary}>
+                    Adaugă alimente
+                  </Typo>
+                </TouchableOpacity>
               </View>
             );
           })}
@@ -459,12 +647,12 @@ const Nutrition = () => {
           style={styles.waterCard}
         >
           <View style={styles.waterHeader}>
-            <Icons.DropIcon size={24} color={colors.primary} weight="fill" />
+            <Icons.Drop size={24} color={colors.primary} weight="fill" />
             <Typo size={20} fontWeight="600" style={{ flex: 1 }}>
               Aport apă
             </Typo>
             <TouchableOpacity onPress={handleResetWater}>
-              <Icons.ArrowCounterClockwiseIcon size={20} color={colors.neutral400} />
+              <Icons.ArrowCounterClockwise size={20} color={colors.neutral400} />
             </TouchableOpacity>
           </View>
 
@@ -505,7 +693,7 @@ const Nutrition = () => {
         </Animated.View>
       </ScrollView>
 
-      {/* ✅ MODAL PENTRU EDITARE CANTITATE */}
+      {/* Edit Modal */}
       <Modal
         visible={showEditModal}
         transparent
@@ -527,7 +715,7 @@ const Nutrition = () => {
 
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <Icons.XIcon size={24} color={colors.white} weight="bold" />
+                <Icons.X size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
                 Editează cantitatea
@@ -611,7 +799,7 @@ const Nutrition = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ✅ MODAL PENTRU ACȚIUNI (LONG-PRESS) CU ICONIȚE */}
+      {/* Actions Modal */}
       <Modal
         visible={showActionsModal}
         transparent
@@ -633,7 +821,6 @@ const Nutrition = () => {
                 </View>
 
                 <View style={styles.actionsList}>
-                  {/* Copiază la altă masă */}
                   <View style={styles.actionGroup}>
                     <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
                       Copiază la:
@@ -644,7 +831,7 @@ const Nutrition = () => {
                         style={styles.actionButton}
                         onPress={() => handleCopyFood(meal)}
                       >
-                        <Icons.CopyIcon size={20} color={colors.primary} weight="bold" />
+                        <Icons.Copy size={20} color={colors.primary} weight="bold" />
                         <Typo size={16} fontWeight="500">
                           {meal}
                         </Typo>
@@ -652,7 +839,6 @@ const Nutrition = () => {
                     ))}
                   </View>
 
-                  {/* Mută la altă masă */}
                   <View style={styles.actionGroup}>
                     <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
                       Mută la:
@@ -663,7 +849,7 @@ const Nutrition = () => {
                         style={styles.actionButton}
                         onPress={() => handleMoveFood(meal)}
                       >
-                        <Icons.ArrowsDownUpIcon size={20} color={colors.green} weight="bold" />
+                        <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
                         <Typo size={16} fontWeight="500">
                           {meal}
                         </Typo>
@@ -671,12 +857,11 @@ const Nutrition = () => {
                     ))}
                   </View>
 
-                  {/* Șterge */}
                   <TouchableOpacity
                     style={[styles.actionButton, styles.deleteAction]}
                     onPress={handleDeleteFood}
                   >
-                    <Icons.TrashIcon size={20} color={colors.rose} weight="bold" />
+                    <Icons.Trash size={20} color={colors.rose} weight="bold" />
                     <Typo size={16} fontWeight="600" color={colors.rose}>
                       Șterge aliment
                     </Typo>
@@ -833,69 +1018,135 @@ const styles = StyleSheet.create({
   },
   mealsSection: {
     marginBottom: spacingY._30,
+    gap: spacingY._15,
   },
-  mealCard: {
+  
+  // 🔥 MEAL CARD STYLES
+  mealCardExact: {
     backgroundColor: colors.neutral800,
-    borderRadius: radius._15,
+    borderRadius: radius._17,
     padding: spacingX._20,
-    marginBottom: spacingY._12,
     borderWidth: 1,
     borderColor: colors.neutral700,
+    marginBottom: spacingY._15,
   },
-  mealCardActive: {
-    borderColor: colors.primary,
-    borderWidth: 2,
+  mealHeaderExact: {
+    marginBottom: 16,
   },
-  mealHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  mealInfo: {
-    flex: 1,
-    gap: verticalScale(4),
-  },
-  foodCount: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._5,
-  },
-  mealRight: {
-    alignItems: "flex-end",
-  },
-  caloriesBadge: {
-    backgroundColor: colors.neutral700,
-    paddingHorizontal: spacingX._15,
-    paddingVertical: verticalScale(8),
+  nutritionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.neutral900,
     borderRadius: radius._12,
-    alignItems: "center",
+    padding: 16,
+    marginBottom: 16,
   },
-  addIcon: {
-    width: verticalScale(40),
-    height: verticalScale(40),
-    borderRadius: 100,
-    backgroundColor: colors.neutral700,
-    alignItems: "center",
-    justifyContent: "center",
+  circleContainerRow: {
+    position: 'relative',
+    width: 80,
+    height: 80,
   },
+  circleTextRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calorieValueText: {
+    lineHeight: 18,
+    marginBottom: 1,
+  },
+  calorieLabelText: {
+    lineHeight: 12,
+  },
+  macrosContainerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 16,
+  },
+  macroItemRow: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  macroPercentage: {
+    marginBottom: 2,
+  },
+  macroValueRow: {
+    marginBottom: 1,
+  },
+  macroLabelRow: {
+    lineHeight: 12,
+  },
+  
+  // 🔥 FOOD ITEM STYLES - EXACT CA ÎN IMAGINE
   foodsList: {
-    marginTop: spacingY._12,
-    gap: verticalScale(6),
+    gap: 8,
+    marginBottom: 16,
   },
-  foodItemContainer: {
-    paddingVertical: verticalScale(4),
+  foodItemImage: {
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    padding: 0,
+    borderWidth: 0,
   },
-  foodItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._10,
+  foodMainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
-  foodDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
+  foodIconBox: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.neutral900,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
+  foodContentColumn: {
+    flex: 1,
+    gap: 4,
+  },
+  foodMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 2,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  macrosRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  macroTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  
+  addButtonExact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+  },
+  
+  // MODAL STYLES
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
