@@ -209,6 +209,22 @@ const Nutrition = () => {
     }, { protein: 0, carbs: 0, fat: 0 });
   };
 
+  // ✅ FUNCȚIE NOUĂ: Calculează procentele pentru fiecare macronutrient din masă
+  const getMealMacroPercentages = (mealName: string) => {
+    const mealMacros = getMealMacros(mealName);
+    const totalGrams = mealMacros.protein + mealMacros.carbs + mealMacros.fat;
+    
+    if (totalGrams === 0) {
+      return { protein: 0, carbs: 0, fat: 0 };
+    }
+
+    return {
+      protein: Math.round((mealMacros.protein / totalGrams) * 100),
+      carbs: Math.round((mealMacros.carbs / totalGrams) * 100),
+      fat: Math.round((mealMacros.fat / totalGrams) * 100)
+    };
+  };
+
   const handleMealPress = (mealName: string) => {
     router.push({
       pathname: "/(modals)/mealDetail",
@@ -441,16 +457,14 @@ const Nutrition = () => {
             const meal = getMealData(mealName);
             const mealCalories = getMealCalories(mealName);
             const mealMacros = getMealMacros(mealName);
+            const mealPercentages = getMealMacroPercentages(mealName);
             const hasFoods = meal && meal.foods.length > 0;
 
-            const proteinPercentage = Math.min(Math.round((mealMacros.protein / proteinGoal) * 100), 100);
-            const carbsPercentage = Math.min(Math.round((mealMacros.carbs / carbsGoal) * 100), 100);
-            const fatPercentage = Math.min(Math.round((mealMacros.fat / fatGoal) * 100), 100);
-
+            // ✅ CALCUL NOU: Circumferința și lungimile arcurilor pentru fiecare macronutrient
             const circumference = 2 * Math.PI * 40;
-            const proteinArc = (proteinPercentage / 100) * circumference;
-            const carbsArc = (carbsPercentage / 100) * circumference;
-            const fatArc = (fatPercentage / 100) * circumference;
+            const proteinArc = (mealPercentages.protein / 100) * circumference;
+            const carbsArc = (mealPercentages.carbs / 100) * circumference;
+            const fatArc = (mealPercentages.fat / 100) * circumference;
 
             return (
               <View
@@ -466,6 +480,7 @@ const Nutrition = () => {
                 <View style={styles.nutritionRow}>
                   <View style={styles.circleContainerRow}>
                     <Svg width={80} height={80} viewBox="0 0 100 100">
+                      {/* Background circle */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -474,6 +489,7 @@ const Nutrition = () => {
                         strokeWidth="8"
                         fill="none"
                       />
+                      {/* Protein segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -485,6 +501,7 @@ const Nutrition = () => {
                         strokeDashoffset="0"
                         transform="rotate(-90 50 50)"
                       />
+                      {/* Carbs segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -496,6 +513,7 @@ const Nutrition = () => {
                         strokeDashoffset={-proteinArc}
                         transform="rotate(-90 50 50)"
                       />
+                      {/* Fat segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -522,7 +540,7 @@ const Nutrition = () => {
                   <View style={styles.macrosContainerRow}>
                     <View style={styles.macroItemRow}>
                       <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {proteinPercentage}%
+                        {mealPercentages.protein}%
                       </Typo>
                       <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
                         {Math.round(mealMacros.protein)} g
@@ -534,7 +552,7 @@ const Nutrition = () => {
 
                     <View style={styles.macroItemRow}>
                       <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {carbsPercentage}%
+                        {mealPercentages.carbs}%
                       </Typo>
                       <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
                         {Math.round(mealMacros.carbs)} g
@@ -546,7 +564,7 @@ const Nutrition = () => {
 
                     <View style={styles.macroItemRow}>
                       <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {fatPercentage}%
+                        {mealPercentages.fat}%
                       </Typo>
                       <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
                         {Math.round(mealMacros.fat)} g

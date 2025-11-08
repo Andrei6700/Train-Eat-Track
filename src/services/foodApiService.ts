@@ -3,6 +3,10 @@ import { ResponseType } from '@/src/types/index';
 const OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl";
 const PRODUCT_API = "https://world.openfoodfacts.org/api/v2/product";
 
+// Increased timeout and added retry logic
+const TIMEOUT_MS = 15000; // 15 seconds
+const MAX_RETRIES = 2;
+
 export type OpenFoodFactsProduct = {
   code: string;
   product_name: string;
@@ -36,7 +40,39 @@ export type SimplifiedFood = {
 };
 
 /**
- * Caută alimente în baza de date Open Food Facts
+ * Fetch with timeout and retry logic
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries: number = MAX_RETRIES
+): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error: any) {
+      if (i === retries) throw error;
+      
+      // Wait before retrying (exponential backoff)
+      const waitTime = Math.min(1000 * Math.pow(2, i), 5000);
+      console.log(`[FoodAPI] Retry ${i + 1}/${retries} after ${waitTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+/**
+ * Search for food in Open Food Facts database
  */
 export const searchFood = async (
   query: string,
@@ -63,20 +99,13 @@ export const searchFood = async (
     const url = `${OPEN_FOOD_FACTS_API}?${params.toString()}`;
     console.log('[FoodAPI] Searching:', url);
 
-    // ✅ Timeout pentru request
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 secunde timeout
-
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'GET',
       headers: {
         'User-Agent': 'FitnessApp/1.0 (fitness.app@example.com)',
         'Accept': 'application/json',
       },
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error('[FoodAPI] Error response:', response.status, response.statusText);
@@ -92,7 +121,6 @@ export const searchFood = async (
 
     console.log(`[FoodAPI] Found ${data.products.length} products`);
 
-    // Transformă rezultatele în formatul nostru
     const simplifiedFoods: SimplifiedFood[] = data.products
       .filter((product: OpenFoodFactsProduct) => {
         return product.nutriments && 
@@ -139,7 +167,7 @@ export const searchFood = async (
 };
 
 /**
- * Obține detalii despre un produs specific după barcode
+ * Get food details by barcode
  */
 export const getFoodByBarcode = async (
   barcode: string
@@ -148,20 +176,13 @@ export const getFoodByBarcode = async (
     const url = `${PRODUCT_API}/${barcode}`;
     console.log('[FoodAPI] Fetching barcode:', url);
 
-    // ✅ Timeout pentru request
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'GET',
       headers: {
         'User-Agent': 'FitnessApp/1.0 (fitness.app@example.com)',
         'Accept': 'application/json',
       },
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error('[FoodAPI] Error response:', response.status);
@@ -194,7 +215,7 @@ export const getFoodByBarcode = async (
   } catch (error: any) {
     if (error.name === 'AbortError') {
       console.error('[FoodAPI] Barcode request timeout');
-      return { success: false, msg: 'Request timeout' };
+      return { success: false, msg: 'Request timeout - please try again' };
     }
     console.error('[FoodAPI] Barcode search error:', error.message);
     return { success: false, msg: error?.message || 'Error fetching product' };
@@ -202,7 +223,7 @@ export const getFoodByBarcode = async (
 };
 
 /**
- * Sugestii de căutare bazate pe categorii populare
+ * Food suggestions by category
  */
 export const getFoodSuggestions = (category: 'protein' | 'carbs' | 'snacks' | 'breakfast'): string[] => {
   const suggestions = {
