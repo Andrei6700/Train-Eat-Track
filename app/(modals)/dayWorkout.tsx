@@ -18,13 +18,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { KeyboardAvoidingView, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DayWorkout = () => {
   const { day } = useLocalSearchParams();
   const router = useRouter();
-  const { workoutPlan, updateDay, loading: contextLoading } = useWorkoutPlan();
+  const { workoutPlan, updateDay } = useWorkoutPlan();
   const [saving, setSaving] = useState(false);
   const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<WorkoutExercise[]>([

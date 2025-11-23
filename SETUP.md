@@ -41,9 +41,23 @@ npm install @react-native-segmented-control/segmented-control
 npm install react-native-gifted-charts
 ```
 
-### 4. Configure Firebase
+### 4. Set Up Configuration Files
 
-#### 4.1. Create a Firebase Project
+Copy the template configuration files:
+
+```bash
+# Copy Firebase config template
+cp src/config/firebase.template.ts src/config/firebase.ts
+
+# Copy constants config template
+cp constants/config.template.ts constants/config.ts
+```
+
+These files are in .gitignore, so your actual credentials won't be committed.
+
+### 5. Configure Firebase
+
+#### 5.1. Create a Firebase Project
 
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Create a new project
@@ -54,14 +68,14 @@ npm install react-native-gifted-charts
    - Go to Firestore Database
    - Create database in test mode (or production mode with security rules)
 
-#### 4.2. Get Firebase Configuration
+#### 5.2. Get Firebase Configuration
 
 1. In Firebase Console, go to Project Settings (gear icon)
 2. Scroll down to "Your apps"
 3. Click on "Web app" (</> icon)
 4. Copy the firebaseConfig object
 
-#### 4.3. Set Up Environment Variables
+#### 5.3. Set Up Environment Variables
 
 1. Copy the example environment file:
    ```bash
@@ -84,7 +98,7 @@ npm install react-native-gifted-charts
    EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your-upload-preset
    ```
 
-### 5. Configure Firebase Security Rules
+### 6. Configure Firebase Security Rules
 
 Add the following security rules in Firebase Console > Firestore Database > Rules:
 
@@ -121,7 +135,7 @@ service cloud.firestore {
 }
 ```
 
-### 6. Start the Development Server
+### 7. Start the Development Server
 
 ```bash
 npm start

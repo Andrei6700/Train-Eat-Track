@@ -152,7 +152,7 @@ const History = () => {
           viewPosition: 0.5,
         });
         didInitialScrollRef.current = true;
-      } catch (err) {
+      } catch {
         try {
           flatListRef.current?.scrollToOffset({
             offset: Math.max(0, idx * ITEM_WIDTH),

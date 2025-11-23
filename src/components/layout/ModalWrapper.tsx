@@ -3,7 +3,7 @@ import { ModalWrapperProps } from '@/src/types/index';
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
-const isIos = Platform.OS == "ios";
+const isIos = Platform.OS === "ios";
 const ModalWrapper = ({
     style,
     children,

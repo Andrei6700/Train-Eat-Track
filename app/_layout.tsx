@@ -1,7 +1,7 @@
 import { AuthProvider } from "@/src/contexts/authContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { Stack } from "expo-router";
-import React, { useEffect } from "react";
+import React from "react";
 import 'react-native-reanimated';
 
 // Configurare pentru a dezactiva warning-urile Layout Animations

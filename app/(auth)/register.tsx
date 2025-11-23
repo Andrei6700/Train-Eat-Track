@@ -44,7 +44,7 @@ const Register = () => {
 
         <View style={{ gap: 5, marginTop: spacingY._20 }}>
           <Typo size={30} fontWeight={"800"}>
-            Let's
+            Let&apos;s
           </Typo>
           <Typo size={30} fontWeight={"800"}>
             Get Started

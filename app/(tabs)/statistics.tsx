@@ -35,7 +35,6 @@ const Statistics = () => {
   const { user } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
-  const [loading, setLoading] = useState(true);
   
   // Exercise specific stats
   const [availableExercises, setAvailableExercises] = useState<string[]>([]);
@@ -73,8 +72,6 @@ const Statistics = () => {
       }
     } catch (error) {
       console.error("Error fetching workouts:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -500,7 +497,7 @@ const Statistics = () => {
               No data for this period
             </Typo>
             <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
-              Train "{selectedExercise}" to see your progress
+              Train &quot;{selectedExercise}&quot; to see your progress
             </Typo>
           </View>
         )}

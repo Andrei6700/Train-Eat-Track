@@ -80,7 +80,7 @@ const handleSubmit = async () => {
           </Button>
         </View>
         <View style={styles.footer}>
-          <Typo size={15}>Don't have an account?</Typo>
+          <Typo size={15}>Don&apos;t have an account?</Typo>
           <Pressable onPress={() => router.navigate("/(auth)/register")}>
             <Typo size={15} fontWeight={"700"} color={colors.primary}>
               Sign Up

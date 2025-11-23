@@ -1,6 +1,5 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
-  createWorkoutPlan,
   deleteWorkoutPlan,
   getUserWorkoutPlan,
   updateWorkoutPlan,

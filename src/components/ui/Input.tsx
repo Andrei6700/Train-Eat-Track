@@ -1,4 +1,4 @@
-import { colors, radius, spacingX } from '@/constants/theme';
+import { colors, radius } from '@/constants/theme';
 import { InputProps } from '@/src/types/index';
 import { verticalScale, scale } from '@/src/utils/styling';
 import React from 'react';
