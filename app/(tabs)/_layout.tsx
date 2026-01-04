@@ -10,6 +10,7 @@ const _layout = () => {
     >
       <Tabs.Screen name='index' />
       <Tabs.Screen name='workout' />
+      <Tabs.Screen name='nutrition' />
       <Tabs.Screen name='history' />
       <Tabs.Screen name='statistics' />
       <Tabs.Screen name='profile' />

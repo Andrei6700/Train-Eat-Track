@@ -1,15 +1,15 @@
 import { firestore } from "@/src/config/firebase";
 import { ResponseType, WorkoutPlan } from '@/src/types/index';
 import {
-    addDoc,
-    collection,
-    deleteDoc,  
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    updateDoc,
-    where
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "workoutPlans";
@@ -97,7 +97,7 @@ export const deleteWorkoutPlan = async (
     
     const workoutsSnapshot = await getDocs(workoutsQuery);
     
-    // Șterge fiecare workout în parte
+    // sterge fiecare workout în parte
     const deletePromises = workoutsSnapshot.docs.map(workoutDoc => 
       deleteDoc(doc(firestore, WORKOUTS_COLLECTION, workoutDoc.id))
     );

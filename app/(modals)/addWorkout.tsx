@@ -21,6 +21,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from 'expo-haptics';
 
 const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
 
@@ -33,9 +34,12 @@ const AddWorkout = () => {
   const [loading, setLoading] = useState(false);
   
   // Timer states
-  const [currentTime, setCurrentTime] = useState(0); // Timpul curent (resetabil cu LAP)
-  const [totalTime, setTotalTime] = useState(0); // Timpul TOTAL acumulat
+  const [currentTime, setCurrentTime] = useState(0); 
+  const [totalTime, setTotalTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // state to hold history strings for each exercise (by name)
+  const [historyData, setHistoryData] = useState<Record<string, string>>({});
 
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
     {
@@ -44,7 +48,6 @@ const AddWorkout = () => {
     },
   ]);
 
-  // Prefill din plan + date din săptămâna trecută
   useEffect(() => {
     loadWorkoutData();
   }, [workoutPlan, user?.uid]);
@@ -60,15 +63,26 @@ const AddWorkout = () => {
       return;
     }
 
+    // Try to get data from last week
     const lastWeekResult = await getLastWeekWorkout(user.uid, dayName);
-    
+    let newHistoryData: Record<string, string> = {};
+
     if (lastWeekResult.success && lastWeekResult.data) {
       const mergedExercises = planDay.exercises.map((planEx) => {
+        // Find if we did this exercise last week
         const lastWeekEx = lastWeekResult.data.exercises?.find(
           (ex: WorkoutExercise) => ex.exerciseName.toLowerCase() === planEx.exerciseName.toLowerCase()
         );
 
         if (lastWeekEx) {
+          // Construct the history string
+          // Example: "Last: 80kg x 8, 80kg x 8"
+          const historyStr = lastWeekEx.sets
+            .map((s: WorkoutSet) => `${s.weight}${s.weightUnit} x ${s.reps}`)
+            .join(", ");
+          
+          newHistoryData[planEx.exerciseName] = `Last: ${historyStr}`;
+
           return {
             exerciseName: planEx.exerciseName,
             sets: lastWeekEx.sets.map((s: WorkoutSet) => ({
@@ -79,6 +93,7 @@ const AddWorkout = () => {
           };
         }
 
+        // If not found in history, just use the plan template
         return {
           exerciseName: planEx.exerciseName,
           sets: planEx.sets?.map((s) => ({
@@ -90,7 +105,9 @@ const AddWorkout = () => {
       });
 
       setExercises(mergedExercises as WorkoutExercise[]);
+      setHistoryData(newHistoryData); // Save the history strings
     } else {
+      // No history found, just load plain plan
       const cloned = planDay.exercises.map((ex) => ({
         exerciseName: ex.exerciseName || "",
         sets: ex.sets?.map((s) => ({
@@ -99,12 +116,10 @@ const AddWorkout = () => {
           weightUnit: s.weightUnit || "kg",
         })) || [{ reps: 0, weight: 0, weightUnit: "kg" }],
       })) as WorkoutExercise[];
-
       setExercises(cloned);
     }
   };
 
-  // Timer automat
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setCurrentTime((prev) => prev + 1);
@@ -122,19 +137,19 @@ const AddWorkout = () => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-
     if (hrs > 0) {
       return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
     }
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  // ✅ Functia LAP - resetează currentTime
   const handleLap = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCurrentTime(0);
   };
 
   const addExercise = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setExercises([
       ...exercises,
       {
@@ -145,6 +160,7 @@ const AddWorkout = () => {
   };
 
   const removeExercise = (index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (exercises.length === 1) {
       Alert.alert("Error", "You need at least one exercise");
       return;
@@ -160,6 +176,7 @@ const AddWorkout = () => {
   };
 
   const addSet = (exerciseIndex: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newExercises = [...exercises];
     const lastSet = newExercises[exerciseIndex].sets[newExercises[exerciseIndex].sets.length - 1];
     newExercises[exerciseIndex].sets.push({
@@ -171,6 +188,7 @@ const AddWorkout = () => {
   };
 
   const removeSet = (exerciseIndex: number, setIndex: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (exercises[exerciseIndex].sets.length === 1) {
       Alert.alert("Error", "Each exercise needs at least one set");
       return;
@@ -208,6 +226,7 @@ const AddWorkout = () => {
   };
 
   const handleSaveWorkout = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const hasEmptyExerciseName = exercises.some((ex) => !ex.exerciseName.trim());
     if (hasEmptyExerciseName) {
       Alert.alert("Error", "Please fill in all exercise names");
@@ -231,13 +250,12 @@ const AddWorkout = () => {
     if (!existsCheck.success && existsCheck.data?.exists) {
       Alert.alert(
         "Already Logged", 
-        "You already have a workout logged for today. You can only log one workout per day.",
+        "You already have a workout logged for today.",
         [{ text: "OK" }]
       );
       return;
     }
 
-    // ✅ Salvează totalTime (timpul TOTAL acumulat)
     const workoutData = {
       userID: user.uid,
       date: new Date(),
@@ -249,7 +267,6 @@ const AddWorkout = () => {
     try {
       const result = await addWorkout(workoutData as any);
       setLoading(false);
-
       if (result.success) {
         Alert.alert("Success", "Workout saved successfully!", [
           {
@@ -267,7 +284,6 @@ const AddWorkout = () => {
       }
     } catch (err: any) {
       setLoading(false);
-      console.error("Error saving workout:", err);
       Alert.alert("Error", err?.message || "Could not save workout");
     }
   };
@@ -276,39 +292,30 @@ const AddWorkout = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title="Add Workout"
+          title="Log Workout"
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._15 }}
         />
 
         {/* Timer Container */}
         <View style={styles.timerContainer}>
-          {/* Current Time (resetabil cu LAP) */}
           <View style={styles.currentTimeSection}>
-            <Typo size={11} color={colors.neutral400} style={{ marginBottom: spacingY._5 }}>
-              REST TIME
+            <Typo size={12} color={colors.neutral400} style={{ marginBottom: spacingY._5 }}>
+              REST TIMER
             </Typo>
-            <Typo size={40} fontWeight="700" color={colors.primary}>
+            <Typo size={36} fontWeight="700" color={colors.primary}>
               {formatTime(currentTime)}
             </Typo>
           </View>
-
-          {/* LAP Button */}
           <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
-            <Icons.ArrowCounterClockwiseIcon size={20} color={colors.white} weight="bold" />
-            <Typo size={14} fontWeight="600" color={colors.white}>
-              Lap 
+            <Icons.ArrowCounterClockwise size={18} color={colors.black} weight="bold" />
+            <Typo size={14} fontWeight="700" color={colors.black}>
+              RESET REST
             </Typo>
           </TouchableOpacity>
-
-          {/* Total Time (acumulat) */}
           <View style={styles.totalTimeSection}>
-            <Typo size={11} color={colors.neutral400}>
-              TOTAL TIME
-            </Typo>
-            <Typo size={16} fontWeight="600" color={colors.white}>
-              {formatTime(totalTime)}
-            </Typo>
+             <Typo size={12} color={colors.neutral400}>TOTAL TIME: </Typo>
+             <Typo size={14} fontWeight="600" color={colors.white}>{formatTime(totalTime)}</Typo>
           </View>
         </View>
 
@@ -316,63 +323,79 @@ const AddWorkout = () => {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: verticalScale(100) }]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Exercises */}
           {exercises.map((exercise, exerciseIndex) => (
             <View key={exerciseIndex} style={styles.exerciseCard}>
               <View style={styles.exerciseHeader}>
-                <Typo size={18} fontWeight="600">
-                  Exercise {exerciseIndex + 1}
-                </Typo>
+                <View style={{flex: 1}}>
+                    <Typo size={16} fontWeight="600" color={colors.neutral300} style={{marginBottom: 4}}>
+                    Exercise {exerciseIndex + 1}
+                    </Typo>
+                    <Input
+                        placeholder="Exercise Name"
+                        value={exercise.exerciseName}
+                        onChangeText={(text) => updateExerciseName(exerciseIndex, text)}
+                        containerStyle={styles.exerciseNameInput}
+                    />
+                    {/* ✅ PREVIOUS STATS DISPLAY */}
+                    {historyData[exercise.exerciseName] && (
+                        <View style={styles.historyContainer}>
+                            <Icons.ClockCounterClockwise size={14} color={colors.primary} />
+                            <Typo size={12} color={colors.primary} style={{flex: 1}}>
+                                {historyData[exercise.exerciseName]}
+                            </Typo>
+                        </View>
+                    )}
+                </View>
+
                 {exercises.length > 1 && (
                   <TouchableOpacity
                     onPress={() => removeExercise(exerciseIndex)}
                     style={styles.removeButton}
                   >
-                    <Icons.TrashIcon size={20} color={colors.rose} />
+                    <Icons.Trash size={20} color={colors.rose} />
                   </TouchableOpacity>
                 )}
               </View>
 
-              <Input
-                placeholder="Exercise name (e.g., Bench Press)"
-                value={exercise.exerciseName}
-                onChangeText={(text) => updateExerciseName(exerciseIndex, text)}
-                containerStyle={{ marginBottom: spacingY._15 }}
-              />
-
-              <Typo size={15} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
-                Sets
-              </Typo>
+              {/* Header Row for Sets */}
+              <View style={styles.setHeaderRow}>
+                 <Typo size={12} color={colors.neutral400} style={{width: 30, textAlign: 'center'}}>Set</Typo>
+                 <Typo size={12} color={colors.neutral400} style={{flex: 1, textAlign: 'center'}}>Reps</Typo>
+                 <Typo size={12} color={colors.neutral400} style={{flex: 1, textAlign: 'center'}}>Weight</Typo>
+                 <View style={{width: 30}} /> 
+              </View>
 
               {exercise.sets.map((set, setIndex) => (
                 <View key={setIndex} style={styles.setRow}>
                   <View style={styles.setNumber}>
-                    <Typo size={14} color={colors.neutral400}>
+                    <Typo size={13} color={colors.neutral200} fontWeight="600">
                       {setIndex + 1}
                     </Typo>
                   </View>
 
                   <View style={styles.setInput}>
                     <Input
-                      placeholder="Reps"
+                      placeholder="0"
                       keyboardType="numeric"
                       value={set.reps > 0 ? set.reps.toString() : ""}
                       onChangeText={(text) =>
                         updateSet(exerciseIndex, setIndex, "reps", text)
                       }
                       containerStyle={styles.smallInput}
+                      inputStyle={{textAlign: 'center'}}
                     />
                   </View>
 
                   <View style={styles.setInput}>
                     <Input
-                      placeholder="Weight"
+                      placeholder="0"
                       keyboardType="numeric"
                       value={set.weight > 0 ? set.weight.toString() : ""}
                       onChangeText={(text) =>
                         updateSet(exerciseIndex, setIndex, "weight", text)
                       }
                       containerStyle={styles.smallInput}
+                      inputStyle={{textAlign: 'center'}}
                     />
                   </View>
 
@@ -380,18 +403,18 @@ const AddWorkout = () => {
                     onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
                     style={styles.unitButton}
                   >
-                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                    <Typo size={12} fontWeight="600" color={colors.neutral400}>
                       {set.weightUnit}
                     </Typo>
                   </TouchableOpacity>
 
                   {exercise.sets.length > 1 && (
-                    <TouchableOpacity
-                      onPress={() => removeSet(exerciseIndex, setIndex)}
-                      style={styles.removeSetButton}
-                    >
-                      <Icons.XIcon size={18} color={colors.rose} />
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => removeSet(exerciseIndex, setIndex)}
+                        style={styles.removeSetButton}
+                      >
+                        <Icons.X size={16} color={colors.neutral500} />
+                      </TouchableOpacity>
                   )}
                 </View>
               ))}
@@ -400,8 +423,8 @@ const AddWorkout = () => {
                 onPress={() => addSet(exerciseIndex)}
                 style={styles.addSetButton}
               >
-                <Icons.PlusIcon size={18} color={colors.primary} />
-                <Typo size={14} fontWeight="500" color={colors.primary}>
+                <Icons.Plus size={16} color={colors.primary} />
+                <Typo size={14} fontWeight="600" color={colors.primary}>
                   Add Set
                 </Typo>
               </TouchableOpacity>
@@ -409,16 +432,15 @@ const AddWorkout = () => {
           ))}
 
           <TouchableOpacity onPress={addExercise} style={styles.addExerciseButton}>
-            <Icons.PlusCircleIcon size={24} color={colors.primary} weight="fill" />
-            <Typo size={16} fontWeight="600" color={colors.primary}>
+            <Icons.PlusCircle size={24} color={colors.white} weight="fill" />
+            <Typo size={16} fontWeight="600" color={colors.white}>
               Add Exercise
             </Typo>
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Footer - Save Button */}
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button onPress={handleSaveWorkout} loading={loading} style={{ flex: 1 }}>
+          <Button onPress={handleSaveWorkout} loading={loading} style={styles.finishButton}>
             <Typo color={colors.black} fontWeight="700" size={18}>
               Finish Workout
             </Typo>
@@ -439,12 +461,16 @@ const styles = StyleSheet.create({
   timerContainer: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
-    padding: spacingX._20,
+    padding: spacingX._15,
     marginBottom: spacingY._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
     alignItems: "center",
-    gap: spacingY._12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
   },
   currentTimeSection: {
     alignItems: "center",
@@ -454,19 +480,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacingX._7,
-    backgroundColor: colors.neutral700,
-    paddingVertical: spacingY._10,
+    backgroundColor: colors.primary,
+    paddingVertical: spacingY._7,
     paddingHorizontal: spacingX._20,
     borderRadius: radius._12,
-    borderWidth: 2,
-    borderColor: colors.primary,
+    marginVertical: spacingY._10,
   },
   totalTimeSection: {
+    flexDirection: 'row',
     alignItems: "center",
-    paddingTop: spacingY._10,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral700,
-    width: "100%",
+    gap: 5,
   },
   scrollContent: {
     paddingBottom: verticalScale(20),
@@ -475,18 +498,41 @@ const styles = StyleSheet.create({
   exerciseCard: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
-    padding: spacingX._20,
+    padding: spacingX._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
   },
   exerciseHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: spacingY._15,
+  },
+  exerciseNameInput: {
+      backgroundColor: colors.neutral900,
+      height: verticalScale(40),
+      borderRadius: radius._10,
+      borderWidth: 0,
+  },
+  historyContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 6,
+      backgroundColor: 'rgba(163, 230, 53, 0.1)',
+      padding: 6,
+      borderRadius: radius._6,
   },
   removeButton: {
     padding: spacingX._7,
+    backgroundColor: colors.neutral900,
+    borderRadius: radius._10,
+    marginLeft: 10,
+  },
+  setHeaderRow: {
+      flexDirection: 'row',
+      marginBottom: 8,
+      paddingHorizontal: 4,
   },
   setRow: {
     flexDirection: "row",
@@ -495,10 +541,7 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._10,
   },
   setNumber: {
-    width: verticalScale(30),
-    height: verticalScale(30),
-    borderRadius: 100,
-    backgroundColor: colors.neutral700,
+    width: 30,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -506,18 +549,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   smallInput: {
-    height: verticalScale(45),
+    height: verticalScale(40),
+    backgroundColor: colors.neutral900,
+    borderWidth: 0,
   },
   unitButton: {
-    backgroundColor: colors.neutral700,
-    paddingHorizontal: spacingX._12,
-    paddingVertical: verticalScale(10),
-    borderRadius: radius._10,
-    minWidth: verticalScale(50),
-    alignItems: "center",
+    paddingHorizontal: 4,
   },
   removeSetButton: {
-    padding: spacingX._5,
+    padding: 5,
   },
   addSetButton: {
     flexDirection: "row",
@@ -525,11 +565,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacingX._7,
     paddingVertical: spacingY._10,
-    marginTop: spacingY._10,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    marginTop: spacingY._5,
+    backgroundColor: colors.neutral900,
     borderRadius: radius._12,
-    borderStyle: "dashed",
   },
   addExerciseButton: {
     flexDirection: "row",
@@ -537,11 +575,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacingX._10,
     paddingVertical: spacingY._15,
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.neutral700,
     borderRadius: radius._17,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    borderStyle: "dashed",
+    marginTop: spacingY._10,
   },
   footerSticky: {
     position: "absolute",
@@ -549,4 +585,11 @@ const styles = StyleSheet.create({
     right: spacingX._20,
     zIndex: 30,
   },
+  finishButton: {
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      elevation: 5,
+  }
 });

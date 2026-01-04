@@ -83,17 +83,17 @@ export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseT
   }
 };
 
-// ia workout-ul de acum o saptamâna pentru ziua specificată
+// ia workout-ul de acum o saptamana pentru ziua specificata
 export const getLastWeekWorkout = async (userID: string, dayName: string): Promise<ResponseType> => {
   try {
     console.log("[workoutService] getLastWeekWorkout userID:", userID, "dayName:", dayName);
-    
-    // Calculam data de acum 7 zile
+
+    // calculeaza data de acum 7 zile
     const today = new Date();
     const lastWeek = new Date(today);
     lastWeek.setDate(today.getDate() - 7);
     
-    // intervalul de timp pentru ziua respectiva acum o saptamâna
+    // intervalul de timp pentru ziua respectiva acum o saptamana
     const startOfDay = new Date(lastWeek);
     startOfDay.setHours(0, 0, 0, 0);
     
