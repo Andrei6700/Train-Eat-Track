@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import NutritionCalendar from "@/src/components/ui/NutritionCalendar";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
@@ -6,11 +7,12 @@ import Typo from "@/src/components/ui/Typo";
 import WaterWave from "@/src/components/ui/WaterWave";
 import { useAuth } from "@/src/contexts/authContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { preloadWeekNutrition } from "@/src/services/nutritionCacheService";
 import { Food } from "@/src/types/index";
-import { verticalScale } from "@/src/utils/styling";
+import { scale, verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -22,11 +24,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"];
+const MONTHS = [
+  "ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
+  "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"
+];
 
 const Nutrition = () => {
   const router = useRouter();
@@ -47,6 +53,9 @@ const Nutrition = () => {
 
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
+  const [daysData, setDaysData] = useState<Array<{date: Date, calories: number, goal: number}>>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingFood, setEditingFood] = useState<{
@@ -64,20 +73,74 @@ const Nutrition = () => {
   } | null>(null);
 
   useEffect(() => {
+    generateWeek();
+  }, []);
+
+  useEffect(() => {
     if (user?.uid) {
-      loadNutritionData();
+      loadNutritionData(selectedDate);
     }
   }, [user?.uid, selectedDate]);
 
-  const loadNutritionData = async () => {
-    await refreshNutrition(selectedDate);
+  useEffect(() => {
+    if (user?.uid && currentWeek.length > 0) {
+      preloadWeekData();
+    }
+  }, [user?.uid, currentWeek]);
+
+  const generateWeek = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+    const week: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday);
+      day.setDate(monday.getDate() + i);
+      week.push(day);
+    }
+
+    setCurrentWeek(week);
+    setSelectedDate(today);
+  };
+
+  const preloadWeekData = async () => {
+    if (!user?.uid || currentWeek.length === 0) return;
+
+    setCalendarLoading(true);
+    const cachedData = await preloadWeekNutrition(user.uid, currentWeek);
+    
+    const daysArray = currentWeek.map(date => {
+      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      const cached = cachedData.get(key);
+      return {
+        date,
+        calories: cached?.calories || 0,
+        goal: cached?.goal || 2500,
+      };
+    });
+
+    setDaysData(daysArray);
+    setCalendarLoading(false);
+  };
+
+  const loadNutritionData = async (date: Date) => {
+    await refreshNutrition(date);
     setRefreshing(false);
   };
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadNutritionData();
-  }, [selectedDate]);
+    loadNutritionData(selectedDate);
+    preloadWeekData();
+  }, [selectedDate, user?.uid]);
+
+  const handleDayPress = useCallback((day: Date, index: number) => {
+    setSelectedDate(day);
+    // load data in the background
+    loadNutritionData(day);
+  }, []);
 
   const handleAddWater = async (amount: number) => {
     await addWaterIntake(amount);
@@ -149,12 +212,12 @@ const Nutrition = () => {
     if (!actionFood) return;
 
     Alert.alert(
-      "Șterge aliment",
-      `Ești sigur că vrei să ștergi ${actionFood.food.name}?`,
+      "Sterge aliment",
+      `Esti sigur ca vrei sa stergi ${actionFood.food.name}?`,
       [
-        { text: "Anulează", style: "cancel" },
+        { text: "Anuleaza", style: "cancel" },
         {
-          text: "Șterge",
+          text: "Sterge",
           style: "destructive",
           onPress: async () => {
             await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
@@ -166,17 +229,28 @@ const Nutrition = () => {
     );
   };
 
-  const getTotalCalories = () => {
-    if (!todayNutrition) return 0;
-    return todayNutrition.meals.reduce((total, meal) => {
+  const nutritionStats = useMemo(() => {
+    if (!todayNutrition) {
+      return {
+        totalCalories: 0,
+        totalMacros: { protein: 0, carbs: 0, fat: 0 },
+        remainingCalories: 2500,
+        progress: 0,
+        calorieGoal: 2500,
+        proteinGoal: 150,
+        carbsGoal: 250,
+        fatGoal: 70,
+        proteinProgress: 0,
+        carbsProgress: 0,
+        fatProgress: 0,
+      };
+    }
+
+    const totalCalories = todayNutrition.meals.reduce((total, meal) => {
       return total + meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
     }, 0);
-  };
 
-  const getTotalMacros = () => {
-    if (!todayNutrition) return { protein: 0, carbs: 0, fat: 0 };
-    
-    return todayNutrition.meals.reduce((totals, meal) => {
+    const totalMacros = todayNutrition.meals.reduce((totals, meal) => {
       meal.foods.forEach(food => {
         totals.protein += food.protein || 0;
         totals.carbs += food.carbs || 0;
@@ -184,20 +258,63 @@ const Nutrition = () => {
       });
       return totals;
     }, { protein: 0, carbs: 0, fat: 0 });
+
+    const calorieGoal = todayNutrition.calorieGoal || 2500;
+    const proteinGoal = todayNutrition.proteinGoal || 150;
+    const carbsGoal = todayNutrition.carbsGoal || 250;
+    const fatGoal = todayNutrition.fatGoal || 70;
+
+    return {
+      totalCalories,
+      totalMacros,
+      remainingCalories: Math.max(calorieGoal - totalCalories, 0),
+      progress: Math.min((totalCalories / calorieGoal) * 100, 100),
+      calorieGoal,
+      proteinGoal,
+      carbsGoal,
+      fatGoal,
+      proteinProgress: Math.min((totalMacros.protein / proteinGoal) * 100, 100),
+      carbsProgress: Math.min((totalMacros.carbs / carbsGoal) * 100, 100),
+      fatProgress: Math.min((totalMacros.fat / fatGoal) * 100, 100),
+    };
+  }, [todayNutrition]);
+
+  const waterPercentage = useMemo(() => {
+    return todayWater 
+      ? Math.min((todayWater.total / todayWater.goal) * 100, 100)
+      : 0;
+  }, [todayWater]);
+
+  const isToday = selectedDate.toDateString() === new Date().toDateString();
+  const isYesterday = (() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return selectedDate.toDateString() === yesterday.toDateString();
+  })();
+
+  const formatDateHeader = () => {
+    if (isToday) return "Azi";
+    if (isYesterday) return "Ieri";
+    
+    const day = selectedDate.getDate();
+    const month = MONTHS[selectedDate.getMonth()];
+    const year = selectedDate.getFullYear();
+    
+    return `${day} ${month}, ${year}`;
   };
 
-  const getMealData = (mealName: string) => {
+  const getMealData = useCallback((mealName: string) => {
     if (!todayNutrition) return null;
     return todayNutrition.meals.find(m => m.mealName === mealName);
-  };
+  }, [todayNutrition]);
 
-  const getMealCalories = (mealName: string) => {
+  const getMealCalories = useCallback((mealName: string) => {
     const meal = getMealData(mealName);
     if (!meal) return 0;
     return meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
-  };
+  }, [getMealData]);
 
-  const getMealMacros = (mealName: string) => {
+  const getMealMacros = useCallback((mealName: string) => {
     const meal = getMealData(mealName);
     if (!meal) return { protein: 0, carbs: 0, fat: 0 };
     
@@ -207,10 +324,9 @@ const Nutrition = () => {
       totals.fat += food.fat || 0;
       return totals;
     }, { protein: 0, carbs: 0, fat: 0 });
-  };
+  }, [getMealData]);
 
-  // ✅ FUNCȚIE NOUĂ: Calculează procentele pentru fiecare macronutrient din masă
-  const getMealMacroPercentages = (mealName: string) => {
+  const getMealMacroPercentages = useCallback((mealName: string) => {
     const mealMacros = getMealMacros(mealName);
     const totalGrams = mealMacros.protein + mealMacros.carbs + mealMacros.fat;
     
@@ -223,7 +339,7 @@ const Nutrition = () => {
       carbs: Math.round((mealMacros.carbs / totalGrams) * 100),
       fat: Math.round((mealMacros.fat / totalGrams) * 100)
     };
-  };
+  }, [getMealMacros]);
 
   const handleMealPress = (mealName: string) => {
     router.push({
@@ -235,76 +351,48 @@ const Nutrition = () => {
     });
   };
 
-  // ✅ Icon mapping exact ca în imagine
   const getFoodIcon = (foodName: string, brand?: string) => {
     const name = foodName.toLowerCase();
     const brandName = brand?.toLowerCase() || '';
 
-    // Powerjack / Protein products
-    if (name.includes('protein') || name.includes('proteine') || name.includes('powerjack') || name.includes('whey')) {
+    if (name.includes('protein') || name.includes('Proteine') || name.includes('powerjack') || name.includes('whey')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Peanut butter / Unt de arahide
     if (name.includes('unt') || name.includes('butter') || name.includes('peanut') || name.includes('arahide')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Corn Flakes / Cereale
     if (name.includes('fulgi') || name.includes('flakes') || name.includes('corn') || name.includes('cereale')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Lapte / Milk
     if (name.includes('lapte') || name.includes('milk') || brandName.includes('pilos')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Meat & Poultry
     if (name.includes('pui') || name.includes('piept') || name.includes('carne') || name.includes('chicken') || name.includes('beef') || name.includes('pork')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Fish
     if (name.includes('somon') || name.includes('peste') || name.includes('fish') || name.includes('ton')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Eggs
     if (name.includes('ou') || name.includes('egg') || name.includes('oua')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Bread
-    if (name.includes('pâine') || name.includes('bread') || name.includes('paine')) {
+    if (name.includes('paine') || name.includes('bread') || name.includes('paine')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Fruits
     if (name.includes('fruct') || name.includes('fruit') || name.includes('banana') || name.includes('apple') || name.includes('mar')) {
       return <Icons.Package size={20} color={colors.primary} weight="fill" />;
     }
     
-    // Default icon
     return <Icons.Package size={20} color={colors.primary} weight="fill" />;
   };
-
-  const totalCalories = getTotalCalories();
-  const totalMacros = getTotalMacros();
-  const calorieGoal = todayNutrition?.calorieGoal || 2400;
-  const proteinGoal = todayNutrition?.proteinGoal || 167;
-  const carbsGoal = todayNutrition?.carbsGoal || 483;
-  const fatGoal = todayNutrition?.fatGoal || 76;
-  const remainingCalories = Math.max(calorieGoal - totalCalories, 0);
-  const progress = Math.min((totalCalories / calorieGoal) * 100, 100);
-
-  const waterPercentage = todayWater 
-    ? Math.min((todayWater.total / todayWater.goal) * 100, 100)
-    : 0;
-
-  const proteinProgress = Math.min((totalMacros.protein / proteinGoal) * 100, 100);
-  const carbsProgress = Math.min((totalMacros.carbs / carbsGoal) * 100, 100);
-  const fatProgress = Math.min((totalMacros.fat / fatGoal) * 100, 100);
 
   const proteinColor = '#10B981';
   const carbsColor = '#EF4444';
@@ -323,17 +411,29 @@ const Nutrition = () => {
           />
         }
       >
+        {/*  Date Header  */}
         <Animated.View 
-          entering={FadeIn.duration(400)}
-          style={styles.header}
+          entering={FadeInDown.duration(400)}
+          style={styles.dateHeader}
         >
-          <Typo size={28} fontWeight="700">
-            Nutrition
-          </Typo>
-          <TouchableOpacity onPress={() => router.push("/(modals)/nutritionSettings")}>
-            <Icons.Gear size={24} color={colors.primary} />
-          </TouchableOpacity>
+          <View style={styles.dateHeaderContent}>
+            <Typo size={24} fontWeight="700">
+              {formatDateHeader()}
+            </Typo>
+            <TouchableOpacity onPress={() => router.push("/(modals)/nutritionSettings")}>
+              <Icons.Gear size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
+
+        {/* Calendar Component */}
+        <NutritionCalendar
+          currentWeek={currentWeek}
+          selectedDate={selectedDate}
+          daysData={daysData}
+          loading={calendarLoading}
+          onDayPress={handleDayPress}
+        />
 
         {/* Objective Card */}
         <Animated.View 
@@ -351,7 +451,7 @@ const Nutrition = () => {
                     </Typo>
                   </View>
                   <Typo size={20} fontWeight="700" color={colors.white} style={styles.calorieValue}>
-                    {calorieGoal} kcal
+                    {nutritionStats.calorieGoal} kcal
                   </Typo>
                 </View>
                 <View style={styles.objectiveItem}>
@@ -362,7 +462,7 @@ const Nutrition = () => {
                     </Typo>
                   </View>
                   <Typo size={20} fontWeight="700" color={colors.white} style={styles.calorieValue}>
-                    {totalCalories} kcal
+                    {nutritionStats.totalCalories} kcal
                   </Typo>
                 </View>
               </View>
@@ -371,10 +471,10 @@ const Nutrition = () => {
             <View style={styles.rightSection}>
               <View style={styles.progressCircleContainer}>
                 <View style={styles.progressCircle}>
-                  <View style={[styles.progressFill, { height: `${progress}%` }]} />
+                  <View style={[styles.progressFill, { height: `${nutritionStats.progress}%` }]} />
                   <View style={styles.circleInner}>
                     <Typo size={18} fontWeight="700" color={colors.white} style={styles.remainingCalories}>
-                      {remainingCalories}
+                      {nutritionStats.remainingCalories}
                     </Typo>
                     <Typo size={12} color={colors.neutral400}>
                       kcal rămase
@@ -395,54 +495,54 @@ const Nutrition = () => {
                   style={[
                     styles.macroProgressFill,
                     { 
-                      width: `${proteinProgress}%`,
+                      width: `${nutritionStats.proteinProgress}%`,
                       backgroundColor: proteinColor
                     }
                   ]} 
                 />
               </View>
               <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(totalMacros.protein)}g / {proteinGoal}g
+                {Math.round(nutritionStats.totalMacros.protein)}g / {nutritionStats.proteinGoal}g
               </Typo>
             </View>
 
             <View style={styles.macroItem}>
               <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-                Carbohidrați
+                Carbohidrati
               </Typo>
               <View style={styles.macroProgressBar}>
                 <View 
                   style={[
                     styles.macroProgressFill,
                     { 
-                      width: `${carbsProgress}%`,
+                      width: `${nutritionStats.carbsProgress}%`,
                       backgroundColor: carbsColor
                     }
                   ]} 
                 />
               </View>
               <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(totalMacros.carbs)}g / {carbsGoal}g
+                {Math.round(nutritionStats.totalMacros.carbs)}g / {nutritionStats.carbsGoal}g
               </Typo>
             </View>
 
             <View style={styles.macroItem}>
               <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-                Grăsimi
+                Grasimi
               </Typo>
               <View style={styles.macroProgressBar}>
                 <View 
                   style={[
                     styles.macroProgressFill,
                     { 
-                      width: `${fatProgress}%`,
+                      width: `${nutritionStats.fatProgress}%`,
                       backgroundColor: fatColor
                     }
                   ]} 
                 />
               </View>
               <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(totalMacros.fat)}g / {fatGoal}g
+                {Math.round(nutritionStats.totalMacros.fat)}g / {nutritionStats.fatGoal}g
               </Typo>
             </View>
           </View>
@@ -460,7 +560,6 @@ const Nutrition = () => {
             const mealPercentages = getMealMacroPercentages(mealName);
             const hasFoods = meal && meal.foods.length > 0;
 
-            // ✅ CALCUL NOU: Circumferința și lungimile arcurilor pentru fiecare macronutrient
             const circumference = 2 * Math.PI * 40;
             const proteinArc = (mealPercentages.protein / 100) * circumference;
             const carbsArc = (mealPercentages.carbs / 100) * circumference;
@@ -480,7 +579,6 @@ const Nutrition = () => {
                 <View style={styles.nutritionRow}>
                   <View style={styles.circleContainerRow}>
                     <Svg width={80} height={80} viewBox="0 0 100 100">
-                      {/* Background circle */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -489,7 +587,6 @@ const Nutrition = () => {
                         strokeWidth="8"
                         fill="none"
                       />
-                      {/* Protein segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -501,7 +598,6 @@ const Nutrition = () => {
                         strokeDashoffset="0"
                         transform="rotate(-90 50 50)"
                       />
-                      {/* Carbs segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -513,7 +609,6 @@ const Nutrition = () => {
                         strokeDashoffset={-proteinArc}
                         transform="rotate(-90 50 50)"
                       />
-                      {/* Fat segment */}
                       <Circle
                         cx="50"
                         cy="50"
@@ -570,7 +665,7 @@ const Nutrition = () => {
                         {Math.round(mealMacros.fat)} g
                       </Typo>
                       <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
-                        Grăsimi
+                        Grasimi
                       </Typo>
                     </View>
                   </View>
@@ -651,7 +746,7 @@ const Nutrition = () => {
                 >
                   <Icons.Plus size={18} color={colors.primary} weight="bold" />
                   <Typo size={15} fontWeight="600" color={colors.primary}>
-                    Adaugă alimente
+                    Adauga alimente
                   </Typo>
                 </TouchableOpacity>
               </View>
@@ -736,7 +831,7 @@ const Nutrition = () => {
                 <Icons.X size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
-                Editează cantitatea
+                Editeaza cantitatea
               </Typo>
               <View style={{ width: 24 }} />
             </View>
@@ -790,14 +885,14 @@ const Nutrition = () => {
                         <Typo size={20} fontWeight="600">
                           {Math.round(editingFood.food.carbs * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
                         </Typo>
-                        <Typo size={12} color={colors.neutral400}>Carbohidrați</Typo>
+                        <Typo size={12} color={colors.neutral400}>Carbohidrati</Typo>
                       </View>
 
                       <View style={styles.nutritionItem}>
                         <Typo size={20} fontWeight="600">
                           {Math.round(editingFood.food.fat * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
                         </Typo>
-                        <Typo size={12} color={colors.neutral400}>Grăsimi</Typo>
+                        <Typo size={12} color={colors.neutral400}>Grasimi</Typo>
                       </View>
                     </View>
                   </View>
@@ -807,7 +902,7 @@ const Nutrition = () => {
                     style={{ marginTop: spacingY._20 }}
                   >
                     <Typo size={18} fontWeight="700" color={colors.black}>
-                      Salvează
+                      Salveaza
                     </Typo>
                   </Button>
                 </View>
@@ -841,7 +936,7 @@ const Nutrition = () => {
                 <View style={styles.actionsList}>
                   <View style={styles.actionGroup}>
                     <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
-                      Copiază la:
+                      Copiaza la:
                     </Typo>
                     {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
                       <TouchableOpacity
@@ -859,7 +954,7 @@ const Nutrition = () => {
 
                   <View style={styles.actionGroup}>
                     <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
-                      Mută la:
+                      Muta la:
                     </Typo>
                     {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
                       <TouchableOpacity
@@ -881,7 +976,7 @@ const Nutrition = () => {
                   >
                     <Icons.Trash size={20} color={colors.rose} weight="bold" />
                     <Typo size={16} fontWeight="600" color={colors.rose}>
-                      Șterge aliment
+                      Sterge aliment
                     </Typo>
                   </TouchableOpacity>
                 </View>
@@ -894,6 +989,7 @@ const Nutrition = () => {
   );
 };
 
+
 export default Nutrition;
 
 const styles = StyleSheet.create({
@@ -901,11 +997,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
-  header: {
+  dateHeader: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    padding: spacingX._20,
+    marginVertical: spacingY._15,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  dateHeaderContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacingY._15,
   },
   objectiveCard: {
     backgroundColor: colors.neutral800,
@@ -1038,8 +1141,6 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._30,
     gap: spacingY._15,
   },
-  
-  // 🔥 MEAL CARD STYLES
   mealCardExact: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
@@ -1101,8 +1202,6 @@ const styles = StyleSheet.create({
   macroLabelRow: {
     lineHeight: 12,
   },
-  
-  // 🔥 FOOD ITEM STYLES - EXACT CA ÎN IMAGINE
   foodsList: {
     gap: 8,
     marginBottom: 16,
@@ -1152,7 +1251,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  
   addButtonExact: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1163,8 +1261,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderRadius: 0,
   },
-  
-  // MODAL STYLES
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',

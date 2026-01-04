@@ -67,6 +67,14 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
     };
   });
 
+  // Format the water amount text
+  const formatWaterText = () => {
+    if (total === 0) {
+      return "0 din 2 L";
+    }
+    return `${(total / 1000).toFixed(1)} din ${goal / 1000} L`;
+  };
+
   return (
     <View style={styles.container}>
       <Svg width={200} height={200} viewBox="0 0 200 200">
@@ -106,30 +114,34 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
           strokeWidth="4"
         />
 
-        {/* Percentage Text - centrat perfect */}
-        <SvgText
-          x="100"
-          y="95"
-          textAnchor="middle"
-          alignmentBaseline="middle"
-          fontSize="32"
-          fontWeight="700"
-          fill="white"
-        >
-          {Math.round(percentage)}%
-        </SvgText>
+        <G>
+          {/* Percentage Text */}
+          <SvgText
+            x="100"
+            y="90" 
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            fontSize="24"
+            fontWeight="700"
+            fill="white"
+          >
+            {Math.round(percentage)}%
+          </SvgText>
 
-        {/* Water amount text - centrat perfect */}
-        <SvgText
-          x="100"
-          y="120"
-          textAnchor="middle"
-          alignmentBaseline="middle"
-          fontSize="14"
-          fill="#9ca3af"
-        >
-          {(total / 1000).toFixed(1)}din {goal / 1000}L
-        </SvgText>
+          {/* Water amount text  */}
+          <SvgText
+            x="100"
+            y="115" 
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            fontSize="16"
+            fontWeight="600"
+            fill="#9ca3af"
+            letterSpacing="0.2"
+          >
+            {formatWaterText()}
+          </SvgText>  
+        </G>
       </Svg>
     </View>
   );

@@ -67,3 +67,8 @@ constants/config.ts
 
 # MacOS extra
 *.swp
+
+# development builds
+Development/
+
+.idea/

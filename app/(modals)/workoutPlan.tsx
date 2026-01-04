@@ -14,7 +14,7 @@ import {
   updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
-import { verticalScale } from "@/src/utils/styling";
+import { verticalScale, scale } from "@/src/utils/styling";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
@@ -26,6 +26,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from 'expo-haptics'; // ✅ Haptics importat
 
 const DAYS_OF_WEEK = [
   "Luni",
@@ -62,64 +63,42 @@ const WorkoutPlanScreen = () => {
   );
 
   useEffect(() => {
-    loadWorkoutPlan();
-  }, [user?.uid]);
-
-  // Sincronizează zilele din context cu state-ul local
-  useEffect(() => {
     if (workoutPlan?.days) {
       setDays(workoutPlan.days);
     }
   }, [workoutPlan?.days]);
 
   const loadWorkoutPlan = async () => {
-    console.log("[WorkoutPlanScreen] loadWorkoutPlan for user:", user?.uid);
     if (!user?.uid) return;
-
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
-      // Plan existent în Firebase
       setExistingPlanId(result.data.id || null);
       if (result.data.planName && (!planName || planName === "")) {
         setPlanName(result.data.planName);
       }
       setDays(result.data.days);
     } else {
-      // Nu există plan în Firebase
       setExistingPlanId(null);
     }
     setLoading(false);
   };
 
   const handleDayPress = (day: string) => {
+    Haptics.selectionAsync(); // ✅ Feedback tactil
     router.push({
       pathname: "/(modals)/dayWorkout",
       params: { day, planId: existingPlanId || "new" },
     });
   };
 
-  const getDayStatus = (day: string) => {
-    const dayData = days.find((d) => d.day === day);
-    if (!dayData) return null;
-
-    if (dayData.isRestDay) return "rest";
-    if (dayData.exercises.length > 0) return "active";
-    return null;
-  };
-
   const handleSave = async () => {
-    console.log("[WorkoutPlanScreen] handleSave planName:", planName, "existingPlanId:", existingPlanId);
-
     if (!planName.trim()) {
       Alert.alert("Error", "Please add a name for your workout plan");
       return;
     }
+    if (!user?.uid) return;
 
-    if (!user?.uid) {
-      Alert.alert("Error", "User not authenticated");
-      return;
-    }
-
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSaving(true);
 
     const planData: WorkoutPlan = {
@@ -137,22 +116,15 @@ const WorkoutPlanScreen = () => {
       result = await createWorkoutPlan(planData);
     }
 
-    console.log("[WorkoutPlanScreen] save result:", result);
     setSaving(false);
 
     if (result.success) {
       if (!existingPlanId && result.data?.id) {
-        // Plan nou creat - setează ID-ul
         setExistingPlanId(result.data.id);
       }
-      
       await refreshPlan();
-      
       Alert.alert("Success", "Workout plan saved successfully!", [
-        {
-          text: "OK",
-          onPress: () => router.back(),
-        },
+        { text: "OK", onPress: () => router.back() },
       ]);
     } else {
       Alert.alert("Error", result.msg || "Could not save workout plan");
@@ -160,24 +132,13 @@ const WorkoutPlanScreen = () => {
   };
 
   const handleDelete = () => {
-    if (!existingPlanId) {
-      Alert.alert("Info", "No plan to delete");
-      return;
-    }
-
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       "Delete Workout Plan",
-      "Are you sure you want to delete this workout plan? This action cannot be undone.",
+      "Are you sure? This cannot be undone.",
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: performDelete,
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: performDelete },
       ]
     );
   };
@@ -186,29 +147,23 @@ const WorkoutPlanScreen = () => {
     setDeleting(true);
     const result = await deletePlan();
     setDeleting(false);
-
     if (result.success) {
-      Alert.alert("Success", "Workout plan deleted successfully!", [
-        {
-          text: "OK",
-          onPress: () => router.back(),
-        },
-      ]);
+      router.back();
     } else {
       Alert.alert("Error", result.msg || "Could not delete workout plan");
     }
   };
 
+  const getDayStatus = (day: string) => {
+    const dayData = days.find((d) => d.day === day);
+    if (!dayData) return null;
+    return dayData;
+  };
+
   if (loading) {
     return (
       <ModalWrapper>
-        <View style={styles.container}>
-          <Header
-            title="Workout Plan"
-            leftIcon={<BackButton />}
-            style={{ marginBottom: spacingY._15 }}
-          />
-        </View>
+        <Header title="Workout Plan" leftIcon={<BackButton />} />
         <Loading />
       </ModalWrapper>
     );
@@ -218,7 +173,7 @@ const WorkoutPlanScreen = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title="Workout Plan"
+          title={existingPlanId ? "Edit Plan" : "Create Plan"}
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._15 }}
         />
@@ -227,67 +182,108 @@ const WorkoutPlanScreen = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Plan Name Input */}
           <View style={styles.inputContainer}>
+            <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._10, marginLeft: spacingX._5 }}>
+              Plan Name
+            </Typo>
             <Input
-              placeholder="ex. Push/Pull/Legs"
+              placeholder="e.g., Push Pull Legs"
               value={planName}
               onChangeText={setPlanName}
               containerStyle={styles.input}
             />
-            <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
-              Add a name for your Workout Plan
-            </Typo>
           </View>
 
           <View style={styles.daysContainer}>
             {DAYS_OF_WEEK.map((day) => {
-              const status = getDayStatus(day);
+              const dayData = getDayStatus(day);
+              const isRest = dayData?.isRestDay;
+              const hasExercises = dayData && dayData.exercises.length > 0;
+              const exerciseCount = dayData?.exercises.length || 0;
+
               return (
                 <TouchableOpacity
                   key={day}
                   style={[
                     styles.dayCard,
-                    status === "rest" && styles.dayCardRest,
-                    status === "active" && styles.dayCardActive,
+                    isRest && styles.dayCardRest,
+                    hasExercises && styles.dayCardActive,
                   ]}
                   onPress={() => handleDayPress(day)}
-                  activeOpacity={0.7}
+                  activeOpacity={0.9} // Feedback vizual la apasare
                 >
-                  <Typo
-                    size={18}
-                    fontWeight="600"
-                    color={status === "rest" ? colors.neutral500 : colors.white}
-                  >
-                    {day}
-                  </Typo>
-                  <Icons.PencilIcon
-                    size={20}
-                    color={status === "rest" ? colors.neutral500 : colors.primary}
-                  />
+                  {/* Card Header */}
+                  <View style={styles.cardHeader}>
+                    <View style={styles.dayTitleRow}>
+                      <Typo size={18} fontWeight="700" color={isRest ? colors.neutral400 : colors.white}>
+                        {day}
+                      </Typo>
+                      {isRest && (
+                        <View style={styles.restBadge}>
+                          <Icons.Coffee size={14} color={colors.neutral400} weight="fill" />
+                          <Typo size={12} color={colors.neutral400} fontWeight="600">Rest</Typo>
+                        </View>
+                      )}
+                      {!isRest && hasExercises && (
+                         <View style={styles.countBadge}>
+                           <Typo size={12} color={colors.black} fontWeight="700">{exerciseCount} exercises</Typo>
+                         </View>
+                      )}
+                    </View>
+                    <Icons.CaretRight size={20} color={colors.neutral500} />
+                  </View>
+
+                  {/* Card Body - Exercise Summary */}
+                  {!isRest && hasExercises && (
+                    <View style={styles.cardBody}>
+                      {dayData.exercises.slice(0, 3).map((ex, idx) => (
+                        <View key={idx} style={styles.exerciseRow}>
+                           <View style={styles.dot} />
+                           <Typo size={14} color={colors.neutral300} numberOfLines={1}>
+                             {ex.exerciseName}
+                           </Typo>
+                           <Typo size={13} color={colors.neutral500}>
+                             ({ex.sets.length} sets)
+                           </Typo>
+                        </View>
+                      ))}
+                      {exerciseCount > 3 && (
+                        <Typo size={13} color={colors.primary} style={{ marginTop: 4, marginLeft: 14 }}>
+                          + {exerciseCount - 3} more...
+                        </Typo>
+                      )}
+                    </View>
+                  )}
+
+                  {!isRest && !hasExercises && (
+                    <Typo size={14} color={colors.neutral500} style={{ marginTop: spacingY._5 }}>
+                      Tap to add exercises...
+                    </Typo>
+                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Afișează butonul DELETE doar dacă planul există în Firebase */}
           {existingPlanId && (
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={handleDelete}
               disabled={deleting}
             >
-              <Icons.TrashIcon size={20} color={colors.rose} />
+              <Icons.Trash size={20} color={colors.rose} />
               <Typo size={16} fontWeight="600" color={colors.rose}>
-                {deleting ? "Deleting..." : "Delete Workout Plan"}
+                {deleting ? "Deleting..." : "Delete Plan"}
               </Typo>
             </TouchableOpacity>
           )}
         </ScrollView>
 
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button onPress={handleSave} loading={saving} style={{ flex: 1 }}>
+          <Button onPress={handleSave} loading={saving} style={styles.saveButton}>
             <Typo color={colors.black} fontWeight="700" size={18}>
-              Save Workout Plan
+              Save Changes
             </Typo>
           </Button>
         </View>
@@ -304,46 +300,93 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   scrollContent: {
-    paddingBottom: verticalScale(220),
+    paddingBottom: verticalScale(120),
   },
   inputContainer: {
     marginBottom: spacingY._25,
   },
   input: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.neutral800,
+    borderColor: colors.neutral700,
   },
   daysContainer: {
-    gap: spacingY._12,
+    gap: spacingY._15,
   },
   dayCard: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    padding: spacingX._15,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    // Shadow for "Visual Polish"
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  dayCardActive: {
+    borderColor: colors.neutral600, // Slightly lighter border for active days
+    backgroundColor: colors.neutral800,
+  },
+  dayCardRest: {
+    backgroundColor: 'rgba(38, 38, 38, 0.5)', // neutral800 with opacity
+    borderColor: 'transparent',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+  },
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._15,
-    padding: spacingX._20,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
   },
-  dayCardRest: {
+  dayTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+  },
+  restBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: colors.neutral700,
-    opacity: 0.6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius._6,
   },
-  dayCardActive: {
-    borderColor: colors.primary,
-    borderWidth: 2,
+  countBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius._6,
+  },
+  cardBody: {
+    marginTop: spacingY._10,
+    paddingTop: spacingY._10,
+    borderTopWidth: 1,
+    borderTopColor: colors.neutral700,
+    gap: verticalScale(4),
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacingX._7,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   deleteButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacingX._10,
-    backgroundColor: colors.neutral800,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', // Rose with opacity
     borderRadius: radius._17,
     padding: spacingY._15,
-    borderWidth: 1,
-    borderColor: colors.rose,
-    marginTop: spacingY._20,
+    marginTop: spacingY._30,
   },
   footerSticky: {
     position: "absolute",
@@ -351,4 +394,11 @@ const styles = StyleSheet.create({
     right: spacingX._20,
     zIndex: 30,
   },
+  saveButton: {
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  }
 });
