@@ -38,8 +38,8 @@ const AddWorkout = () => {
   const [totalTime, setTotalTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // state to hold history strings for each exercise (by name)
-  const [historyData, setHistoryData] = useState<Record<string, string>>({});
+  // ✅ PĂSTRĂM EXERCIȚIILE ISTORICE COMPLETE
+  const [historyExercises, setHistoryExercises] = useState<Record<string, WorkoutExercise>>({});
 
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
     {
@@ -63,26 +63,25 @@ const AddWorkout = () => {
       return;
     }
 
-    // Try to get data from last week
+    // ✅ ÎNCARCĂ DATELE DE SĂPTĂMÂNA TRECUTĂ
     const lastWeekResult = await getLastWeekWorkout(user.uid, dayName);
-    let newHistoryData: Record<string, string> = {};
+    let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
     if (lastWeekResult.success && lastWeekResult.data) {
+      // ✅ SALVĂM EXERCIȚIILE ISTORICE COMPLETE
+      lastWeekResult.data.exercises?.forEach((ex: WorkoutExercise) => {
+        newHistoryExercises[ex.exerciseName.toLowerCase()] = ex;
+      });
+
+      setHistoryExercises(newHistoryExercises);
+
+      // ✅ PREFILL CU VALORILE DIN SĂPTĂMÂNA TRECUTĂ
       const mergedExercises = planDay.exercises.map((planEx) => {
-        // Find if we did this exercise last week
         const lastWeekEx = lastWeekResult.data.exercises?.find(
           (ex: WorkoutExercise) => ex.exerciseName.toLowerCase() === planEx.exerciseName.toLowerCase()
         );
 
         if (lastWeekEx) {
-          // Construct the history string
-          // Example: "Last: 80kg x 8, 80kg x 8"
-          const historyStr = lastWeekEx.sets
-            .map((s: WorkoutSet) => `${s.weight}${s.weightUnit} x ${s.reps}`)
-            .join(", ");
-          
-          newHistoryData[planEx.exerciseName] = `Last: ${historyStr}`;
-
           return {
             exerciseName: planEx.exerciseName,
             sets: lastWeekEx.sets.map((s: WorkoutSet) => ({
@@ -93,7 +92,7 @@ const AddWorkout = () => {
           };
         }
 
-        // If not found in history, just use the plan template
+        // Dacă nu există în istoric, folosim planul
         return {
           exerciseName: planEx.exerciseName,
           sets: planEx.sets?.map((s) => ({
@@ -105,9 +104,8 @@ const AddWorkout = () => {
       });
 
       setExercises(mergedExercises as WorkoutExercise[]);
-      setHistoryData(newHistoryData); // Save the history strings
     } else {
-      // No history found, just load plain plan
+      // Nu există istoric, încarcă doar planul
       const cloned = planDay.exercises.map((ex) => ({
         exerciseName: ex.exerciseName || "",
         sets: ex.sets?.map((s) => ({
@@ -117,6 +115,7 @@ const AddWorkout = () => {
         })) || [{ reps: 0, weight: 0, weightUnit: "kg" }],
       })) as WorkoutExercise[];
       setExercises(cloned);
+      setHistoryExercises({});
     }
   };
 
@@ -288,6 +287,15 @@ const AddWorkout = () => {
     }
   };
 
+  // ✅ FUNCȚIE HELPER PENTRU A OBȚINE SET-UL ISTORIC
+  const getHistoricalSet = (exerciseName: string, setIndex: number): WorkoutSet | null => {
+    const histEx = historyExercises[exerciseName.toLowerCase()];
+    if (histEx && histEx.sets && histEx.sets[setIndex]) {
+      return histEx.sets[setIndex];
+    }
+    return null;
+  };
+
   return (
     <ModalWrapper>
       <View style={styles.container}>
@@ -336,12 +344,15 @@ const AddWorkout = () => {
                         onChangeText={(text) => updateExerciseName(exerciseIndex, text)}
                         containerStyle={styles.exerciseNameInput}
                     />
-                    {/* ✅ PREVIOUS STATS DISPLAY */}
-                    {historyData[exercise.exerciseName] && (
+                    
+                    {/* ✅ AFIȘARE ISTORIC COMPLET */}
+                    {exercise.exerciseName && historyExercises[exercise.exerciseName.toLowerCase()] && (
                         <View style={styles.historyContainer}>
                             <Icons.ClockCounterClockwise size={14} color={colors.primary} />
                             <Typo size={12} color={colors.primary} style={{flex: 1}}>
-                                {historyData[exercise.exerciseName]}
+                                Last week: {historyExercises[exercise.exerciseName.toLowerCase()].sets
+                                  .map(s => `${s.weight}${s.weightUnit} × ${s.reps}`)
+                                  .join(", ")}
                             </Typo>
                         </View>
                     )}
@@ -365,59 +376,66 @@ const AddWorkout = () => {
                  <View style={{width: 30}} /> 
               </View>
 
-              {exercise.sets.map((set, setIndex) => (
-                <View key={setIndex} style={styles.setRow}>
-                  <View style={styles.setNumber}>
-                    <Typo size={13} color={colors.neutral200} fontWeight="600">
-                      {setIndex + 1}
-                    </Typo>
+              {exercise.sets.map((set, setIndex) => {
+                // ✅ OBȚINE SET-UL ISTORIC PENTRU ACEST INDEX
+                const historicalSet = getHistoricalSet(exercise.exerciseName, setIndex);
+                
+                return (
+                  <View key={setIndex} style={styles.setRow}>
+                    <View style={styles.setNumber}>
+                      <Typo size={13} color={colors.neutral200} fontWeight="600">
+                        {setIndex + 1}
+                      </Typo>
+                    </View>
+
+                    {/* ✅ INPUT REPS CU PLACEHOLDER ISTORIC */}
+                    <View style={styles.setInput}>
+                      <Input
+                        placeholder={historicalSet ? `${historicalSet.reps}` : "0"}
+                        keyboardType="numeric"
+                        value={set.reps > 0 ? set.reps.toString() : ""}
+                        onChangeText={(text) =>
+                          updateSet(exerciseIndex, setIndex, "reps", text)
+                        }
+                        containerStyle={styles.smallInput}
+                        inputStyle={{textAlign: 'center'}}
+                      />
+                    </View>
+
+                    {/* ✅ INPUT WEIGHT CU PLACEHOLDER ISTORIC */}
+                    <View style={styles.setInput}>
+                      <Input
+                        placeholder={historicalSet ? `${historicalSet.weight}` : "0"}
+                        keyboardType="numeric"
+                        value={set.weight > 0 ? set.weight.toString() : ""}
+                        onChangeText={(text) =>
+                          updateSet(exerciseIndex, setIndex, "weight", text)
+                        }
+                        containerStyle={styles.smallInput}
+                        inputStyle={{textAlign: 'center'}}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
+                      style={styles.unitButton}
+                    >
+                      <Typo size={12} fontWeight="600" color={colors.neutral400}>
+                        {set.weightUnit}
+                      </Typo>
+                    </TouchableOpacity>
+
+                    {exercise.sets.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => removeSet(exerciseIndex, setIndex)}
+                          style={styles.removeSetButton}
+                        >
+                          <Icons.X size={16} color={colors.neutral500} />
+                        </TouchableOpacity>
+                    )}
                   </View>
-
-                  <View style={styles.setInput}>
-                    <Input
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={set.reps > 0 ? set.reps.toString() : ""}
-                      onChangeText={(text) =>
-                        updateSet(exerciseIndex, setIndex, "reps", text)
-                      }
-                      containerStyle={styles.smallInput}
-                      inputStyle={{textAlign: 'center'}}
-                    />
-                  </View>
-
-                  <View style={styles.setInput}>
-                    <Input
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={set.weight > 0 ? set.weight.toString() : ""}
-                      onChangeText={(text) =>
-                        updateSet(exerciseIndex, setIndex, "weight", text)
-                      }
-                      containerStyle={styles.smallInput}
-                      inputStyle={{textAlign: 'center'}}
-                    />
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
-                    style={styles.unitButton}
-                  >
-                    <Typo size={12} fontWeight="600" color={colors.neutral400}>
-                      {set.weightUnit}
-                    </Typo>
-                  </TouchableOpacity>
-
-                  {exercise.sets.length > 1 && (
-                      <TouchableOpacity
-                        onPress={() => removeSet(exerciseIndex, setIndex)}
-                        style={styles.removeSetButton}
-                      >
-                        <Icons.X size={16} color={colors.neutral500} />
-                      </TouchableOpacity>
-                  )}
-                </View>
-              ))}
+                );
+              })}
 
               <TouchableOpacity
                 onPress={() => addSet(exerciseIndex)}
