@@ -9,6 +9,7 @@ import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
+import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -18,7 +19,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
-  FlatList,
 } from "react-native";
 
 const MONTHS = [
@@ -42,7 +42,7 @@ const History = () => {
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [initialIndex, setInitialIndex] = useState<number | null>(null);
-  const flatListRef = useRef<FlatList>(null);
+  const flashListRef = useRef<FlashList<Date>>(null);
   const didInitialScrollRef = useRef(false);
 
   const { refresh, selectedDate: paramDate } = useLocalSearchParams();
@@ -71,16 +71,13 @@ const History = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Calculăm mâine pentru a-l include în calendar (vizual)
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
 
-    // Dacă nu avem workout-uri, generăm doar luna curentă până la mâine
     if (workoutsHistory.length === 0) {
       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
 
       const days: Date[] = [];
-      // Generăm până la mâine (inclusiv) pentru vizualizare
       for (let d = new Date(firstDay); d <= tomorrow; d.setDate(d.getDate() + 1)) {
         days.push(new Date(d));
       }
@@ -88,52 +85,45 @@ const History = () => {
       setCalendarDays(days);
 
       const targetDate = paramDate ? new Date(paramDate as string) : today;
-      // Asigură-te că targetDate nu e în viitor (doar azi poate fi selectat maxim)
       const safeTargetDate = targetDate > today ? today : targetDate;
-      const found = days.findIndex(d => d.toDateString() === safeTargetDate.toDateString());
-      const safeIndex = found !== -1 ? found : days.length - 2; // -2 pentru a selecta azi, nu mâine
-      setInitialIndex(safeIndex);
-      setSelectedDate(days[safeIndex] || today);
-      setCurrentMonth(days[safeIndex] || today);
+
+      const safeIndex = days.findIndex(
+        (d) => d.toDateString() === safeTargetDate.toDateString()
+      );
+      setInitialIndex(safeIndex !== -1 ? safeIndex : days.length - 2);
+      setSelectedDate(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
+      setCurrentMonth(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
       return;
     }
 
-    // Găsim data celui mai vechi workout
-    const workoutDates = workoutsHistory.map(w => new Date(w.date));
-    const firstWorkoutDate = new Date(Math.min(...workoutDates.map(d => d.getTime())));
-    firstWorkoutDate.setHours(0, 0, 0, 0);
+    const sortedWorkouts = [...workoutsHistory].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
-    // Calculăm startDate - prima zi a lunii celui mai vechi workout
-    const startDate = new Date(firstWorkoutDate.getFullYear(), firstWorkoutDate.getMonth(), 1);
+    const earliestWorkout = new Date(sortedWorkouts[0].date);
+    earliestWorkout.setHours(0, 0, 0, 0);
 
-    // Calculăm endDate - mâine (pentru vizualizare)
-    const endDate = new Date(tomorrow);
+    const firstDay = new Date(
+      earliestWorkout.getFullYear(),
+      earliestWorkout.getMonth(),
+      1
+    );
 
     const days: Date[] = [];
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(firstDay); d <= tomorrow; d.setDate(d.getDate() + 1)) {
       days.push(new Date(d));
     }
 
     setCalendarDays(days);
 
-    // Determinăm indexul pentru scroll
     const targetDate = paramDate ? new Date(paramDate as string) : today;
-    // Asigură-te că targetDate nu e în viitor
     const safeTargetDate = targetDate > today ? today : targetDate;
-    let foundIndex = days.findIndex(d => d.toDateString() === safeTargetDate.toDateString());
-    
-    if (foundIndex === -1) {
-      // Dacă targetDate nu e în range, scroll la azi
-      foundIndex = days.findIndex(d => d.toDateString() === today.toDateString());
-      if (foundIndex === -1) {
-        foundIndex = days.length - 2; // Penultima zi (azi)
-      }
-    }
-    
-    const safeIndex = clamp(foundIndex, 0, days.length - 1);
-    setInitialIndex(safeIndex);
-    setSelectedDate(days[safeIndex]);
-    setCurrentMonth(days[safeIndex]);
+    const safeIndex = days.findIndex(
+      (d) => d.toDateString() === safeTargetDate.toDateString()
+    );
+    setInitialIndex(safeIndex !== -1 ? safeIndex : days.length - 2);
+    setSelectedDate(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
+    setCurrentMonth(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
   }, [workoutsHistory, paramDate]);
 
   useFocusEffect(
@@ -147,7 +137,6 @@ const History = () => {
         const dateFromParam = new Date(paramDate as string);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        // Nu permite selectarea unei date din viitor
         const safeDate = dateFromParam > today ? today : dateFromParam;
         setSelectedDate(safeDate);
         setCurrentMonth(safeDate);
@@ -168,13 +157,13 @@ const History = () => {
 
   const handleContentSizeChange = useCallback(() => {
     if (initialIndex === null || didInitialScrollRef.current) return;
-    if (!flatListRef.current || calendarDays.length === 0) return;
+    if (!flashListRef.current || calendarDays.length === 0) return;
 
     const idx = clamp(initialIndex, 0, Math.max(0, calendarDays.length - 1));
     
     requestAnimationFrame(() => {
       try {
-        flatListRef.current?.scrollToIndex({
+        flashListRef.current?.scrollToIndex({
           index: idx,
           animated: true,
           viewPosition: 0.5,
@@ -182,7 +171,7 @@ const History = () => {
         didInitialScrollRef.current = true;
       } catch (err) {
         try {
-          flatListRef.current?.scrollToOffset({
+          flashListRef.current?.scrollToOffset({
             offset: Math.max(0, idx * ITEM_WIDTH),
             animated: true,
           });
@@ -199,65 +188,70 @@ const History = () => {
     fetchWorkoutsHistory();
   }, [user?.uid]);
 
-  const hasWorkoutOnDate = useCallback((date: Date) => {
-    return workoutsHistory.some(
-      w => new Date(w.date).toDateString() === date.toDateString()
-    );
-  }, [workoutsHistory]);
+  const handleScroll = useCallback((event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / ITEM_WIDTH);
+    const clampedIndex = clamp(index, 0, calendarDays.length - 1);
+    
+    if (calendarDays[clampedIndex]) {
+      setCurrentMonth(calendarDays[clampedIndex]);
+    }
+  }, [calendarDays]);
 
-  const getWorkoutForDate = useCallback((date: Date): WorkoutHistory | null => {
-    return workoutsHistory.find(
-      w => new Date(w.date).toDateString() === date.toDateString()
-    ) || null;
-  }, [workoutsHistory]);
+  const selectedWorkout = workoutsHistory.find(
+    (w) => new Date(w.date).toDateString() === selectedDate.toDateString()
+  );
 
-  const isRestDay = useCallback((date: Date): boolean => {
-    if (!workoutPlan) return false;
+  const hasAnyWorkouts = workoutsHistory.length > 0;
 
-    const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
-    const dayName = DAYS_FULL[dayIndex];
-    const planDay = workoutPlan.days?.find(d => d.day === dayName);
-
-    return planDay?.isRestDay || false;
-  }, [workoutPlan]);
-
-  // Verifică dacă data este în viitor (după azi)
-  const isFutureDate = useCallback((date: Date): boolean => {
+  const handleDayPress = useCallback((day: Date, index: number) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-    return checkDate > today;
+    
+    if (day > today) return;
+    
+    setSelectedDate(day);
+    setCurrentMonth(day);
   }, []);
 
-  const handleDayPress = useCallback((date: Date) => {
-    // Nu permite selectarea zilelor din viitor
-    if (isFutureDate(date)) {
-      return;
-    }
-    setSelectedDate(date);
-    setCurrentMonth(date);
-  }, [isFutureDate]);
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: ITEM_WIDTH,
+    offset: ITEM_WIDTH * index,
+    index,
+  }), []);
 
-  const selectedWorkout = getWorkoutForDate(selectedDate);
+  const keyExtractor = useCallback((item: Date, index: number) => 
+    `${item.toISOString()}-${index}`, []);
 
-  const renderDay = useCallback(({ item: date, index }: { item: Date; index: number }) => {
-    const isSelected = date.toDateString() === selectedDate.toDateString();
-    const isToday = date.toDateString() === new Date().toDateString();
-    const hasWorkout = hasWorkoutOnDate(date);
-    const isRest = isRestDay(date);
-    const isFuture = isFutureDate(date);
+  const renderDay = useCallback(({ item: day, index }: { item: Date; index: number }) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const isToday = day.toDateString() === today.toDateString();
+    const isSelected = day.toDateString() === selectedDate.toDateString();
+    const isFuture = day > today;
+
+    const hasWorkout = workoutsHistory.some(
+      (w) => new Date(w.date).toDateString() === day.toDateString()
+    );
+
+    const dayOfWeek = day.getDay();
+    const adjustedDayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const dayName = DAYS_FULL[adjustedDayOfWeek].substring(0, 3);
+
+    const planDay = workoutPlan?.days?.find(
+      (d) => d.day === DAYS_FULL[adjustedDayOfWeek]
+    );
+    const isRestDay = planDay?.isRestDay ?? false;
 
     return (
       <TouchableOpacity
+        onPress={() => handleDayPress(day, index)}
         style={[
           styles.dayCard,
-          isToday && styles.dayCardToday,
-          isSelected && !isFuture && styles.dayCardSelected,
-          isRest && !isToday && !isSelected && !isFuture && styles.dayCardRest,
+          isSelected && styles.dayCardSelected,
           isFuture && styles.dayCardFuture,
         ]}
-        onPress={() => handleDayPress(date)}
         activeOpacity={isFuture ? 1 : 0.7}
         disabled={isFuture}
       >
@@ -266,53 +260,58 @@ const History = () => {
           color={
             isFuture
               ? colors.neutral600
-              : isRest && !isToday && !isSelected
-                ? colors.rose
-                : isToday || isSelected
-                  ? colors.white
-                  : colors.neutral400
+              : isSelected
+              ? colors.black
+              : colors.neutral400
           }
-          style={{ marginBottom: verticalScale(4) }}
+          fontWeight="500"
         >
-          {date.toLocaleDateString("en-US", { weekday: "short" })}
+          {dayName}
         </Typo>
-        <Typo
-          size={16}
-          fontWeight="600"
-          color={
-            isFuture
-              ? colors.neutral600
-              : isRest && !isToday && !isSelected
-                ? colors.rose
-                : isToday || isSelected
-                  ? colors.white
-                  : colors.text
-          }
+
+        <View
+          style={[
+            styles.dayNumber,
+            isToday && !isSelected && styles.dayNumberToday,
+          ]}
         >
-          {date.getDate()}
-        </Typo>
-        {hasWorkout && (
-          <View style={styles.workoutIndicator} />
-        )}
+          <Typo
+            size={18}
+            fontWeight={isSelected || isToday ? "700" : "500"}
+            color={
+              isFuture
+                ? colors.neutral600
+                : isSelected
+                ? colors.black
+                : isToday
+                ? colors.primary
+                : colors.white
+            }
+          >
+            {day.getDate()}
+          </Typo>
+        </View>
+
+        <View style={styles.indicators}>
+          {hasWorkout && (
+            <View
+              style={[
+                styles.workoutDot,
+                isSelected && styles.workoutDotSelected,
+              ]}
+            />
+          )}
+          {isRestDay && !hasWorkout && (
+            <Icons.Coffee
+              size={12}
+              color={isSelected ? colors.neutral700 : colors.neutral500}
+              weight="fill"
+            />
+          )}
+        </View>
       </TouchableOpacity>
     );
-  }, [selectedDate, hasWorkoutOnDate, isRestDay, handleDayPress, isFutureDate]);
-
-  const getItemLayout = useCallback((_: any, index: number) => ({
-    length: ITEM_WIDTH,
-    offset: ITEM_WIDTH * index,
-    index,
-  }), []);
-
-  const handleScroll = useCallback((e: any) => {
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / ITEM_WIDTH);
-    if (calendarDays[index]) {
-      setCurrentMonth(calendarDays[index]);
-    }
-  }, [calendarDays]);
-
-  const keyExtractor = useCallback((item: Date) => item.toISOString(), []);
+  }, [selectedDate, workoutsHistory, workoutPlan, handleDayPress]);
 
   if (isLoading) {
     return (
@@ -343,28 +342,24 @@ const History = () => {
           </View>
         </View>
 
-        {/* Scrollable Calendar */}
+        {/* Scrollable Calendar cu FlashList */}
         {calendarDays.length > 0 && (
-          <FlatList
-            ref={flatListRef}
-            data={calendarDays}
-            renderItem={renderDay}
-            keyExtractor={keyExtractor}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.calendarContainer}
-            style={styles.calendar}
-            getItemLayout={getItemLayout}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            initialNumToRender={14}
-            maxToRenderPerBatch={14}
-            windowSize={7}
-            onContentSizeChange={handleContentSizeChange}
-            snapToInterval={ITEM_WIDTH}
-            decelerationRate="fast"
-            removeClippedSubviews={true}
-          />
+          <View style={styles.calendarWrapper}>
+            <FlashList
+              ref={flashListRef}
+              data={calendarDays}
+              renderItem={renderDay}
+              keyExtractor={keyExtractor}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.calendarContainer}
+              estimatedItemSize={ITEM_WIDTH}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onLoad={handleContentSizeChange}
+              extraData={{ selectedDate, workoutsHistory }}
+            />
+          </View>
         )}
 
         {/* Content Section */}
@@ -383,41 +378,24 @@ const History = () => {
             {/* Selected Workout Display */}
             {selectedWorkout ? (
               <View style={styles.selectedWorkoutSection}>
-                <Typo size={18} fontWeight="600" style={styles.sectionTitle}>
-                  Workout on {selectedDate.toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </Typo>
-                <WorkoutCard workout={selectedWorkout} />
-              </View>
-            ) : isRestDay(selectedDate) ? (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIconContainer}>
-                  <Icons.Bed
-                    size={48}
-                    color={colors.rose}
-                    weight="fill"
-                  />
-                </View>
                 <Typo
-                  size={20}
+                  size={18}
                   fontWeight="600"
                   color={colors.neutral200}
-                  style={styles.emptyTitle}
+                  style={styles.sectionTitle}
                 >
-                  Rest Day
+                  Workout Details
                 </Typo>
-                <Typo
-                  size={15}
-                  color={colors.neutral400}
-                  style={styles.emptySubtitle}
-                >
-                  Recovery is just as important as training
-                </Typo>
+                <WorkoutCard
+                  workout={selectedWorkout}
+                  showDate={false}
+                  onRefresh={() => {
+                    setIsRefreshing(true);
+                    fetchWorkoutsHistory();
+                  }}
+                />
               </View>
-            ) : calendarDays.length === 0 ? (
+            ) : !hasAnyWorkouts ? (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconContainer}>
                   <Icons.Barbell
@@ -464,7 +442,7 @@ const History = () => {
                   color={colors.neutral400}
                   style={styles.emptySubtitle}
                 >
-                  Select another day to view workouts
+                  Select another day or start a new workout
                 </Typo>
               </View>
             )}
@@ -483,60 +461,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   monthHeader: {
-    marginBottom: spacingY._10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: spacingY._15,
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._10,
   },
-  calendar: {
-    flexGrow: 0,
-    flexShrink: 0,
+  calendarWrapper: {
+    height: verticalScale(90),
+    marginBottom: spacingY._15,
   },
   calendarContainer: {
-    paddingVertical: spacingY._5,
-    paddingRight: spacingX._20,
+    paddingHorizontal: spacingX._5,
   },
   dayCard: {
+    width: DAY_WIDTH,
+    marginRight: ITEM_SPACING,
     alignItems: "center",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(8),
+    paddingVertical: spacingY._10,
     borderRadius: radius._12,
     backgroundColor: colors.neutral800,
-    width: DAY_WIDTH,
-    height: verticalScale(75),
-    justifyContent: "center",
-    position: "relative",
-    marginRight: ITEM_SPACING,
-  },
-  dayCardToday: {
-    backgroundColor: colors.primary,
   },
   dayCardSelected: {
-    backgroundColor: colors.neutral700,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  dayCardRest: {
-    borderWidth: 2,
-    borderColor: colors.rose,
+    backgroundColor: colors.primary,
   },
   dayCardFuture: {
-    backgroundColor: colors.neutral900,
-    opacity: 0.5,
+    opacity: 0.4,
   },
-  workoutIndicator: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  dayNumber: {
+    marginVertical: spacingY._5,
+  },
+  dayNumberToday: {
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  indicators: {
+    height: verticalScale(16),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  workoutDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.green,
+  },
+  workoutDotSelected: {
+    backgroundColor: colors.neutral900,
   },
   contentSection: {
     flex: 1,

@@ -10,6 +10,7 @@ import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 import * as Icons from "phosphor-react-native";
+import { FlashList } from "@shopify/flash-list";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
 
@@ -36,13 +37,15 @@ const Statistics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Exercise specific stats
   const [availableExercises, setAvailableExercises] = useState<string[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string>("");
-  const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(null);
+  const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(
+    null
+  );
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
-  
+
   // Chart data
   const [weightChartData, setWeightChartData] = useState<ChartDataPoint[]>([]);
   const [repsChartData, setRepsChartData] = useState<ChartDataPoint[]>([]);
@@ -80,7 +83,7 @@ const Statistics = () => {
 
   const extractExercises = () => {
     const exerciseSet = new Set<string>();
-    
+
     workoutsHistory.forEach((workout) => {
       workout.exercises?.forEach((exercise) => {
         if (exercise.exerciseName) {
@@ -88,10 +91,10 @@ const Statistics = () => {
         }
       });
     });
-    
+
     const exercises = Array.from(exerciseSet).sort();
     setAvailableExercises(exercises);
-    
+
     if (exercises.length > 0 && !selectedExercise) {
       setSelectedExercise(exercises[0]);
     }
@@ -125,8 +128,8 @@ const Statistics = () => {
     }
 
     // Sortare cronologică
-    filteredWorkouts.sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
+    filteredWorkouts.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
     const dates: Date[] = [];
@@ -145,19 +148,20 @@ const Statistics = () => {
       if (exercise) {
         workoutCount++;
         const workoutDate = new Date(workout.date);
-        
+
         // Calculăm maximele pentru acest workout
         let maxWeightThisWorkout = 0;
         let totalRepsThisWorkout = 0;
         let totalWeightThisWorkout = 0;
 
         exercise.sets.forEach((set) => {
-          const weight = set.weightUnit === "lbs" ? set.weight * 0.453592 : set.weight;
-          
+          const weight =
+            set.weightUnit === "lbs" ? set.weight * 0.453592 : set.weight;
+
           if (weight > maxWeightThisWorkout) {
             maxWeightThisWorkout = weight;
           }
-          
+
           totalRepsThisWorkout += set.reps;
           totalWeightThisWorkout += weight * set.reps;
           totalReps += set.reps;
@@ -167,7 +171,7 @@ const Statistics = () => {
         weights.push(Math.round(maxWeightThisWorkout * 10) / 10);
         reps.push(totalRepsThisWorkout);
         totalWeight += totalWeightThisWorkout;
-        
+
         if (maxWeightThisWorkout > maxWeight) {
           maxWeight = maxWeightThisWorkout;
         }
@@ -190,14 +194,18 @@ const Statistics = () => {
     generateChartData(dates, weights, reps);
   };
 
-  const generateChartData = (dates: Date[], weights: number[], reps: number[]) => {
+  const generateChartData = (
+    dates: Date[],
+    weights: number[],
+    reps: number[]
+  ) => {
     const weightData: ChartDataPoint[] = [];
     const repsData: ChartDataPoint[] = [];
 
     dates.forEach((date, index) => {
-      const label = date.toLocaleDateString("en-US", { 
-        month: "short", 
-        day: "numeric" 
+      const label = date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
       });
 
       weightData.push({
@@ -275,9 +283,15 @@ const Statistics = () => {
           <SegmentedControl
             values={["Weekly", "Monthly", "Yearly"]}
             selectedIndex={
-              selectedPeriod === "Weekly" ? 0 : selectedPeriod === "Monthly" ? 1 : 2
+              selectedPeriod === "Weekly"
+                ? 0
+                : selectedPeriod === "Monthly"
+                ? 1
+                : 2
             }
-            onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
+            onChange={(event) =>
+              handleSegmentChange(event.nativeEvent.selectedSegmentIndex)
+            }
             style={styles.segmentedControl}
             backgroundColor={colors.neutral800}
             tintColor={colors.primary}
@@ -298,7 +312,12 @@ const Statistics = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
-            <Typo size={28} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+            <Typo
+              size={28}
+              fontWeight="700"
+              color={colors.white}
+              style={{ marginTop: spacingY._7 }}
+            >
               {getTotalWorkouts()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
@@ -308,7 +327,12 @@ const Statistics = () => {
 
           <View style={styles.statCard}>
             <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
-            <Typo size={28} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+            <Typo
+              size={28}
+              fontWeight="700"
+              color={colors.white}
+              style={{ marginTop: spacingY._7 }}
+            >
               {getTotalTime()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
@@ -325,46 +349,70 @@ const Statistics = () => {
               onPress={() => setShowExerciseSelector(!showExerciseSelector)}
             >
               <View style={styles.exerciseSelectorLeft}>
-                <Icons.ChartLineIcon size={20} color={colors.primary} weight="fill" />
+                <Icons.ChartLineIcon
+                  size={20}
+                  color={colors.primary}
+                  weight="fill"
+                />
                 <Typo size={16} fontWeight="600" color={colors.white}>
                   {selectedExercise || "Select Exercise"}
                 </Typo>
               </View>
-              <Icons.CaretDownIcon 
-                size={20} 
-                color={colors.neutral400} 
-                style={{ transform: [{ rotate: showExerciseSelector ? '180deg' : '0deg' }] }}
+              <Icons.CaretDownIcon
+                size={20}
+                color={colors.neutral400}
+                style={{
+                  transform: [
+                    { rotate: showExerciseSelector ? "180deg" : "0deg" },
+                  ],
+                }}
               />
             </TouchableOpacity>
 
             {showExerciseSelector && (
               <View style={styles.exerciseDropdown}>
-                <ScrollView style={styles.exerciseList} nestedScrollEnabled>
-                  {availableExercises.map((exercise, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.exerciseItem,
-                        selectedExercise === exercise && styles.exerciseItemSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedExercise(exercise);
-                        setShowExerciseSelector(false);
-                      }}
-                    >
-                      <Typo 
-                        size={15} 
-                        fontWeight={selectedExercise === exercise ? "600" : "400"}
-                        color={selectedExercise === exercise ? colors.primary : colors.white}
+                <View style={styles.exerciseListWrapper}>
+                  <FlashList
+                    data={availableExercises}
+                    renderItem={({ item: exercise, index }) => (
+                      <TouchableOpacity
+                        style={[
+                          styles.exerciseItem,
+                          selectedExercise === exercise &&
+                            styles.exerciseItemSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedExercise(exercise);
+                          setShowExerciseSelector(false);
+                        }}
                       >
-                        {exercise}
-                      </Typo>
-                      {selectedExercise === exercise && (
-                        <Icons.CheckIcon size={18} color={colors.primary} weight="bold" />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                        <Typo
+                          size={15}
+                          fontWeight={
+                            selectedExercise === exercise ? "600" : "400"
+                          }
+                          color={
+                            selectedExercise === exercise
+                              ? colors.primary
+                              : colors.white
+                          }
+                        >
+                          {exercise}
+                        </Typo>
+                        {selectedExercise === exercise && (
+                          <Icons.CheckIcon
+                            size={18}
+                            color={colors.primary}
+                            weight="bold"
+                          />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    keyExtractor={(item, index) => `${item}-${index}`}
+                    estimatedItemSize={48}
+                    showsVerticalScrollIndicator={false}
+                  />
+                </View>
               </View>
             )}
           </View>
@@ -375,8 +423,17 @@ const Statistics = () => {
           <>
             <View style={styles.exerciseStatsContainer}>
               <View style={styles.exerciseStatCard}>
-                <Icons.TrendUpIcon size={24} color={colors.primary} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Icons.TrendUpIcon
+                  size={24}
+                  color={colors.primary}
+                  weight="fill"
+                />
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.maxWeight} kg
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
@@ -386,7 +443,12 @@ const Statistics = () => {
 
               <View style={styles.exerciseStatCard}>
                 <Icons.HashIcon size={24} color={colors.green} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.totalReps}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
@@ -396,7 +458,12 @@ const Statistics = () => {
 
               <View style={styles.exerciseStatCard}>
                 <Icons.ScalesIcon size={24} color={"#B413BF"} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.totalWeight}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
@@ -418,7 +485,7 @@ const Statistics = () => {
                     </Typo>
                   </View>
                 </View>
-                
+
                 <LineChart
                   data={weightChartData}
                   width={scale(320)}
@@ -432,8 +499,14 @@ const Statistics = () => {
                   endOpacity={0.1}
                   initialSpacing={20}
                   noOfSections={4}
-                  yAxisTextStyle={{ color: colors.neutral400, fontSize: verticalScale(12) }}
-                  xAxisLabelTextStyle={{ color: colors.neutral400, fontSize: verticalScale(11) }}
+                  yAxisTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(12),
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(11),
+                  }}
                   hideRules
                   curved
                   areaChart
@@ -461,7 +534,7 @@ const Statistics = () => {
                     </Typo>
                   </View>
                 </View>
-                
+
                 <LineChart
                   data={repsChartData}
                   width={scale(320)}
@@ -475,8 +548,14 @@ const Statistics = () => {
                   endOpacity={0.1}
                   initialSpacing={20}
                   noOfSections={4}
-                  yAxisTextStyle={{ color: colors.neutral400, fontSize: verticalScale(12) }}
-                  xAxisLabelTextStyle={{ color: colors.neutral400, fontSize: verticalScale(11) }}
+                  yAxisTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(12),
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(11),
+                  }}
                   hideRules
                   curved
                   areaChart
@@ -495,11 +574,24 @@ const Statistics = () => {
 
         {exerciseStats && exerciseStats.workoutCount === 0 && (
           <View style={styles.emptyState}>
-            <Icons.ChartLineIcon size={48} color={colors.neutral500} weight="fill" />
-            <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15 }}>
+            <Icons.ChartLineIcon
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+            <Typo
+              size={18}
+              fontWeight="600"
+              color={colors.neutral200}
+              style={{ marginTop: spacingY._15 }}
+            >
               No data for this period
             </Typo>
-            <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={{ marginTop: spacingY._7, textAlign: "center" }}
+            >
               Train "{selectedExercise}" to see your progress
             </Typo>
           </View>
@@ -507,11 +599,24 @@ const Statistics = () => {
 
         {availableExercises.length === 0 && (
           <View style={styles.emptyState}>
-            <Icons.BarbellIcon size={48} color={colors.neutral500} weight="fill" />
-            <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15 }}>
+            <Icons.BarbellIcon
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+            <Typo
+              size={18}
+              fontWeight="600"
+              color={colors.neutral200}
+              style={{ marginTop: spacingY._15 }}
+            >
               No workouts yet
             </Typo>
-            <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={{ marginTop: spacingY._7 }}
+            >
               Start training to see your statistics
             </Typo>
           </View>
@@ -631,5 +736,9 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: "center",
     paddingVertical: spacingY._50,
+  },
+  exerciseListWrapper: {
+    height: verticalScale(250),
+    padding: spacingX._10,
   },
 });

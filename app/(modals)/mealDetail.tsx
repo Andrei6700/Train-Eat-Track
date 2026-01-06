@@ -10,10 +10,11 @@ import { searchFood, SimplifiedFood } from "@/src/services/foodApiService";
 import { getRecentFoodsByMeal } from "@/src/services/recentFoodsService";
 import { Food } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
+import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -83,10 +84,12 @@ const MealDetail = () => {
 
     setLoadingRecent(true);
     const result = await getRecentFoodsByMeal(user.uid, currentMeal.name, 10);
-    
+
     if (result.success && result.data) {
       setRecentFoods(result.data);
-      console.log(`✅ Loaded ${result.data.length} recent foods for ${currentMeal.name}`);
+      console.log(
+        `✅ Loaded ${result.data.length} recent foods for ${currentMeal.name}`
+      );
     } else {
       setRecentFoods([]);
     }
@@ -134,38 +137,48 @@ const MealDetail = () => {
     }, 500);
   };
 
-  const handleFoodPress = (food: SimplifiedFood) => {
+  const handleFoodPress = useCallback((food: SimplifiedFood) => {
     setSelectedFood(food);
     setQuantity("100");
     setShowQuantityModal(true);
-  };
+  }, []);
 
   // ✅ ADAUGĂ ALIMENT DIN LISTA RECENTĂ
-  const handleRecentFoodPress = (food: Food) => {
-    Alert.alert(
-      "Adaugă aliment",
-      `Vrei să adaugi "${food.name}" la ${currentMeal.name}?`,
-      [
-        { text: "Anulează", style: "cancel" },
-        {
-          text: "Adaugă",
-          onPress: async () => {
-            try {
-              await addFoodToMeal(currentMeal.name, food);
-              Alert.alert("Success", `${food.name} a fost adăugat la ${currentMeal.name}! 🎉`, [
-                {
-                  text: "OK",
-                  onPress: () => router.back(),
-                },
-              ]);
-            } catch (error: any) {
-              Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
-            }
+  const handleRecentFoodPress = useCallback(
+    (food: Food) => {
+      Alert.alert(
+        "Adaugă aliment",
+        `Vrei să adaugi "${food.name}" la ${currentMeal.name}?`,
+        [
+          { text: "Anulează", style: "cancel" },
+          {
+            text: "Adaugă",
+            onPress: async () => {
+              try {
+                await addFoodToMeal(currentMeal.name, food);
+                Alert.alert(
+                  "Success",
+                  `${food.name} a fost adăugat la ${currentMeal.name}! 🎉`,
+                  [
+                    {
+                      text: "OK",
+                      onPress: () => router.back(),
+                    },
+                  ]
+                );
+              } catch (error: any) {
+                Alert.alert(
+                  "Eroare",
+                  error?.message || "Nu s-a putut adăuga alimentul"
+                );
+              }
+            },
           },
-        },
-      ]
-    );
-  };
+        ]
+      );
+    },
+    [currentMeal.name, addFoodToMeal, router]
+  );
 
   const handleAddWithQuantity = async () => {
     if (!selectedFood || !quantity || parseFloat(quantity) <= 0) {
@@ -225,6 +238,111 @@ const MealDetail = () => {
       params: { mealName: currentMeal.name },
     });
   };
+
+  // ✅ RENDER ITEM PENTRU SEARCH RESULTS - FLASHLIST
+  const renderSearchResultItem = useCallback(
+    ({ item: food }: { item: SimplifiedFood }) => (
+      <TouchableOpacity
+        style={styles.searchResultItem}
+        onPress={() => handleFoodPress(food)}
+      >
+        {food.image && (
+          <Image
+            source={{ uri: food.image }}
+            style={styles.foodImage}
+            contentFit="cover"
+          />
+        )}
+        <View style={styles.foodInfo}>
+          <Typo size={15} fontWeight="600" numberOfLines={2}>
+            {food.name}
+          </Typo>
+          {food.brands && (
+            <Typo size={12} color={colors.neutral400} numberOfLines={1}>
+              {food.brands}
+            </Typo>
+          )}
+          <View style={styles.nutritionRow}>
+            <Typo size={13} color={colors.primary}>
+              {food.calories} kcal
+            </Typo>
+            <Typo size={12} color={colors.neutral400}>
+              P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
+            </Typo>
+          </View>
+          <Typo size={11} color={colors.neutral500}>
+            {food.servingSize}
+          </Typo>
+        </View>
+        <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
+      </TouchableOpacity>
+    ),
+    [handleFoodPress]
+  );
+
+  // ✅ RENDER ITEM PENTRU RECENT FOODS - FLASHLIST
+  const renderRecentFoodItem = useCallback(
+    ({ item: food }: { item: Food }) => (
+      <TouchableOpacity
+        style={styles.recentFoodItem}
+        onPress={() => handleRecentFoodPress(food)}
+      >
+        <View style={styles.foodInfo}>
+          <Typo size={15} fontWeight="600" numberOfLines={1}>
+            {food.name}
+          </Typo>
+          <View style={styles.nutritionRow}>
+            <Typo size={13} color={colors.primary}>
+              {food.calories} kcal
+            </Typo>
+            <Typo size={12} color={colors.neutral400}>
+              P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
+            </Typo>
+          </View>
+          <Typo size={11} color={colors.neutral500}>
+            {food.servingSize}
+          </Typo>
+        </View>
+        <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
+      </TouchableOpacity>
+    ),
+    [handleRecentFoodPress]
+  );
+
+  // ✅ EMPTY STATE COMPONENT PENTRU RECENT FOODS
+  const RecentFoodsEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyState}>
+        <Icons.ForkKnife size={48} color={colors.neutral500} weight="fill" />
+        <Typo
+          size={16}
+          fontWeight="600"
+          color={colors.neutral400}
+          style={{ marginTop: spacingY._15, textAlign: "center" }}
+        >
+          Nu ai alimente recente pentru {currentMeal.name}
+        </Typo>
+        <Typo
+          size={14}
+          color={colors.neutral500}
+          style={{ marginTop: spacingY._7, textAlign: "center" }}
+        >
+          Alimentele pe care le adaugi la această masă vor apărea aici
+        </Typo>
+      </View>
+    ),
+    [currentMeal.name]
+  );
+
+  // ✅ HEADER COMPONENT PENTRU SEARCH RESULTS
+  const SearchResultsHeader = useCallback(
+    () => (
+      <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._10 }}>
+        Rezultate căutare ({searchResults.length})
+      </Typo>
+    ),
+    [searchResults.length]
+  );
 
   return (
     <ModalWrapper>
@@ -328,67 +446,25 @@ const MealDetail = () => {
           </View>
         </View>
 
-        {/* Search Results */}
+        {/* ✅ SEARCH RESULTS CU FLASHLIST */}
         {searchResults.length > 0 && (
-          <ScrollView
-            style={styles.searchResultsContainer}
-            contentContainerStyle={styles.searchResultsContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Typo
-              size={16}
-              fontWeight="600"
-              style={{ marginBottom: spacingY._10 }}
-            >
-              Rezultate căutare ({searchResults.length})
-            </Typo>
-            {searchResults.map((food, index) => (
-              <TouchableOpacity
-                key={`${food.code}-${index}`}
-                style={styles.searchResultItem}
-                onPress={() => handleFoodPress(food)}
-              >
-                {food.image && (
-                  <Image
-                    source={{ uri: food.image }}
-                    style={styles.foodImage}
-                    contentFit="cover"
-                  />
-                )}
-                <View style={styles.foodInfo}>
-                  <Typo size={15} fontWeight="600" numberOfLines={2}>
-                    {food.name}
-                  </Typo>
-                  {food.brands && (
-                    <Typo size={12} color={colors.neutral400} numberOfLines={1}>
-                      {food.brands}
-                    </Typo>
-                  )}
-                  <View style={styles.nutritionRow}>
-                    <Typo size={13} color={colors.primary}>
-                      {food.calories} kcal
-                    </Typo>
-                    <Typo size={12} color={colors.neutral400}>
-                      P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
-                    </Typo>
-                  </View>
-                  <Typo size={11} color={colors.neutral500}>
-                    {food.servingSize}
-                  </Typo>
-                </View>
-                <Icons.PlusCircle
-                  size={24}
-                  color={colors.primary}
-                  weight="fill"
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={styles.searchResultsContainer}>
+            <FlashList
+              data={searchResults}
+              renderItem={renderSearchResultItem}
+              keyExtractor={(item, index) => `search-${item.code}-${index}`}
+              estimatedItemSize={100}
+              ListHeaderComponent={SearchResultsHeader}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flashListContent}
+            />
+          </View>
         )}
 
-        {/* Action Buttons */}
+        {/* Action Buttons & Recent Foods */}
         {searchResults.length === 0 && (
           <>
+            {/* Action Buttons */}
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={styles.actionButton}
@@ -483,7 +559,7 @@ const MealDetail = () => {
               </TouchableOpacity>
             </View>
 
-            {/* ✅ RECENT FOODS SECTION */}
+            {/* ✅ RECENT FOODS SECTION CU FLASHLIST */}
             <View style={styles.recentFoodsSection}>
               <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
                 Alimente recente
@@ -494,71 +570,17 @@ const MealDetail = () => {
                   <ActivityIndicator size="small" color={colors.primary} />
                 </View>
               ) : (
-                <ScrollView
-                  style={styles.foodsList}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={[
-                    styles.foodsListContent,
-                    recentFoods.length === 0 && styles.emptyFoodsListContent,
-                  ]}
-                >
-                  {recentFoods.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <Icons.ForkKnife
-                        size={48}
-                        color={colors.neutral500}
-                        weight="fill"
-                      />
-                      <Typo
-                        size={16}
-                        fontWeight="600"
-                        color={colors.neutral400}
-                        style={{ marginTop: spacingY._15, textAlign: "center" }}
-                      >
-                        Nu ai alimente recente pentru {currentMeal.name}
-                      </Typo>
-                      <Typo
-                        size={14}
-                        color={colors.neutral500}
-                        style={{ marginTop: spacingY._7, textAlign: "center" }}
-                      >
-                        Alimentele pe care le adaugi la această masă vor apărea aici
-                      </Typo>
-                    </View>
-                  ) : (
-                    <>
-                      {recentFoods.map((food, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.recentFoodItem}
-                          onPress={() => handleRecentFoodPress(food)}
-                        >
-                          <View style={styles.foodInfo}>
-                            <Typo size={15} fontWeight="600" numberOfLines={1}>
-                              {food.name}
-                            </Typo>
-                            <View style={styles.nutritionRow}>
-                              <Typo size={13} color={colors.primary}>
-                                {food.calories} kcal
-                              </Typo>
-                              <Typo size={12} color={colors.neutral400}>
-                                P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
-                              </Typo>
-                            </View>
-                            <Typo size={11} color={colors.neutral500}>
-                              {food.servingSize}
-                            </Typo>
-                          </View>
-                          <Icons.PlusCircle
-                            size={24}
-                            color={colors.primary}
-                            weight="fill"
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </>
-                  )}
-                </ScrollView>
+                <View style={styles.recentFoodsListContainer}>
+                  <FlashList
+                    data={recentFoods}
+                    renderItem={renderRecentFoodItem}
+                    keyExtractor={(item, index) => `recent-${item.name}-${index}`}
+                    estimatedItemSize={80}
+                    ListEmptyComponent={RecentFoodsEmptyState}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.flashListContent}
+                  />
+                </View>
               )}
             </View>
           </>
@@ -820,11 +842,12 @@ const styles = StyleSheet.create({
     top: "50%",
     marginTop: -10,
   },
+  // ✅ STILURI PENTRU FLASHLIST SEARCH RESULTS
   searchResultsContainer: {
     flex: 1,
     marginBottom: spacingY._20,
   },
-  searchResultsContent: {
+  flashListContent: {
     paddingBottom: spacingY._20,
   },
   searchResultItem: {
@@ -880,6 +903,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 16,
   },
+  // ✅ STILURI PENTRU FLASHLIST RECENT FOODS
   recentFoodsSection: {
     flex: 1,
   },
@@ -887,15 +911,9 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
     color: colors.text,
   },
-  foodsList: {
+  recentFoodsListContainer: {
     flex: 1,
-  },
-  foodsListContent: {
-    paddingBottom: verticalScale(20),
-  },
-  emptyFoodsListContent: {
-    flexGrow: 1,
-    justifyContent: "center",
+    minHeight: verticalScale(200),
   },
   emptyState: {
     alignItems: "center",
@@ -903,6 +921,24 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._50,
     paddingHorizontal: spacingX._20,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: spacingY._50,
+  },
+  recentFoodItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._12,
+    padding: spacingX._12,
+    marginBottom: spacingY._10,
+    gap: spacingX._12,
+  },
+  // ✅ STILURI PENTRU MODAL
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -971,22 +1007,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral900,
     padding: spacingX._15,
     borderRadius: radius._12,
-  },
-    loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: spacingY._50,
-  },
-  recentFoodItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.neutral800,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-    borderRadius: radius._12,
-    padding: spacingX._12,
-    marginBottom: spacingY._10,
-    gap: spacingX._12,
   },
 });
