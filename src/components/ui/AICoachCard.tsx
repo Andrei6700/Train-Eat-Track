@@ -29,7 +29,7 @@ const AICoachCard = React.memo(
 
     const gradientColors = getGradientColors();
 
-    // ✅ Selectare icon bazat pe tip
+    // Select icon based on type
     const getIcon = () => {
       switch (type) {
         case "warning":

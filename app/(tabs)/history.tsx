@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -325,6 +326,7 @@ const History = () => {
   }
 
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <View style={styles.container}>
         <Header title="History" style={{ marginVertical: spacingY._10 }} />
@@ -342,7 +344,7 @@ const History = () => {
           </View>
         </View>
 
-        {/* Scrollable Calendar cu FlashList */}
+        {/* Scrollable Calendar */}
         {calendarDays.length > 0 && (
           <View style={styles.calendarWrapper}>
             <FlashList
@@ -450,6 +452,7 @@ const History = () => {
         </View>
       </View>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 
@@ -478,7 +481,7 @@ const styles = StyleSheet.create({
   calendarContainer: {
     paddingHorizontal: spacingX._5,
   },
-  dayCard: {
+  dayCard: { 
     width: DAY_WIDTH,
     marginRight: ITEM_SPACING,
     alignItems: "center",

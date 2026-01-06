@@ -6,12 +6,18 @@ import {
 import { addRecentFood } from "@/src/services/recentFoodsService";
 import { getDailyWater, saveDailyWater } from "@/src/services/waterService";
 import {
+  cacheNutritionWeek,
+  getCachedNutritionForDate,
+  addFoodToCache,
+} from "@/src/services/cacheService";
+import {
   DailyNutrition,
   DailyWater,
   Food,
   WaterIntake,
 } from "@/src/types/index";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import NetInfo from "@react-native-community/netinfo";
 
 type NutritionContextType = {
   todayNutrition: DailyNutrition | null;
@@ -60,12 +66,50 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (user?.uid) {
       loadTodayData();
+      preloadWeekData();
     } else {
       setTodayNutrition(null);
       setTodayWater(null);
       setLoading(false);
     }
   }, [user?.uid]);
+
+  /**
+   * Preload nutrition data for the current week
+   */
+  const preloadWeekData = async () => {
+    if (!user?.uid) return;
+
+    try {
+      const state = await NetInfo.fetch();
+      if (!state.isConnected) {
+        console.log(" [NutritionContext] Offline - skipping preload");
+        return;
+      }
+
+      const today = new Date();
+      const weekData: DailyNutrition[] = [];
+
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+
+        const result = await getDailyNutrition(user.uid, date);
+        if (result.success && result.data) {
+          weekData.push(result.data);
+        }
+      }
+
+      if (weekData.length > 0) {
+        await cacheNutritionWeek(weekData);
+        console.log(
+          ` [NutritionContext] Cached ${weekData.length} days of nutrition data`
+        );
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error preloading week data:", error);
+    }
+  };
 
   const loadTodayData = async (date: Date = new Date()) => {
     if (!user?.uid) {
@@ -74,7 +118,50 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoading(true);
+    console.log("[NutritionContext] Loading nutrition for:", date);
 
+    // Try to load from cache
+    const cachedNutrition = await getCachedNutritionForDate(date);
+    if (cachedNutrition) {
+      console.log(" [NutritionContext] Using cached nutrition data");
+      setTodayNutrition(cachedNutrition);
+      setLoading(false);
+
+      // Synchronize in background only if online
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        syncNutritionInBackground(date);
+      }
+
+      loadWaterData(date);
+      return;
+    }
+
+    // 2️ Check if we are online
+    const state = await NetInfo.fetch();
+    if (!state.isConnected) {
+      console.log(" [NutritionContext] Offline - creating default nutrition");
+      const defaultNutrition: DailyNutrition = {
+        userID: user.uid,
+        date,
+        calorieGoal: 2500,
+        proteinGoal: 150,
+        carbsGoal: 250,
+        fatGoal: 70,
+        meals: [
+          { mealName: "Mic Dejun", foods: [] },
+          { mealName: "Pranz", foods: [] },
+          { mealName: "Cina", foods: [] },
+          { mealName: "Gustari", foods: [] },
+        ],
+      };
+      setTodayNutrition(defaultNutrition);
+      setLoading(false);
+      loadWaterData(date);
+      return;
+    }
+
+    // Load from Firebase
     const nutritionResult = await getDailyNutrition(user.uid, date);
 
     if (nutritionResult.success && nutritionResult.data) {
@@ -109,33 +196,80 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       setTodayNutrition(defaultNutrition);
     }
 
-    const waterResult = await getDailyWater(user.uid, date);
+    await loadWaterData(date);
+    setLoading(false);
+  };
 
-    if (waterResult.success && waterResult.data) {
-      setTodayWater(waterResult.data);
-    } else {
-      const defaultWater: DailyWater = {
+  /**
+   * Synchronize data in background
+   */
+  const syncNutritionInBackground = async (date: Date) => {
+    if (!user?.uid) return;
+
+    try {
+      const result = await getDailyNutrition(user.uid, date);
+      if (result.success && result.data) {
+        setTodayNutrition(result.data);
+        console.log(" [NutritionContext] Background sync completed");
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Background sync failed:", error);
+    }
+  };
+
+  const loadWaterData = async (date: Date) => {
+    if (!user?.uid) return;
+
+    try {
+      const state = await NetInfo.fetch();
+      if (!state.isConnected) {
+        // Offline - use default data
+        setTodayWater({
+          userID: user.uid,
+          date,
+          goal: 2000,
+          intakes: [],
+          total: 0,
+        });
+        return;
+      }
+
+      const waterResult = await getDailyWater(user.uid, date);
+
+      if (waterResult.success && waterResult.data) {
+        setTodayWater(waterResult.data);
+      } else {
+        const defaultWater: DailyWater = {
+          userID: user.uid,
+          date,
+          goal: 2000,
+          intakes: [],
+          total: 0,
+        };
+
+        const saveWaterResult = await saveDailyWater(defaultWater);
+
+        if (saveWaterResult.success && saveWaterResult.data?.id) {
+          defaultWater.id = saveWaterResult.data.id;
+        }
+
+        setTodayWater(defaultWater);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error loading water data:", error);
+      setTodayWater({
         userID: user.uid,
         date,
         goal: 2000,
         intakes: [],
         total: 0,
-      };
-
-      const saveWaterResult = await saveDailyWater(defaultWater);
-
-      if (saveWaterResult.success && saveWaterResult.data?.id) {
-        defaultWater.id = saveWaterResult.data.id;
-      }
-
-      setTodayWater(defaultWater);
+      });
     }
-
-    setLoading(false);
   };
 
   const refreshNutrition = async (date: Date = new Date()) => {
     await loadTodayData(date);
+    await preloadWeekData();
   };
 
   const addFoodToMeal = async (mealName: string, food: Food) => {
@@ -156,23 +290,38 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       meals: updatedMeals,
     };
 
+    // Update UI immediately
     setTodayNutrition(updatedNutrition);
 
-    // ✅ SALVARE ÎN FIREBASE
-    const saveResult = await saveDailyNutrition(updatedNutrition);
+    // Save to local cache
+    await addFoodToCache(food);
 
-    if (!saveResult.success) {
-      console.error("[NutritionContext] Failed to save food:", saveResult.msg);
-    } else {
-      console.log("✅ Food added and saved to Firebase:", food.name);
+    //  Add to recent history (works offline too)
+    await addRecentFood(user.uid, mealName, food);
 
-      // ✅ ADAUGĂ ALIMENTUL ÎN ISTORICUL RECENT
-      await addRecentFood(user.uid, mealName, food);
+    // Try to save to Firebase
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        const saveResult = await saveDailyNutrition(updatedNutrition);
+        if (!saveResult.success) {
+          console.error(
+            "[NutritionContext] Failed to save food:",
+            saveResult.msg
+          );
+        } else {
+          console.log(" Food added and saved to Firebase:", food.name);
+        }
+      } else {
+        console.log(" [NutritionContext] Offline - food saved locally");
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error saving food:", error);
     }
   };
 
   const removeFoodFromMeal = async (mealName: string, foodIndex: number) => {
-    if (!todayNutrition) return;
+    if (!todayNutrition || !user?.uid) return;
 
     const updatedMeals = todayNutrition.meals.map((meal) => {
       if (meal.mealName === mealName) {
@@ -190,7 +339,15 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayNutrition(updatedNutrition);
-    await saveDailyNutrition(updatedNutrition);
+
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyNutrition(updatedNutrition);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error removing food:", error);
+    }
   };
 
   const updateFoodQuantity = async (
@@ -198,31 +355,25 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     foodIndex: number,
     newQuantity: number
   ) => {
-    if (!todayNutrition) return;
+    if (!todayNutrition || !user?.uid) return;
 
     const updatedMeals = todayNutrition.meals.map((meal) => {
       if (meal.mealName === mealName) {
-        const updatedFoods = meal.foods.map((food, index) => {
-          if (index === foodIndex) {
-            const originalQuantity = parseFloat(food.servingSize) || 100;
-            const multiplier = newQuantity / originalQuantity;
+        const updatedFoods = [...meal.foods];
+        const food = updatedFoods[foodIndex];
+        const oldQuantity = parseFloat(food.servingSize) || 100;
+        const ratio = newQuantity / oldQuantity;
 
-            return {
-              ...food,
-              calories: Math.round(food.calories * multiplier),
-              protein: Math.round(food.protein * multiplier * 10) / 10,
-              carbs: Math.round(food.carbs * multiplier * 10) / 10,
-              fat: Math.round(food.fat * multiplier * 10) / 10,
-              servingSize: `${newQuantity}g`,
-            };
-          }
-          return food;
-        });
-
-        return {
-          ...meal,
-          foods: updatedFoods,
+        updatedFoods[foodIndex] = {
+          ...food,
+          calories: Math.round(food.calories * ratio),
+          protein: Math.round(food.protein * ratio * 10) / 10,
+          carbs: Math.round(food.carbs * ratio * 10) / 10,
+          fat: Math.round(food.fat * ratio * 10) / 10,
+          servingSize: `${newQuantity}g`,
         };
+
+        return { ...meal, foods: updatedFoods };
       }
       return meal;
     });
@@ -233,7 +384,15 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayNutrition(updatedNutrition);
-    await saveDailyNutrition(updatedNutrition);
+
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyNutrition(updatedNutrition);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error updating quantity:", error);
+    }
   };
 
   const copyFoodToMeal = async (
@@ -266,10 +425,16 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayNutrition(updatedNutrition);
-    await saveDailyNutrition(updatedNutrition);
 
-    // ✅ ADAUGĂ ALIMENTUL ÎN ISTORICUL RECENT AL MESEI DE DESTINAȚIE
-    await addRecentFood(user.uid, toMeal, foodToCopy);
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyNutrition(updatedNutrition);
+        await addRecentFood(user.uid, toMeal, foodToCopy);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error copying food:", error);
+    }
   };
 
   const moveFoodToMeal = async (
@@ -308,10 +473,16 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayNutrition(updatedNutrition);
-    await saveDailyNutrition(updatedNutrition);
 
-    // ✅ ADAUGĂ ALIMENTUL ÎN ISTORICUL RECENT AL MESEI DE DESTINAȚIE
-    await addRecentFood(user.uid, toMeal, foodToMove);
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyNutrition(updatedNutrition);
+        await addRecentFood(user.uid, toMeal, foodToMove);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error moving food:", error);
+    }
   };
 
   const updateGoals = async (goals: {
@@ -328,7 +499,15 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayNutrition(updatedNutrition);
-    await saveDailyNutrition(updatedNutrition);
+
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyNutrition(updatedNutrition);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error updating goals:", error);
+    }
   };
 
   const addWaterIntake = async (amount: number) => {
@@ -346,7 +525,15 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayWater(updatedWater);
-    await saveDailyWater(updatedWater);
+
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyWater(updatedWater);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error adding water:", error);
+    }
   };
 
   const resetWaterIntake = async () => {
@@ -359,7 +546,15 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setTodayWater(updatedWater);
-    await saveDailyWater(updatedWater);
+
+    try {
+      const state = await NetInfo.fetch();
+      if (state.isConnected) {
+        await saveDailyWater(updatedWater);
+      }
+    } catch (error) {
+      console.error("[NutritionContext] Error resetting water:", error);
+    }
   };
 
   return (
@@ -384,10 +579,10 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-export const useNutrition = (): NutritionContextType => {
+export const useNutrition = () => {
   const context = useContext(NutritionContext);
   if (!context) {
-    throw new Error("useNutrition must be used within a NutritionProvider");
+    throw new Error("useNutrition must be used within NutritionProvider");
   }
   return context;
 };

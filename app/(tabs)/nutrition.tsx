@@ -27,6 +27,7 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"];
 const MONTHS = [
@@ -87,6 +88,50 @@ const Nutrition = () => {
       preloadWeekData();
     }
   }, [user?.uid, currentWeek]);
+
+  useEffect(() => {
+  if (!todayNutrition || currentWeek.length === 0) return;
+
+  const nutritionDate = new Date(todayNutrition.date);
+  nutritionDate.setHours(0, 0, 0, 0);
+
+  const totalCalories = todayNutrition.meals.reduce((total, meal) => {
+    return total + meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
+  }, 0);
+
+  const goal = todayNutrition.calorieGoal || 2500;
+
+  setDaysData(prevDaysData => {
+    const existingIndex = prevDaysData.findIndex(d => {
+      const dDate = new Date(d.date);
+      dDate.setHours(0, 0, 0, 0);
+      return dDate.toDateString() === nutritionDate.toDateString();
+    });
+
+    if (existingIndex !== -1) {
+      const updatedData = [...prevDaysData];
+      updatedData[existingIndex] = {
+        ...updatedData[existingIndex],
+        calories: totalCalories,
+        goal: goal,
+      };
+      return updatedData;
+    } else {
+      const isInCurrentWeek = currentWeek.some(
+        w => w.toDateString() === nutritionDate.toDateString()
+      );
+      
+      if (isInCurrentWeek) {
+        return [...prevDaysData, {
+          date: nutritionDate,
+          calories: totalCalories,
+          goal: goal,
+        }];
+      }
+      return prevDaysData;
+    }
+  });
+}, [todayNutrition, currentWeek]);
 
   const generateWeek = () => {
     const today = new Date();
@@ -399,6 +444,7 @@ const Nutrition = () => {
   const fatColor = '#F59E0B';
 
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <ScrollView 
         style={styles.container} 
@@ -986,6 +1032,7 @@ const Nutrition = () => {
         </TouchableOpacity>
       </Modal>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 

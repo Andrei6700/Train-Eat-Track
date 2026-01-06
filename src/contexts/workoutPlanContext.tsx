@@ -5,6 +5,11 @@ import {
   getUserWorkoutPlan,
   updateWorkoutPlan,
 } from "@/src/services/workoutPlanService";
+import { 
+  cacheWorkoutPlan, 
+  getCachedWorkoutPlan,
+  clearExpiredCache 
+} from "@/src/services/cacheService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
@@ -28,6 +33,7 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (user?.uid) {
       loadWorkoutPlan();
+      clearExpiredCache(); // Cleans expired cache on startup
     } else {
       setWorkoutPlan(null);
       setLoading(false);
@@ -41,16 +47,52 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoading(true);
-    console.log("[WorkoutPlanContext] loadWorkoutPlan for user:", user.uid);
+    console.log("[WorkoutPlanContext] Loading workout plan for user:", user.uid);
+
+    //  Try to load from cache
+    const cachedPlan = await getCachedWorkoutPlan();
+    if (cachedPlan) {
+      console.log(" [WorkoutPlanContext] Using cached workout plan");
+      setWorkoutPlan(cachedPlan);
+      setLoading(false);
+      
+      // Synchronize in background
+      syncPlanInBackground();
+      return;
+    }
+
+    //  Load from Firebase
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
-      console.log("[WorkoutPlanContext] plan found:", result.data.id);
+      console.log("[WorkoutPlanContext] Plan loaded from Firebase:", result.data.id);
       setWorkoutPlan(result.data);
+      
+      // Save to cache
+      await cacheWorkoutPlan(result.data);
     } else {
-      console.log("[WorkoutPlanContext] no plan found for user");
+      console.log("[WorkoutPlanContext] No plan found for user");
       setWorkoutPlan(null);
     }
+    
     setLoading(false);
+  };
+
+  /**
+   * Synchronize the plan in background without loading
+   */
+  const syncPlanInBackground = async () => {
+    if (!user?.uid) return;
+
+    try {
+      const result = await getUserWorkoutPlan(user.uid);
+      if (result.success && result.data) {
+        setWorkoutPlan(result.data);
+        await cacheWorkoutPlan(result.data);
+        console.log(" [WorkoutPlanContext] Background sync completed");
+      }
+    } catch (error) {
+      console.error("[WorkoutPlanContext] Background sync failed:", error);
+    }
   };
 
   const updateDay = async (day: string, dayData: DayWorkout) => {
@@ -82,8 +124,12 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
         updatedAt: new Date(),
       };
 
-      console.log("[WorkoutPlanContext] set local plan (no backend call). Payload:", newLocalPlan);
+      console.log("[WorkoutPlanContext] Setting local plan (no backend call)");
       setWorkoutPlan(newLocalPlan);
+      
+      // Save to cache
+      await cacheWorkoutPlan(newLocalPlan);
+      
       return;
     }
 
@@ -95,25 +141,29 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       updatedAt: new Date(),
     };
 
+    // Update UI immediately
+    setWorkoutPlan(updatedPlan);
+    
+    // Save to cache
+    await cacheWorkoutPlan(updatedPlan);
+
+    // Update in Firebase
     if (workoutPlan.id) {
       try {
-        console.log("[WorkoutPlanContext] updating plan id:", workoutPlan.id, "payload:", updatedPlan);
+        console.log("[WorkoutPlanContext] Updating plan in Firebase:", workoutPlan.id);
         await updateWorkoutPlan(workoutPlan.id, updatedPlan);
       } catch (err) {
-        console.error("[WorkoutPlanContext] error updating plan on backend:", err);
+        console.error("[WorkoutPlanContext] Error updating plan on backend:", err);
       }
     } else {
-      console.log("[WorkoutPlanContext] updated local plan (no id) – waiting for explicit Save:", updatedPlan);
+      console.log("[WorkoutPlanContext] Updated local plan (no id)");
     }
-
-    setWorkoutPlan(updatedPlan);
   };
 
   const refreshPlan = async () => {
     await loadWorkoutPlan();
   };
 
-  // ✅ MODIFICAT: Trimite userID la funcția de delete
   const deletePlan = async (): Promise<{ success: boolean; msg?: string }> => {
     if (!workoutPlan?.id || !user?.uid) {
       return { success: false, msg: "No workout plan to delete" };
@@ -123,11 +173,15 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       const result = await deleteWorkoutPlan(workoutPlan.id, user.uid);
       if (result.success) {
         setWorkoutPlan(null);
-        return { success: true, msg: result.msg || "Workout plan and history deleted successfully" };
+        
+        // Delete from cache
+        await cacheWorkoutPlan(null as any);
+        
+        return { success: true, msg: result.msg || "Workout plan deleted successfully" };
       }
       return result;
     } catch (error: any) {
-      console.error("[WorkoutPlanContext] error deleting plan:", error);
+      console.error("[WorkoutPlanContext] Error deleting plan:", error);
       return { success: false, msg: error?.message || "Could not delete workout plan" };
     }
   };

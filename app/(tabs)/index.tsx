@@ -1,5 +1,6 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import AICoachCard from "@/src/components/ui/AICoachCard";
 import HistoryCard from "@/src/components/ui/HistoryCard";
 import LatestScienceCard from "@/src/components/ui/LatestScienceCard";
@@ -15,7 +16,15 @@ import { verticalScale } from "@/src/utils/styling";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
-const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
+const DAYS_FULL = [
+  "Luni",
+  "Marti",
+  "Miercuri",
+  "Joi",
+  "Vineri",
+  "Sambata",
+  "Duminica",
+];
 
 const Home = () => {
   const { user } = useAuth();
@@ -26,7 +35,6 @@ const Home = () => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load workouts history
   useEffect(() => {
     if (user?.uid) {
       loadWorkouts();
@@ -44,7 +52,6 @@ const Home = () => {
     } else {
       setWorkoutsHistory([]);
     }
-
     setLoading(false);
   };
 
@@ -54,123 +61,96 @@ const Home = () => {
     setRefreshing(false);
   }, [user?.uid]);
 
-  //  AI Coach Tip 
   const aiCoachTip = useMemo(() => {
-    if (workoutsHistory.length === 0) {
-      return {
-        tip: "Time to start your fitness journey! 🚀",
-        emoji: "🚀",
-        type: "suggestion" as const,
-      };
-    }
-
     return getAICoachTip(workoutsHistory);
   }, [workoutsHistory]);
 
-  //  Today's Workout 
-  const todayWorkout = useMemo(() => {
-    if (!workoutPlan) return null;
+  const getTodayWorkoutName = () => {
+    if (!workoutPlan || !workoutPlan.days) return null;
 
     const today = new Date();
     const dayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
     const dayName = DAYS_FULL[dayIndex];
 
-    return workoutPlan.days?.find((d) => d.day === dayName) || null;
-  }, [workoutPlan]);
+    const todayPlan = workoutPlan.days.find((d) => d.day === dayName);
+    if (!todayPlan) return null;
 
-  //  Today's Goals 
-  const todayGoals = useMemo(() => {
-    const workoutGoal = todayWorkout
-      ? todayWorkout.isRestDay
-        ? "Rest Day"
-        : `${todayWorkout.exercises.length} exercises`
-      : "No plan";
+    if (todayPlan.isRestDay) {
+      return "Rest Day 😴";
+    }
 
-    const nutritionGoal = todayNutrition
-      ? `${todayNutrition.calorieGoal} kcal`
-      : "2500 kcal";
+    return todayPlan.sessionName || dayName;
+  };
 
-    const waterGoal = todayWater ? `${todayWater.goal / 1000}L` : "2L";
+  const getCurrentCalories = () => {
+    if (!todayNutrition) return 0;
+    return todayNutrition.meals.reduce((total, meal) => {
+      return (
+        total + meal.foods.reduce((mealTotal, food) => mealTotal + food.calories, 0)
+      );
+    }, 0);
+  };
 
-    // Check completion
-    const workoutCompleted = workoutsHistory.some((w) => {
-      const workoutDate = new Date(w.date);
-      const today = new Date();
-      return workoutDate.toDateString() === today.toDateString();
-    });
+  const getCalorieGoal = () => {
+    return todayNutrition?.calorieGoal || 2500;
+  };
 
-    const nutritionCompleted = todayNutrition
-      ? todayNutrition.meals.reduce((total, meal) => {
-          return (
-            total +
-            meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0)
-          );
-        }, 0) >= todayNutrition.calorieGoal
-      : false;
-
-    const waterCompleted = todayWater ? todayWater.total >= todayWater.goal : false;
-
-    return {
-      workout: workoutGoal,
-      nutrition: nutritionGoal,
-      water: waterGoal,
-      workoutCompleted,
-      nutritionCompleted,
-      waterCompleted,
-    };
-  }, [todayWorkout, todayNutrition, todayWater, workoutsHistory]);
+  const getWaterPercentage = () => {
+    if (!todayWater) return 0;
+    return Math.min(100, Math.round((todayWater.total / todayWater.goal) * 100));
+  };
 
   return (
-    <ScreenWrapper>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Typo size={16} color={colors.neutral400}>
-              Welcome back,
-            </Typo>
-            <Typo size={24} fontWeight="700" style={{ marginTop: 4 }}>
-              {user?.name}
-            </Typo>
-          </View>
-        </View>
+    <SwipeableScreen>
+      <ScreenWrapper>
+        <View style={styles.container}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+              />
+            }
+          >
+            {/* Header */}
+            <View style={styles.header}>
+              <View>
+                <Typo size={16} color={colors.neutral400}>
+                  Welcome back,
+                </Typo>
+                <Typo size={24} fontWeight="700">
+                  {user?.name || "User"} 👋
+                </Typo>
+              </View>
+            </View>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollViewStyle}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
+            {/* AI Coach Card */}
+            <AICoachCard
+              tip={aiCoachTip.tip}
+              emoji={aiCoachTip.emoji}
+              type={aiCoachTip.type}
             />
-          }
-        >
-          {/*  History Card  */}
-          <HistoryCard />
 
-          {/* AI Coach Tip Card  */}
-          <AICoachCard
-            tip={aiCoachTip.tip}
-            emoji={aiCoachTip.emoji}
-            type={aiCoachTip.type}
-          />
+            {/* Today Goals Card */}
+            <TodayGoalsCard
+              workoutName={getTodayWorkoutName()}
+              currentCalories={getCurrentCalories()}
+              calorieGoal={getCalorieGoal()}
+              waterPercentage={getWaterPercentage()}
+            />
 
-          {/*  Today's Goals Card  */}
-          <TodayGoalsCard
-            workout={todayGoals.workout}
-            nutrition={todayGoals.nutrition}
-            water={todayGoals.water}
-            workoutCompleted={todayGoals.workoutCompleted}
-            nutritionCompleted={todayGoals.nutritionCompleted}
-            waterCompleted={todayGoals.waterCompleted}
-          />
+            {/* History Card */}
+            <HistoryCard />
 
-          {/* Latest Science Card  */}
-          <LatestScienceCard />
-        </ScrollView>
-      </View>
-    </ScreenWrapper>
+            {/* Latest Science Card */}
+            <LatestScienceCard />
+          </ScrollView>
+        </View>
+      </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 
@@ -181,11 +161,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
-  header: {
-    paddingTop: spacingY._10,
-    paddingBottom: spacingY._15,
+  scrollContent: {
+    paddingBottom: verticalScale(100),
+    gap: spacingY._20,
   },
-  scrollViewStyle: {
-    paddingBottom: verticalScale(20), 
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacingY._10,
   },
 });

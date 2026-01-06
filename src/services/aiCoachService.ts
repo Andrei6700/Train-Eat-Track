@@ -129,7 +129,7 @@ const getLastWorkoutType = (lastWorkout: WorkoutHistory | null): string => {
  * Generates an AI Coach tip based on workout history
  */
 export const getAICoachTip = (workouts: WorkoutHistory[]): CoachTip => {
-  // Verifică cache-ul
+  // check cache first
   if (cachedTip && Date.now() - cachedTip.timestamp < CACHE_DURATION) {
     return {
       tip: cachedTip.tip,
@@ -167,7 +167,7 @@ export const getAICoachTip = (workouts: WorkoutHistory[]): CoachTip => {
       type: "congratulation",
     };
   } else if (daysSince === 1) {
-    // Antrenament făcut ieri
+    // Workout done yesterday
     if (lastWorkoutType === "Leg") {
       tip = {
         tip: "Great leg session yesterday! Focus on protein today ",
@@ -190,19 +190,19 @@ export const getAICoachTip = (workouts: WorkoutHistory[]): CoachTip => {
       };
     }
   } else if (daysSince === 2) {
-    // 2 zile de la ultimul workout
+    // 2 days since last workout
     tip = {
       tip: "Ready for another session? Your muscles have recovered! ",
       type: "suggestion",
     };
   } else if (daysSince >= 3 && daysSince <= 5) {
-    // 3-5 zile de la ultimul workout
+    // 3-5 days since last workout
     tip = {
       tip: "Missed you! How about a light 20 min cardio today? ",
       type: "warning",
     };
   } else if (daysSince > 5) {
-    // Mai mult de 5 zile
+    // More than 5 days since last workout
     tip = {
       tip: "Let's get back on track! Even a quick workout counts ",
       type: "warning",
@@ -233,7 +233,7 @@ export const getAICoachTip = (workouts: WorkoutHistory[]): CoachTip => {
     };
   }
   
-  // Cache rezultatul
+  // Cache the result
   cachedTip = { tip: tip.tip, emoji: tip.emoji, timestamp: Date.now() };
   
   return tip;

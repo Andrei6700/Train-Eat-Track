@@ -12,6 +12,7 @@ import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View, RefreshControl } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
@@ -31,12 +32,12 @@ const Workout = () => {
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(null);
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
 
-  // Memoized: verifică dacă ziua selectată este azi
+  // Memoized: checks if selected day is today
   const isSelectedDayToday = useMemo(() => {
     return selectedDay.toDateString() === new Date().toDateString();
   }, [selectedDay]);
 
-  // Memoized: verifică dacă ziua selectată este în trecut
+  // Memoized: checks if selected day is in the past
   const isSelectedDayPast = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -45,7 +46,6 @@ const Workout = () => {
     return selected < today;
   }, [selectedDay]);
 
-  // english
   // Memoized: checks if selected day is in the future
   const isSelectedDayFuture = useMemo(() => {
     const today = new Date();
@@ -450,6 +450,7 @@ const Workout = () => {
   }
 
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <ScrollView 
         style={styles.container} 
@@ -543,6 +544,7 @@ const Workout = () => {
         {renderContent()}
       </ScrollView>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 

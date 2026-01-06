@@ -1,0 +1,40 @@
+import { colors, spacingX, spacingY } from "@/constants/theme";
+import { useNetwork } from "@/src/contexts/networkContext";
+import { CloudSlash } from "phosphor-react-native";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated";
+import Typo from "./Typo";
+
+const OfflineBanner = () => {
+  const { isConnected } = useNetwork();
+
+  if (isConnected) return null;
+
+  return (
+    <Animated.View
+      entering={FadeInUp.duration(300)}
+      exiting={FadeOutUp.duration(300)}
+      style={styles.container}
+    >
+      <CloudSlash size={18} color={colors.white} weight="fill" />
+      <Typo size={13} fontWeight="600" color={colors.white}>
+        Mod Offline - Datele sunt salvate local
+      </Typo>
+    </Animated.View>
+  );
+};
+
+export default OfflineBanner;
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._8,
+    backgroundColor: colors.neutral700,
+    paddingVertical: spacingY._10,
+    paddingHorizontal: spacingX._15,
+  },
+});

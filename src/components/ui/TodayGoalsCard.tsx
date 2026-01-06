@@ -123,7 +123,7 @@ const TodayGoalsCard = React.memo(
           </View>
           <Typo size={12} color={colors.neutral400} style={styles.progressText}>
             {completedCount === 3
-              ? "All goals completed! 🎉"
+              ? "All goals completed! "
               : `${3 - completedCount} remaining`}
           </Typo>
         </View>

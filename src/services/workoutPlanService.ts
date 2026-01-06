@@ -15,7 +15,7 @@ import {
 const COLLECTION_NAME = "workoutPlans";
 const WORKOUTS_COLLECTION = "workoutsHistory";
 
-// ia planul de workout al user-ului
+// take user workout plan 
 export const getUserWorkoutPlan = async (
   userID: string
 ): Promise<ResponseType> => {
@@ -42,7 +42,7 @@ export const getUserWorkoutPlan = async (
   }
 };
 
-// Creează un plan de workout nou
+// create a new workout plan
 export const createWorkoutPlan = async (
   plan: WorkoutPlan
 ): Promise<ResponseType> => {
@@ -60,7 +60,7 @@ export const createWorkoutPlan = async (
   }
 };
 
-// Actualizează planul de workout
+// Update workout plan
 export const updateWorkoutPlan = async (
   planId: string,
   updates: Partial<WorkoutPlan>
@@ -79,17 +79,17 @@ export const updateWorkoutPlan = async (
   }
 };
 
-// ✅ MODIFICAT: Șterge planul și TOATE workout-urile din history
+//  DELETE: Delete workout plan and ALL workouts from history
 export const deleteWorkoutPlan = async (
   planId: string,
   userID: string
 ): Promise<ResponseType> => {
   try {
-    // 1. Șterge planul
+    // 1. Delete the plan
     const planRef = doc(firestore, COLLECTION_NAME, planId);
     await deleteDoc(planRef);
     
-    // 2. Șterge toate workout-urile din history pentru acest user
+    // 2. Delete all workouts from history for this user
     const workoutsQuery = query(
       collection(firestore, WORKOUTS_COLLECTION),
       where("userID", "==", userID)
@@ -97,7 +97,7 @@ export const deleteWorkoutPlan = async (
     
     const workoutsSnapshot = await getDocs(workoutsQuery);
     
-    // sterge fiecare workout în parte
+    // delete each workout individually
     const deletePromises = workoutsSnapshot.docs.map(workoutDoc => 
       deleteDoc(doc(firestore, WORKOUTS_COLLECTION, workoutDoc.id))
     );
@@ -116,7 +116,7 @@ export const deleteWorkoutPlan = async (
   }
 };
 
-// ia un plan de workout după ID
+// take a workout plan by ID
 export const getWorkoutPlan = async (
   planId: string
 ): Promise<ResponseType> => {

@@ -11,6 +11,7 @@ import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 import * as Icons from "phosphor-react-native";
 import { FlashList } from "@shopify/flash-list";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
 
@@ -106,7 +107,7 @@ const Statistics = () => {
     const now = new Date();
     let filteredWorkouts: WorkoutHistory[] = [];
 
-    // Filtrare după perioadă
+    // filtrering based on selected period
     if (selectedPeriod === "Weekly") {
       const weekAgo = new Date();
       weekAgo.setDate(now.getDate() - 7);
@@ -127,7 +128,7 @@ const Statistics = () => {
       );
     }
 
-    // Sortare cronologică
+    // cronological sort
     filteredWorkouts.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
@@ -149,7 +150,7 @@ const Statistics = () => {
         workoutCount++;
         const workoutDate = new Date(workout.date);
 
-        // Calculăm maximele pentru acest workout
+        // Calculate stats for this workout
         let maxWeightThisWorkout = 0;
         let totalRepsThisWorkout = 0;
         let totalWeightThisWorkout = 0;
@@ -190,7 +191,7 @@ const Statistics = () => {
       reps,
     });
 
-    // Generare date pentru grafice
+    // Generate data for charts
     generateChartData(dates, weights, reps);
   };
 
@@ -269,6 +270,7 @@ const Statistics = () => {
   };
 
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
@@ -623,6 +625,7 @@ const Statistics = () => {
         )}
       </ScrollView>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 

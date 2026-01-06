@@ -26,7 +26,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from 'expo-haptics'; // ✅ Haptics importat
+import * as Haptics from 'expo-haptics'; 
 
 const DAYS_OF_WEEK = [
   "Luni",
@@ -84,7 +84,7 @@ const WorkoutPlanScreen = () => {
   };
 
   const handleDayPress = (day: string) => {
-    Haptics.selectionAsync(); // ✅ Feedback tactil
+    Haptics.selectionAsync(); // tactile feedback
     router.push({
       pathname: "/(modals)/dayWorkout",
       params: { day, planId: existingPlanId || "new" },
@@ -211,7 +211,7 @@ const WorkoutPlanScreen = () => {
                     hasExercises && styles.dayCardActive,
                   ]}
                   onPress={() => handleDayPress(day)}
-                  activeOpacity={0.9} // Feedback vizual la apasare
+                  activeOpacity={0.9} // Visual feedback when pressed
                 >
                   {/* Card Header */}
                   <View style={styles.cardHeader}>

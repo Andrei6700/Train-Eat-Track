@@ -14,14 +14,14 @@ import {
 
 const COLLECTION_NAME = "waterTracking";
 
-// ✅ Helper pentru a normaliza data la midnight
+//  helper for  normalizing date to midnight
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 };
 
-// ✅ Helper pentru a crea document ID consistent
+//  helper for creating consistent document ID
 const getDateKey = (date: Date): string => {
   const normalized = normalizeDate(date);
   return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
@@ -50,7 +50,7 @@ export const getDailyWater = async (
       
       console.log('[WaterService] Found existing document:', docData.id);
       
-      // Convertim date field din Timestamp în Date
+      // Convert date field from Timestamp to Date
       let waterDate = date;
       if (data.date) {
         waterDate = data.date instanceof Timestamp 
@@ -58,7 +58,7 @@ export const getDailyWater = async (
           : new Date(data.date);
       }
 
-      // Convertim timestamp-urile din intakes
+      // Convert timestamps in intakes
       const intakes = data.intakes?.map((intake: any) => ({
         amount: intake.amount,
         timestamp: intake.timestamp instanceof Timestamp 
@@ -95,14 +95,14 @@ export const saveDailyWater = async (
   try {
     const dateKey = getDateKey(new Date(water.date));
     
-    // Convertim timestamp-urile din intakes pentru Firestore
+    // Convert timestamps in intakes for Firestore
     const intakesForFirestore = water.intakes.map(intake => ({
       amount: intake.amount,
       timestamp: Timestamp.fromDate(new Date(intake.timestamp))
     }));
     
     if (water.id) {
-      // ✅ UPDATE
+      //  UPDATE
       console.log('[WaterService] Updating document:', water.id);
       
       const docRef = doc(firestore, COLLECTION_NAME, water.id);
@@ -118,7 +118,7 @@ export const saveDailyWater = async (
       
       return { success: true, msg: "Water tracking updated successfully" };
     } else {
-      // ✅ CREATE
+      //  CREATE
       console.log('[WaterService] Creating new document for dateKey:', dateKey);
       
       const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {

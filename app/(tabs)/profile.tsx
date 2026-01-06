@@ -14,7 +14,7 @@ import * as Icons from "phosphor-react-native";
 import React from "react";
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const Profile = () => {
   const { user } = useAuth();
@@ -73,6 +73,7 @@ const Profile = () => {
   };
 
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <View style={styles.container}>
         <Header title="Profile" style={{ marginVertical: spacingY._10 }} />
@@ -133,6 +134,7 @@ const Profile = () => {
         </View>
       </View>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 

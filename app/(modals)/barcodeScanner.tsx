@@ -77,11 +77,11 @@ const BarcodeScanner = () => {
       setShowQuantityModal(true);
     } else {
       Alert.alert(
-        "Nu s-a găsit",
-        "Alimentul nu a fost găsit în baza de date. Vrei să încerci din nou?",
+        "Not Found",
+        "The food was not found in the database. Would you like to try again?",
         [
-          { text: "Anulează", onPress: () => router.back() },
-          { text: "Încearcă din nou", onPress: () => setScanned(false) },
+          { text: "Cancel", onPress: () => router.back() },
+          { text: "Try Again", onPress: () => setScanned(false) },
         ]
       );
     }
@@ -89,7 +89,7 @@ const BarcodeScanner = () => {
 
   const handleAddWithQuantity = async () => {
     if (!scannedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
+      Alert.alert("Error", "Please enter a valid quantity.");
       return;
     }
 
@@ -108,7 +108,7 @@ const BarcodeScanner = () => {
     };
 
     try {
-      // ✅ SALVARE ÎN FIREBASE prin context
+      // saved in firebase by context
       await addFoodToMeal(mealName as string, adjustedFood);
 
       setAddingFood(false);
@@ -117,7 +117,7 @@ const BarcodeScanner = () => {
 
       Alert.alert(
         "Success",
-        `${adjustedFood.name} a fost adăugat la ${mealName}! 🎉`,
+        `${adjustedFood.name} was added to ${mealName}! `,
         [
           {
             text: "OK",
@@ -127,7 +127,7 @@ const BarcodeScanner = () => {
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
+      Alert.alert("Error", error?.message || "Failed to add the food");
     }
   };
 
@@ -174,15 +174,14 @@ const BarcodeScanner = () => {
             color={colors.neutral400}
             style={{ marginTop: spacingY._10, textAlign: "center" }}
           >
-            Aplicația are nevoie de acces la cameră pentru a scana codurile de
-            bare.
+            The app needs camera access to scan barcodes.
           </Typo>
           <Button
             onPress={() => Linking.openSettings()}
             style={{ marginTop: spacingY._30, width: "80%" }}
           >
             <Typo size={16} fontWeight="700" color={colors.black}>
-              Deschide Setări
+              Open Settings
             </Typo>
           </Button>
           <TouchableOpacity
@@ -190,7 +189,7 @@ const BarcodeScanner = () => {
             style={{ marginTop: spacingY._15 }}
           >
             <Typo size={15} color={colors.primary}>
-              Înapoi
+              Back
             </Typo>
           </TouchableOpacity>
         </Animated.View>
@@ -230,7 +229,7 @@ const BarcodeScanner = () => {
           </TouchableOpacity>
 
           <Typo size={18} fontWeight="700" color={colors.white}>
-            Scanează Codul de Bare
+            Scan Barcode
           </Typo>
 
           <TouchableOpacity
@@ -273,7 +272,7 @@ const BarcodeScanner = () => {
               color={colors.white}
               style={styles.scannerText}
             >
-              Poziționează codul de bare în cadru
+              Position the barcode within the frame
             </Typo>
           </Animated.View>
         )}
@@ -292,14 +291,14 @@ const BarcodeScanner = () => {
                 fontWeight="600"
                 style={{ marginTop: spacingY._15 }}
               >
-                Se caută alimentul...
+                Searching for food...
               </Typo>
             </View>
           </Animated.View>
         )}
       </CameraView>
 
-      {/* ✅ MODAL PENTRU CANTITATE */}
+      {/* Quantity Modal */}
       <Modal
         visible={showQuantityModal}
         transparent

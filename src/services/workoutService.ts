@@ -1,5 +1,5 @@
 import { firestore } from "@/src/config/firebase";
-import { ResponseType, WorkoutHistory } from '@/src/types/index';
+import { ResponseType, WorkoutHistory } from "@/src/types/index";
 import {
   addDoc,
   collection,
@@ -10,15 +10,52 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  where
+  where,
 } from "firebase/firestore";
+import { cacheLastWorkout, getCachedLastWorkout } from "./cacheService";
+import {
+  addToSyncQueue,
+  getOfflineWorkouts,
+  saveOfflineWorkout,
+} from "./syncQueueService";
+import NetInfo from "@react-native-community/netinfo";
 
 const COLLECTION_NAME = "workoutsHistory";
 
-// ia toate workout-urile unui user
-export const getUserWorkouts = async (userID: string): Promise<ResponseType> => {
+//  check if we are online
+const isOnline = async (): Promise<boolean> => {
+  try {
+    const state = await NetInfo.fetch();
+    return state.isConnected ?? false;
+  } catch {
+    return false;
+  }
+};
+
+//  get all workouts for a user
+export const getUserWorkouts = async (
+  userID: string
+): Promise<ResponseType> => {
   try {
     console.log("[workoutService] getUserWorkouts userID:", userID);
+
+    const online = await isOnline();
+
+    if (!online) {
+      //  Offline - return from cache + offline workouts
+      console.log(" [workoutService] Offline - using cached data");
+      const cachedWorkout = await getCachedLastWorkout();
+      const offlineWorkouts = await getOfflineWorkouts();
+
+      const allWorkouts = [
+        ...offlineWorkouts,
+        ...(cachedWorkout ? [cachedWorkout] : []),
+      ];
+
+      return { success: true, data: allWorkouts };
+    }
+
+    //  Online - load from Firebase
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
@@ -31,9 +68,10 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as any;
       const dateField = data.date;
-      const date = dateField && typeof (dateField as any).toDate === "function"
-        ? (dateField as any).toDate()
-        : dateField || null;
+      const date =
+        dateField && typeof (dateField as any).toDate === "function"
+          ? (dateField as any).toDate()
+          : dateField || null;
 
       workouts.push({
         id: docSnap.id,
@@ -42,20 +80,66 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
       } as WorkoutHistory);
     });
 
-    console.log("[workoutService] getUserWorkouts found:", workouts.length);
-    return { success: true, data: workouts };
+    //  Save last workout in cache
+    if (workouts.length > 0) {
+      await cacheLastWorkout(workouts[0]);
+    }
+
+    //  Add offline workouts
+    const offlineWorkouts = await getOfflineWorkouts();
+    const allWorkouts = [...offlineWorkouts, ...workouts];
+
+    console.log("[workoutService] getUserWorkouts found:", allWorkouts.length);
+    return { success: true, data: allWorkouts };
   } catch (error: any) {
     console.log("Error fetching workouts:", error);
+
+    //  Fallback to cache + offline
+    const cachedWorkout = await getCachedLastWorkout();
+    const offlineWorkouts = await getOfflineWorkouts();
+
+    if (cachedWorkout || offlineWorkouts.length > 0) {
+      console.log(" [workoutService] Using cached/offline data as fallback");
+      return {
+        success: true,
+        data: [...offlineWorkouts, ...(cachedWorkout ? [cachedWorkout] : [])],
+      };
+    }
+
     return { success: false, msg: error?.message };
   }
 };
 
-// verifica daca exista deja un workout pentru ziua curenta
-export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseType> => {
+//  check if a workout already exists for the current day
+export const checkWorkoutExistsToday = async (
+  userID: string
+): Promise<ResponseType> => {
   try {
+    const online = await isOnline();
+
+    //  Check also in offline workouts
+    const offlineWorkouts = await getOfflineWorkouts();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
+    const hasOfflineToday = offlineWorkouts.some((w) => {
+      const workoutDate = new Date(w.date || w.savedAt);
+      workoutDate.setHours(0, 0, 0, 0);
+      return workoutDate.getTime() === today.getTime() && w.userID === userID;
+    });
+
+    if (hasOfflineToday) {
+      return {
+        success: false,
+        msg: "You already have a workout logged for today.",
+        data: { exists: true },
+      };
+    }
+
+    if (!online) {
+      return { success: true, data: { exists: false } };
+    }
+
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -67,36 +151,53 @@ export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseT
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
-      return { 
-        success: false, 
-        msg: "You already have a workout logged for today. You can only log one workout per day.",
-        data: { exists: true }
+      return {
+        success: false,
+        msg: "You already have a workout logged for today.",
+        data: { exists: true },
       };
     }
 
     return { success: true, data: { exists: false } };
   } catch (error: any) {
     console.log("Error checking existing workout:", error);
-    return { success: false, msg: error?.message };
+    return { success: true, data: { exists: false } }; //  Allow save in case of error
   }
 };
 
-// ia workout-ul de acum o saptamana pentru ziua specificata
-export const getLastWeekWorkout = async (userID: string, dayName: string): Promise<ResponseType> => {
+//  get last week's workout for the specified day
+export const getLastWeekWorkout = async (
+  userID: string,
+  dayName: string
+): Promise<ResponseType> => {
   try {
-    console.log("[workoutService] getLastWeekWorkout userID:", userID, "dayName:", dayName);
+    console.log(
+      "[workoutService] getLastWeekWorkout userID:",
+      userID,
+      "dayName:",
+      dayName
+    );
 
-    // calculeaza data de acum 7 zile
+    const online = await isOnline();
+
+    if (!online) {
+      //  Offline - return from cache
+      const cachedWorkout = await getCachedLastWorkout();
+      if (cachedWorkout) {
+        return { success: true, data: cachedWorkout };
+      }
+      return { success: true, data: null };
+    }
+
     const today = new Date();
     const lastWeek = new Date(today);
     lastWeek.setDate(today.getDate() - 7);
-    
-    // intervalul de timp pentru ziua respectiva acum o saptamana
+
     const startOfDay = new Date(lastWeek);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(lastWeek);
     endOfDay.setHours(23, 59, 59, 999);
 
@@ -109,14 +210,15 @@ export const getLastWeekWorkout = async (userID: string, dayName: string): Promi
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];
       const data = doc.data() as any;
       const dateField = data.date;
-      const date = dateField && typeof (dateField as any).toDate === "function"
-        ? (dateField as any).toDate()
-        : dateField || null;
+      const date =
+        dateField && typeof (dateField as any).toDate === "function"
+          ? (dateField as any).toDate()
+          : dateField || null;
 
       const workout = {
         id: doc.id,
@@ -124,26 +226,64 @@ export const getLastWeekWorkout = async (userID: string, dayName: string): Promi
         date,
       } as WorkoutHistory;
 
-      console.log("[workoutService] found last week workout:", workout.id);
       return { success: true, data: workout };
     }
 
-    console.log("[workoutService] no workout found for last week");
     return { success: true, data: null };
   } catch (error: any) {
     console.log("Error getting last week workout:", error);
+    //  Fallback to cache
+    const cachedWorkout = await getCachedLastWorkout();
+    if (cachedWorkout) {
+      return { success: true, data: cachedWorkout };
+    }
     return { success: false, msg: error?.message };
   }
 };
 
-export const addWorkout = async (workout: WorkoutHistory): Promise<ResponseType> => {
+//  ADD WORKOUT WITH OFFLINE SUPPORT
+export const addWorkout = async (
+  workout: WorkoutHistory
+): Promise<ResponseType> => {
   try {
-    console.log("[workoutService] addWorkout payload:", JSON.stringify(workout));
+    console.log(
+      "[workoutService] addWorkout payload:",
+      JSON.stringify(workout)
+    );
 
-    //  Verifica daca exista deja un workout azi
+    const online = await isOnline();
+
+    if (!online) {
+      //  OFFLINE - Save locally
+      console.log(" [workoutService] Offline - saving locally");
+      await saveOfflineWorkout(workout);
+
+      //  Add to sync queue
+      await addToSyncQueue({
+        type: "ADD_WORKOUT",
+        data: workout,
+      });
+
+      //  Update cache
+      const offlineWorkout = {
+        ...workout,
+        id: `offline_${Date.now()}`,
+        date: new Date(),
+        isOffline: true,
+      };
+      await cacheLastWorkout(offlineWorkout);
+
+      return {
+        success: true,
+        data: { id: offlineWorkout.id, offline: true },
+        msg: "Workout saved offline. Will sync when online.",
+      };
+    }
+
+    //  ONLINE - Save to Firebase
     const existsCheck = await checkWorkoutExistsToday(workout.userID);
-    if (!existsCheck.success) {
-      return existsCheck; 
+    if (!existsCheck.success && existsCheck.data?.exists) {
+      return existsCheck;
     }
 
     const payload: any = {
@@ -151,18 +291,52 @@ export const addWorkout = async (workout: WorkoutHistory): Promise<ResponseType>
       date: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(firestore, COLLECTION_NAME), payload);
-
+    const docRef = await addDoc(
+      collection(firestore, COLLECTION_NAME),
+      payload
+    );
     console.log("[workoutService] created doc id:", docRef.id);
+
+    //  Update cache
+    const newWorkout = {
+      ...workout,
+      id: docRef.id,
+      date: new Date(),
+    };
+    await cacheLastWorkout(newWorkout);
+
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
     console.log("Error adding workout:", error);
-    return { success: false, msg: error?.message };
+
+    //  FALLBACK - Save offline in case of error
+    console.log(" [workoutService] Error - saving offline as fallback");
+    await saveOfflineWorkout(workout);
+    await addToSyncQueue({
+      type: "ADD_WORKOUT",
+      data: workout,
+    });
+
+    return {
+      success: true,
+      data: { id: `offline_${Date.now()}`, offline: true },
+      msg: "Workout saved offline due to error. Will sync when possible.",
+    };
   }
 };
 
 export const getWorkout = async (workoutId: string): Promise<ResponseType> => {
   try {
+    // check if it's an offline workout
+    if (workoutId.startsWith("offline_")) {
+      const offlineWorkouts = await getOfflineWorkouts();
+      const workout = offlineWorkouts.find((w) => w.id === workoutId);
+      if (workout) {
+        return { success: true, data: workout };
+      }
+      return { success: false, msg: "Offline workout not found" };
+    }
+
     console.log("[workoutService] getWorkout id:", workoutId);
     const docRef = doc(firestore, COLLECTION_NAME, workoutId);
     const docSnap = await getDoc(docRef);
@@ -170,9 +344,10 @@ export const getWorkout = async (workoutId: string): Promise<ResponseType> => {
     if (docSnap.exists()) {
       const data = docSnap.data() as any;
       const dateField = data.date;
-      const date = dateField && typeof (dateField as any).toDate === "function"
-        ? (dateField as any).toDate()
-        : dateField || null;
+      const date =
+        dateField && typeof (dateField as any).toDate === "function"
+          ? (dateField as any).toDate()
+          : dateField || null;
 
       return {
         success: true,
@@ -187,8 +362,17 @@ export const getWorkout = async (workoutId: string): Promise<ResponseType> => {
   }
 };
 
-export const deleteWorkout = async (workoutId: string): Promise<ResponseType> => {
+export const deleteWorkout = async (
+  workoutId: string
+): Promise<ResponseType> => {
   try {
+    // check if it's an offline workout
+    if (workoutId.startsWith("offline_")) {
+      const { removeOfflineWorkout } = await import("./syncQueueService");
+      await removeOfflineWorkout(workoutId);
+      return { success: true, msg: "Offline workout deleted" };
+    }
+
     console.log("[workoutService] deleteWorkout id:", workoutId);
     await deleteDoc(doc(firestore, COLLECTION_NAME, workoutId));
     return { success: true, msg: "Workout deleted successfully" };

@@ -15,20 +15,20 @@ import {
 
 const COLLECTION_NAME = "nutrition";
 
-// ✅ Helper pentru a normaliza data la midnight
+//  helper for normalizing date (set time to 00:00:00)
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 };
 
-// ✅ Helper pentru a crea document ID consistent
+//  helper for creating consistent document ID
 const getDateKey = (date: Date): string => {
   const normalized = normalizeDate(date);
   return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
 };
 
-// Obține datele nutriționale pentru o zi specificată
+//  helper for fetching daily nutrition data for a specific date
 export const getDailyNutrition = async (
   userID: string,
   date: Date
@@ -38,7 +38,7 @@ export const getDailyNutrition = async (
 
     console.log('[NutritionService] Searching for dateKey:', dateKey);
 
-    // ✅ Căutăm după userID și dateKey (nu mai comparăm timestamp-uri)
+    //  Searching by userID and dateKey (no longer comparing timestamps)
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
@@ -53,7 +53,7 @@ export const getDailyNutrition = async (
 
       console.log('[NutritionService] Found existing document:', docData.id);
 
-      // Convertim date field din Timestamp în Date
+      // Convert date field from Timestamp to Date
       let nutritionDate = date;
       if (data.date) {
         nutritionDate = data.date instanceof Timestamp
@@ -73,7 +73,7 @@ export const getDailyNutrition = async (
 
     console.log('[NutritionService] No document found for dateKey:', dateKey);
 
-    // ✅ NU MAI CREĂM DOCUMENT AICI - doar returnăm null
+    //  NO LONGER CREATING DOCUMENT HERE - just return null
     return {
       success: true,
       data: null,
@@ -84,7 +84,7 @@ export const getDailyNutrition = async (
   }
 };
 
-// Salvează sau actualizează datele nutriționale zilnice
+// Save or update daily nutrition data
 export const saveDailyNutrition = async (
   nutrition: DailyNutrition
 ): Promise<ResponseType> => {
@@ -92,7 +92,7 @@ export const saveDailyNutrition = async (
     const dateKey = getDateKey(new Date(nutrition.date));
 
     if (nutrition.id) {
-      // ✅ UPDATE - păstrăm ID-ul existent
+      //  UPDATE - keep existing ID
       console.log('[NutritionService] Updating document:', nutrition.id);
 
       const docRef = doc(firestore, COLLECTION_NAME, nutrition.id);
@@ -100,19 +100,19 @@ export const saveDailyNutrition = async (
 
       await updateDoc(docRef, {
         ...updateData,
-        dateKey, // ✅ Salvăm și dateKey pentru căutare
+        dateKey, //  Salvăm și dateKey pentru căutare
         date: Timestamp.fromDate(new Date(nutrition.date)),
         updatedAt: serverTimestamp(),
       });
 
       return { success: true, msg: "Nutrition updated successfully" };
     } else {
-      // ✅ CREATE - document nou
+      //  CREATE - new document
       console.log('[NutritionService] Creating new document for dateKey:', dateKey);
 
       const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
         ...nutrition,
-        dateKey, // ✅ Salvăm dateKey pentru căutare rapidă
+        dateKey, //  Save dateKey for quick search
         date: Timestamp.fromDate(new Date(nutrition.date)),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -128,7 +128,7 @@ export const saveDailyNutrition = async (
   }
 };
 
-// Obține istoricul nutrițional al user-ului
+//  helper for fetching user's nutrition history
 export const getUserNutritionHistory = async (
   userID: string
 ): Promise<ResponseType> => {
@@ -166,7 +166,7 @@ export const getUserNutritionHistory = async (
   }
 };
 
-// Actualizează obiectivele calorice
+// Update nutrition goals
 export const updateNutritionGoals = async (
   userID: string,
   goals: {

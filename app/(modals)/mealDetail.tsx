@@ -71,7 +71,7 @@ const MealDetail = () => {
     MEALS.find((meal) => meal.name === mealName) ||
     MEALS[0];
 
-  // ✅ ÎNCARCĂ ALIMENTELE RECENTE PENTRU MASA CURENTĂ
+  // load recent foods when meal changes
   useEffect(() => {
     loadRecentFoods();
   }, [currentMeal.name, user?.uid]);
@@ -88,7 +88,7 @@ const MealDetail = () => {
     if (result.success && result.data) {
       setRecentFoods(result.data);
       console.log(
-        `✅ Loaded ${result.data.length} recent foods for ${currentMeal.name}`
+        ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`
       );
     } else {
       setRecentFoods([]);
@@ -143,22 +143,22 @@ const MealDetail = () => {
     setShowQuantityModal(true);
   }, []);
 
-  // ✅ ADAUGĂ ALIMENT DIN LISTA RECENTĂ
+  //  ADD FOOD FROM RECENT LIST
   const handleRecentFoodPress = useCallback(
     (food: Food) => {
       Alert.alert(
-        "Adaugă aliment",
-        `Vrei să adaugi "${food.name}" la ${currentMeal.name}?`,
+        "Add Food",
+        `Do you want to add "${food.name}" to ${currentMeal.name}?`,
         [
-          { text: "Anulează", style: "cancel" },
+          { text: "Cancel", style: "cancel" },
           {
-            text: "Adaugă",
+            text: "Add",
             onPress: async () => {
               try {
                 await addFoodToMeal(currentMeal.name, food);
                 Alert.alert(
                   "Success",
-                  `${food.name} a fost adăugat la ${currentMeal.name}! 🎉`,
+                  `${food.name} was added to ${currentMeal.name}! `,
                   [
                     {
                       text: "OK",
@@ -168,8 +168,8 @@ const MealDetail = () => {
                 );
               } catch (error: any) {
                 Alert.alert(
-                  "Eroare",
-                  error?.message || "Nu s-a putut adăuga alimentul"
+                  "Error",
+                  error?.message || "Failed to add the food"
                 );
               }
             },
@@ -182,7 +182,7 @@ const MealDetail = () => {
 
   const handleAddWithQuantity = async () => {
     if (!selectedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
+      Alert.alert("Error", "Please enter a valid quantity.");
       return;
     }
 
@@ -211,7 +211,7 @@ const MealDetail = () => {
 
       Alert.alert(
         "Success",
-        `${adjustedFood.name} a fost adăugat la ${currentMeal.name}! 🎉`,
+        `${adjustedFood.name} was added to ${currentMeal.name}! `,
         [
           {
             text: "OK",
@@ -221,7 +221,7 @@ const MealDetail = () => {
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
+      Alert.alert("Error", error?.message || "Failed to add the food");
     }
   };
 
@@ -239,7 +239,7 @@ const MealDetail = () => {
     });
   };
 
-  // ✅ RENDER ITEM PENTRU SEARCH RESULTS - FLASHLIST
+  //  RENDER ITEM FOR SEARCH RESULTS - FLASHLIST
   const renderSearchResultItem = useCallback(
     ({ item: food }: { item: SimplifiedFood }) => (
       <TouchableOpacity
@@ -280,7 +280,7 @@ const MealDetail = () => {
     [handleFoodPress]
   );
 
-  // ✅ RENDER ITEM PENTRU RECENT FOODS - FLASHLIST
+  //  RENDER ITEM FOR RECENT FOODS - FLASHLIST
   const renderRecentFoodItem = useCallback(
     ({ item: food }: { item: Food }) => (
       <TouchableOpacity
@@ -309,7 +309,7 @@ const MealDetail = () => {
     [handleRecentFoodPress]
   );
 
-  // ✅ EMPTY STATE COMPONENT PENTRU RECENT FOODS
+  //  EMPTY STATE COMPONENT FOR RECENT FOODS
   const RecentFoodsEmptyState = useCallback(
     () => (
       <View style={styles.emptyState}>
@@ -320,25 +320,25 @@ const MealDetail = () => {
           color={colors.neutral400}
           style={{ marginTop: spacingY._15, textAlign: "center" }}
         >
-          Nu ai alimente recente pentru {currentMeal.name}
+          You have no recent foods for {currentMeal.name}
         </Typo>
         <Typo
           size={14}
           color={colors.neutral500}
           style={{ marginTop: spacingY._7, textAlign: "center" }}
         >
-          Alimentele pe care le adaugi la această masă vor apărea aici
+          Foods you add to this meal will appear here
         </Typo>
       </View>
     ),
     [currentMeal.name]
   );
 
-  // ✅ HEADER COMPONENT PENTRU SEARCH RESULTS
+  //  HEADER COMPONENT FOR SEARCH RESULTS
   const SearchResultsHeader = useCallback(
     () => (
       <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._10 }}>
-        Rezultate căutare ({searchResults.length})
+        Search Results ({searchResults.length})
       </Typo>
     ),
     [searchResults.length]
@@ -430,7 +430,7 @@ const MealDetail = () => {
               style={styles.searchIcon}
             />
             <Input
-              placeholder="Caută alimente (ex. Piept de pui)"
+              placeholder="Search foods (e.g. Chicken breast)"
               value={searchQuery}
               onChangeText={handleSearch}
               containerStyle={styles.searchInput}
@@ -446,7 +446,7 @@ const MealDetail = () => {
           </View>
         </View>
 
-        {/* ✅ SEARCH RESULTS CU FLASHLIST */}
+        {/*  SEARCH RESULTS WITH FLASHLIST */}
         {searchResults.length > 0 && (
           <View style={styles.searchResultsContainer}>
             <FlashList
@@ -482,14 +482,14 @@ const MealDetail = () => {
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      Introdu
+                      Enter
                     </Typo>
                     <Typo
                       size={13}
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      calorii manual
+                      Enter calories manually
                     </Typo>
                   </View>
                 </View>
@@ -516,14 +516,14 @@ const MealDetail = () => {
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      Creează
+                      Create
                     </Typo>
                     <Typo
                       size={13}
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      aliment/rețetă
+                      food/recipe
                     </Typo>
                   </View>
                 </View>
@@ -545,24 +545,24 @@ const MealDetail = () => {
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      Caută după
+                      Search by
                     </Typo>
                     <Typo
                       size={13}
                       fontWeight="700"
                       style={styles.actionButtonText}
                     >
-                      cod de bare
+                      barcode
                     </Typo>
                   </View>
                 </View>
               </TouchableOpacity>
             </View>
 
-            {/* ✅ RECENT FOODS SECTION CU FLASHLIST */}
+            {/* RECENT FOODS SECTION WITH FLASHLIST */}
             <View style={styles.recentFoodsSection}>
               <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
-                Alimente recente
+                Recent Foods
               </Typo>
 
               {loadingRecent ? (
@@ -586,7 +586,7 @@ const MealDetail = () => {
           </>
         )}
 
-        {/* ✅ MODAL PENTRU CANTITATE */}
+        {/* QUANTITY MODAL */}
         <Modal
           visible={showQuantityModal}
           transparent
@@ -616,7 +616,7 @@ const MealDetail = () => {
                   <Icons.X size={24} color={colors.white} weight="bold" />
                 </TouchableOpacity>
                 <Typo size={20} fontWeight="700">
-                  Adaugă aliment
+                  Add food
                 </Typo>
                 <View style={{ width: 24 }} />
               </View>
@@ -652,7 +652,7 @@ const MealDetail = () => {
                         fontWeight="600"
                         style={{ marginBottom: spacingY._12 }}
                       >
-                        Cantitate (grame)
+                        Quantity (grams)
                       </Typo>
                       <Input
                         placeholder="100"
@@ -666,7 +666,7 @@ const MealDetail = () => {
                         color={colors.neutral400}
                         style={{ marginTop: spacingY._8 }}
                       >
-                        Valorile nutriționale sunt calculate pentru 100g
+                        Nutritional values ​​are calculated per 100g
                       </Typo>
                     </View>
 
@@ -676,7 +676,7 @@ const MealDetail = () => {
                         fontWeight="600"
                         style={{ marginBottom: spacingY._12 }}
                       >
-                        Valori calculate pentru {quantity || "0"}g:
+                        Values calculated for {quantity || "0"}g:
                       </Typo>
 
                       <View style={styles.nutritionGrid}>
@@ -708,7 +708,7 @@ const MealDetail = () => {
                             g
                           </Typo>
                           <Typo size={12} color={colors.neutral400}>
-                            Proteine
+                            Protein
                           </Typo>
                         </View>
 
@@ -723,7 +723,7 @@ const MealDetail = () => {
                             g
                           </Typo>
                           <Typo size={12} color={colors.neutral400}>
-                            Carbohidrați
+                            Carbohydrates
                           </Typo>
                         </View>
 
@@ -738,7 +738,7 @@ const MealDetail = () => {
                             g
                           </Typo>
                           <Typo size={12} color={colors.neutral400}>
-                            Grăsimi
+                            Fats
                           </Typo>
                         </View>
                       </View>
@@ -750,7 +750,7 @@ const MealDetail = () => {
                       style={{ marginTop: spacingY._20 }}
                     >
                       <Typo size={18} fontWeight="700" color={colors.black}>
-                        Adaugă la {currentMeal.name}
+                        Add to {currentMeal.name}
                       </Typo>
                     </Button>
                   </View>
@@ -842,7 +842,6 @@ const styles = StyleSheet.create({
     top: "50%",
     marginTop: -10,
   },
-  // ✅ STILURI PENTRU FLASHLIST SEARCH RESULTS
   searchResultsContainer: {
     flex: 1,
     marginBottom: spacingY._20,
@@ -903,7 +902,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 16,
   },
-  // ✅ STILURI PENTRU FLASHLIST RECENT FOODS
   recentFoodsSection: {
     flex: 1,
   },
@@ -938,7 +936,6 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._10,
     gap: spacingX._12,
   },
-  // ✅ STILURI PENTRU MODAL
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
