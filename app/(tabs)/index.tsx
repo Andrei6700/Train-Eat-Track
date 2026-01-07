@@ -26,7 +26,7 @@ const DAYS_FULL = [
   "Duminica",
 ];
 
-const Home = () => {
+const Home = React.memo(() => {
   const { user } = useAuth();
   const { workoutPlan } = useWorkoutPlan();
   const { todayNutrition, todayWater } = useNutrition();
@@ -41,7 +41,7 @@ const Home = () => {
     }
   }, [user?.uid]);
 
-  const loadWorkouts = async () => {
+  const loadWorkouts = useCallback(async () => {
     if (!user?.uid) return;
 
     setLoading(true);
@@ -53,19 +53,19 @@ const Home = () => {
       setWorkoutsHistory([]);
     }
     setLoading(false);
-  };
+  }, [user?.uid]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadWorkouts();
     setRefreshing(false);
-  }, [user?.uid]);
+  }, [loadWorkouts]);
 
   const aiCoachTip = useMemo(() => {
     return getAICoachTip(workoutsHistory);
   }, [workoutsHistory]);
 
-  const getTodayWorkoutName = () => {
+  const getTodayWorkoutName = useCallback(() => {
     if (!workoutPlan || !workoutPlan.days) return null;
 
     const today = new Date();
@@ -80,25 +80,25 @@ const Home = () => {
     }
 
     return todayPlan.sessionName || dayName;
-  };
+  }, [workoutPlan]);
 
-  const getCurrentCalories = () => {
+  const getCurrentCalories = useCallback(() => {
     if (!todayNutrition) return 0;
     return todayNutrition.meals.reduce((total, meal) => {
       return (
         total + meal.foods.reduce((mealTotal, food) => mealTotal + food.calories, 0)
       );
     }, 0);
-  };
+  }, [todayNutrition]);
 
-  const getCalorieGoal = () => {
+  const getCalorieGoal = useCallback(() => {
     return todayNutrition?.calorieGoal || 2500;
-  };
+  }, [todayNutrition]);
 
-  const getWaterPercentage = () => {
+  const getWaterPercentage = useCallback(() => {
     if (!todayWater) return 0;
     return Math.min(100, Math.round((todayWater.total / todayWater.goal) * 100));
-  };
+  }, [todayWater]);
 
   return (
     <SwipeableScreen>
@@ -152,7 +152,9 @@ const Home = () => {
       </ScreenWrapper>
     </SwipeableScreen>
   );
-};
+});
+
+Home.displayName = 'Home';
 
 export default Home;
 

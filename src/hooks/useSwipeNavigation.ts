@@ -1,6 +1,7 @@
 import { useRouter, usePathname } from "expo-router";
+import { useCallback, useMemo } from "react";
 
-// tab order for navigation
+// Order of tabs for navigation
 const TAB_ORDER = [
   "/(tabs)",
   "/(tabs)/workout",
@@ -10,7 +11,7 @@ const TAB_ORDER = [
   "/(tabs)/profile",
 ];
 
-// Map for pathnames
+// path to index mapping
 const PATH_MAP: Record<string, number> = {
   "/": 0,
   "/(tabs)": 0,
@@ -26,7 +27,7 @@ export const useSwipeNavigation = () => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const getCurrentIndex = (): number => {
+  const currentIndex = useMemo((): number => {
     if (PATH_MAP[pathname] !== undefined) {
       return PATH_MAP[pathname];
     }
@@ -38,23 +39,27 @@ export const useSwipeNavigation = () => {
     if (pathname.includes("/profile")) return 5;
 
     return 0;
-  };
+  }, [pathname]);
 
-  const currentIndex = getCurrentIndex();
-  const canSwipeLeft = currentIndex > 0;
-  const canSwipeRight = currentIndex < TAB_ORDER.length - 1;
+  const canSwipeLeft = useMemo(() => currentIndex > 0, [currentIndex]);
+  const canSwipeRight = useMemo(
+    () => currentIndex < TAB_ORDER.length - 1,
+    [currentIndex]
+  );
 
-  const navigateLeft = () => {
+  const navigateLeft = useCallback(() => {
     if (canSwipeLeft) {
-      router.replace(TAB_ORDER[currentIndex - 1] as any);
+      const nextRoute = TAB_ORDER[currentIndex - 1];
+      router.replace(nextRoute as any);
     }
-  };
+  }, [canSwipeLeft, currentIndex, router]);
 
-  const navigateRight = () => {
+  const navigateRight = useCallback(() => {
     if (canSwipeRight) {
-      router.replace(TAB_ORDER[currentIndex + 1] as any);
+      const nextRoute = TAB_ORDER[currentIndex + 1];
+      router.replace(nextRoute as any);
     }
-  };
+  }, [canSwipeRight, currentIndex, router]);
 
   return {
     navigateLeft,

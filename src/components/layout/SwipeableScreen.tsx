@@ -1,6 +1,6 @@
 import { colors } from "@/constants/theme";
 import { useSwipeNavigation } from "@/src/hooks/useSwipeNavigation";
-import React, { useRef } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
 
 type SwipeableScreenProps = {
@@ -8,45 +8,82 @@ type SwipeableScreenProps = {
   style?: any;
 };
 
-const SwipeableScreen: React.FC<SwipeableScreenProps> = ({
+const SwipeableScreen: React.FC<SwipeableScreenProps> = React.memo(({
   children,
   style,
 }) => {
   const { navigateLeft, navigateRight, canSwipeLeft, canSwipeRight } =
     useSwipeNavigation();
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        const { dx, dy } = gestureState;
-        // it is a horizontal swipe if the absolute value of dx is greater than dy and greater than a threshold
-        const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25;
-        
-        // Do not allow swipe if not valid
-        if (dx > 0 && !canSwipeLeft) return false;
-        if (dx < 0 && !canSwipeRight) return false;
-        
-        return isHorizontalSwipe;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const { dx, vx } = gestureState;
+  const isSwipingRef = useRef(false);
+  const swipeStartTime = useRef(0);
 
-        // Check if the swipe is significant
-        const isSignificantSwipe = Math.abs(dx) > 100 || Math.abs(vx) > 0.5;
+  // Handler functions 
+  const handleMoveShouldSetPanResponder = useCallback((_, gestureState) => {
+    const { dx, dy } = gestureState;
+    
+    const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 20;
+    
+    if (!isHorizontalSwipe) return false;
+    if (dx > 0 && !canSwipeLeft) return false;
+    if (dx < 0 && !canSwipeRight) return false;
+    
+    return true;
+  }, [canSwipeLeft, canSwipeRight]);
 
-        if (isSignificantSwipe) {
-          if (dx > 0 && canSwipeLeft) {
-            // Swipe right -> page on the left
-            navigateLeft();
-          } else if (dx < 0 && canSwipeRight) {
-            // Swipe left -> page on the right
-            navigateRight();
-          }
-        }
-      },
-    })
-  ).current;
+  const handlePanResponderGrant = useCallback(() => {
+    isSwipingRef.current = false;
+    swipeStartTime.current = Date.now();
+  }, []);
+
+  const handlePanResponderMove = useCallback((_, gestureState) => {
+    const { dx } = gestureState;
+    if (Math.abs(dx) > 30 && !isSwipingRef.current) {
+      isSwipingRef.current = true;
+    }
+  }, []);
+
+  const handlePanResponderRelease = useCallback((_, gestureState) => {
+    const { dx, vx } = gestureState;
+    const swipeDuration = Date.now() - swipeStartTime.current;
+    
+    const isQuickSwipe = swipeDuration < 300 && Math.abs(vx) > 0.3;
+    const isLongSwipe = Math.abs(dx) > 100;
+    
+    if (isQuickSwipe || isLongSwipe) {
+      if (dx > 0 && canSwipeLeft) {
+        requestAnimationFrame(() => navigateLeft());
+      } else if (dx < 0 && canSwipeRight) {
+        requestAnimationFrame(() => navigateRight());
+      }
+    }
+    
+    isSwipingRef.current = false;
+  }, [canSwipeLeft, canSwipeRight, navigateLeft, navigateRight]);
+
+  const handlePanResponderTerminate = useCallback(() => {
+    isSwipingRef.current = false;
+  }, []);
+
+  //  create panResponder in useMemo, without Hooks inside
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: handleMoveShouldSetPanResponder,
+        onPanResponderGrant: handlePanResponderGrant,
+        onPanResponderMove: handlePanResponderMove,
+        onPanResponderRelease: handlePanResponderRelease,
+        onPanResponderTerminate: handlePanResponderTerminate,
+      }),
+    [
+      handleMoveShouldSetPanResponder,
+      handlePanResponderGrant,
+      handlePanResponderMove,
+      handlePanResponderRelease,
+      handlePanResponderTerminate,
+    ]
+  );
 
   return (
     <View
@@ -56,7 +93,9 @@ const SwipeableScreen: React.FC<SwipeableScreenProps> = ({
       {children}
     </View>
   );
-};
+});
+
+SwipeableScreen.displayName = 'SwipeableScreen';
 
 export default SwipeableScreen;
 

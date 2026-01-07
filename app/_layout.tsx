@@ -13,8 +13,9 @@ import { addWorkout } from "@/src/services/workoutService";
 import { addRecentFood } from "@/src/services/recentFoodsService";
 import { Stack } from "expo-router";
 import React, { useEffect, useRef } from "react";
-import { View, Alert } from "react-native";
+import { View, Alert, StatusBar } from "react-native";
 import "react-native-reanimated";
+import { colors } from "@/constants/theme";
 
 if (__DEV__) {
   const originalWarn = console.warn;
@@ -99,8 +100,8 @@ const SyncManager = () => {
       if (total > 0) {
         console.log(` [SyncManager] Synced ${total} items`);
         Alert.alert(
-          "Sincronizare completă",
-          `${total} elemente au fost sincronizate cu succes!`
+          "Sync Complete",
+          `${total} items have been successfully synced!`
         );
       }
     } catch (error) {
@@ -113,11 +114,18 @@ const SyncManager = () => {
 
 const StackLayout = () => {
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: colors.neutral900 }}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.neutral900} />
       <OfflineBanner />
       <SyncManager />
       <Stack
-        screenOptions={{ headerShown: false, animation: "slide_from_right" }}
+        screenOptions={{ 
+          headerShown: false, 
+          animation: "none", // Remove animations for instant transitions
+          contentStyle: {
+            backgroundColor: colors.neutral900,
+          },
+        }}
       >
         <Stack.Screen
           name="(modals)/profileModal"
