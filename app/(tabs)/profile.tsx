@@ -1,6 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Header from "@/src/components/layout/Header";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
 import { auth } from "@/src/config/firebase";
 import { useAuth } from "@/src/contexts/authContext";
@@ -14,7 +15,6 @@ import * as Icons from "phosphor-react-native";
 import React from "react";
 import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const Profile = () => {
   const { user } = useAuth();
@@ -29,7 +29,7 @@ const Profile = () => {
     {
       title: "Settings",
       icon: <Icons.GearSixIcon size={26} color={colors.white} weight="fill" />,
-      // routeName: "/(modals)/profileModal",
+      routeName: "/(modals)/settings",
       bgColor: "#059669",
     },
     {
