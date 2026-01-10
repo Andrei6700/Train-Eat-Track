@@ -1,15 +1,14 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
-  createWorkoutPlan,
+  cacheWorkoutPlan,
+  clearExpiredCache,
+  getCachedWorkoutPlan
+} from "@/src/services/cacheService";
+import {
   deleteWorkoutPlan,
   getUserWorkoutPlan,
-  updateWorkoutPlan,
+  updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
-import { 
-  cacheWorkoutPlan, 
-  getCachedWorkoutPlan,
-  clearExpiredCache 
-} from "@/src/services/cacheService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
@@ -105,13 +104,7 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (!workoutPlan) {
       const defaultDays: DayWorkout[] = [
-        { day: "Luni", isRestDay: false, exercises: [] },
-        { day: "Marti", isRestDay: false, exercises: [] },
-        { day: "Miercuri", isRestDay: false, exercises: [] },
-        { day: "Joi", isRestDay: false, exercises: [] },
-        { day: "Vineri", isRestDay: false, exercises: [] },
-        { day: "Sambata", isRestDay: false, exercises: [] },
-        { day: "Duminica", isRestDay: false, exercises: [] },
+        { day: "Day 1", isRestDay: false, exercises: [] },
       ];
 
       const updatedDays = defaultDays.map((d) => (d.day === day ? dayData : d));
@@ -119,6 +112,7 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       const newLocalPlan: WorkoutPlan = {
         userID: user.uid,
         planName: "",
+        splitDays: 1,
         days: updatedDays,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -133,7 +127,14 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    const updatedDays = workoutPlan.days.map((d) => (d.day === day ? dayData : d));
+    const existingDay = workoutPlan.days.find((d) => d.day === day);
+    let updatedDays: DayWorkout[];
+
+    if (existingDay) {
+      updatedDays = workoutPlan.days.map((d) => (d.day === day ? dayData : d));
+    } else {
+      updatedDays = [...workoutPlan.days, dayData];
+    }
 
     const updatedPlan: WorkoutPlan = {
       ...workoutPlan,

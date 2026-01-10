@@ -1,5 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
@@ -14,25 +15,15 @@ import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
-  RefreshControl,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const DAYS_FULL = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
 
 const DayCard = React.memo(
   ({
@@ -124,13 +115,45 @@ const Workout = React.memo(() => {
     return selected > today;
   }, [selectedDay]);
 
+  const getDayIndexFromDate = useCallback(
+    (date: Date): number => {
+      if (!workoutPlan || !workoutPlan.splitDays) {
+        return date.getDay() === 0 ? 6 : date.getDay() - 1;
+      }
+
+      const planCreatedDate = new Date(workoutPlan.createdAt);
+      planCreatedDate.setHours(0, 0, 0, 0);
+
+      const targetDate = new Date(date);
+      targetDate.setHours(0, 0, 0, 0);
+
+      const daysDifference = Math.floor(
+        (targetDate.getTime() - planCreatedDate.getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
+      return daysDifference % workoutPlan.splitDays;
+    },
+    [workoutPlan]
+  );
+
+  const getDayNameFromDate = useCallback(
+    (date: Date): string => {
+      const dayIndex = getDayIndexFromDate(date);
+      return `Day ${dayIndex + 1}`;
+    },
+    [getDayIndexFromDate]
+  );
+
   useFocusEffect(
     useCallback(() => {
       const today = new Date();
       setSelectedDay(today);
+      setSelectedWorkout(null);
 
       if (user?.uid) {
         checkTodayWorkout();
+        loadWorkoutsHistory();
       }
 
       if (currentWeek.length > 0) {
@@ -189,26 +212,24 @@ const Workout = React.memo(() => {
     setHasWorkoutToday(existsCheck.data?.exists || false);
   }, [user?.uid]);
 
-  const loadTodayWorkout = useCallback(async () => {
+  const loadWorkoutsHistory = useCallback(async () => {
     if (!user?.uid) return;
-
-    setLoading(true);
-
-    await checkTodayWorkout();
-
-    if (workoutPlan) {
-      setWorkoutPlanName(workoutPlan.planName || "");
-      const today = new Date();
-      const dayName = DAYS_FULL[today.getDay() === 0 ? 6 : today.getDay() - 1];
-      const todayPlan = workoutPlan.days.find((d) => d.day === dayName);
-      setTodayWorkout(todayPlan || null);
-    }
 
     try {
       const historyResult = await getUserWorkouts(user.uid);
       if (historyResult.success && historyResult.data) {
         const history: WorkoutHistory[] = historyResult.data;
         setWorkoutsHistory(history);
+
+        const today = new Date();
+        const todayWorkout = history.find((w) => {
+          const workoutDate = new Date(w.date);
+          return workoutDate.toDateString() === today.toDateString();
+        });
+
+        if (todayWorkout) {
+          setSelectedWorkout(todayWorkout);
+        }
       } else {
         setWorkoutsHistory([]);
       }
@@ -216,10 +237,33 @@ const Workout = React.memo(() => {
       console.error("Error fetching workouts history:", err);
       setWorkoutsHistory([]);
     }
+  }, [user?.uid]);
+
+  const loadTodayWorkout = useCallback(async () => {
+    if (!user?.uid) return;
+
+    setLoading(true);
+
+    await checkTodayWorkout();
+    await loadWorkoutsHistory();
+
+    if (workoutPlan) {
+      setWorkoutPlanName(workoutPlan.planName || "");
+      const today = new Date();
+      const dayName = getDayNameFromDate(today);
+      const todayPlan = workoutPlan.days.find((d) => d.day === dayName);
+      setTodayWorkout(todayPlan || null);
+    }
 
     setLoading(false);
     setRefreshing(false);
-  }, [user?.uid, workoutPlan, checkTodayWorkout]);
+  }, [
+    user?.uid,
+    workoutPlan,
+    checkTodayWorkout,
+    getDayNameFromDate,
+    loadWorkoutsHistory,
+  ]);
 
   const handleDayPress = useCallback(
     async (day: Date, index: number) => {
@@ -253,7 +297,7 @@ const Workout = React.memo(() => {
           setSelectedWorkout(null);
         }
 
-        const dayName = DAYS_FULL[index];
+        const dayName = getDayNameFromDate(day);
         const planDay = workoutPlan?.days?.find((d) => d.day === dayName);
         setTodayWorkout(planDay || null);
       } catch (err) {
@@ -261,7 +305,7 @@ const Workout = React.memo(() => {
         setSelectedWorkout(null);
       }
     },
-    [user?.uid, workoutsHistory, workoutPlan]
+    [user?.uid, workoutsHistory, workoutPlan, getDayNameFromDate]
   );
 
   const handleStartWorkout = useCallback(() => {
@@ -290,6 +334,7 @@ const Workout = React.memo(() => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    setSelectedWorkout(null);
     loadTodayWorkout();
   }, [loadTodayWorkout]);
 
@@ -540,7 +585,10 @@ const Workout = React.memo(() => {
         entering={FadeInDown.duration(400).delay(200)}
         style={styles.noWorkoutContainer}
       >
-        <TouchableOpacity style={styles.addButton} onPress={handleEditPlan}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={workoutPlan ? handleStartWorkout : handleEditPlan}
+        >
           <Icons.PlusCircle size={32} color={colors.primary} weight="fill" />
           <Typo
             size={16}
@@ -548,7 +596,7 @@ const Workout = React.memo(() => {
             color={colors.primary}
             style={{ marginTop: spacingY._10 }}
           >
-            Create Workout Plan
+            {workoutPlan ? "Start Workout" : "Create Workout Plan"}
           </Typo>
         </TouchableOpacity>
       </Animated.View>
@@ -612,7 +660,7 @@ const Workout = React.memo(() => {
               const isSelected =
                 day.toDateString() === selectedDay.toDateString();
 
-              const dayName = DAYS_FULL[index];
+              const dayName = getDayNameFromDate(day);
               const planDay = workoutPlan?.days?.find((d) => d.day === dayName);
               const isRest = !!planDay?.isRestDay;
 

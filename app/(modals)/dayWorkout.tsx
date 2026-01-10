@@ -16,9 +16,9 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
-import { KeyboardAvoidingView, Platform } from "react-native";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DayWorkout = () => {
@@ -126,7 +126,7 @@ const DayWorkout = () => {
 
     await updateDay(day as string, payload);
 
-    console.log("[DayWorkout] rest day saved locally, going back");
+    console.log("[DayWorkout] rest day saved, going back");
     setSaving(false);
     router.back();
   };
@@ -181,7 +181,6 @@ const DayWorkout = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Rest Day Button */}
           <TouchableOpacity
             style={styles.restDayButton}
             onPress={handleMarkRestDay}
@@ -204,7 +203,6 @@ const DayWorkout = () => {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Exercises Section */}
           <>
             <Typo
               size={18}
@@ -225,7 +223,7 @@ const DayWorkout = () => {
                       onPress={() => removeExercise(exerciseIndex)}
                       style={styles.removeButton}
                     >
-                      <Icons.TrashIcon size={20} color={colors.rose} />
+                      <Icons.Trash size={20} color={colors.rose} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -290,10 +288,10 @@ const DayWorkout = () => {
                     </View>
 
                     <TouchableOpacity
-                      onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
                       style={styles.unitButton}
+                      onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
                     >
-                      <Typo size={13} fontWeight="600" color={colors.primary}>
+                      <Typo size={13} fontWeight="600">
                         {set.weightUnit}
                       </Typo>
                     </TouchableOpacity>
@@ -303,18 +301,18 @@ const DayWorkout = () => {
                         onPress={() => removeSet(exerciseIndex, setIndex)}
                         style={styles.removeSetButton}
                       >
-                        <Icons.XIcon size={16} color={colors.rose} />
+                        <Icons.Trash size={18} color={colors.rose} />
                       </TouchableOpacity>
                     )}
                   </View>
                 ))}
 
                 <TouchableOpacity
-                  onPress={() => addSet(exerciseIndex)}
                   style={styles.addSetButton}
+                  onPress={() => addSet(exerciseIndex)}
                 >
-                  <Icons.PlusIcon size={16} color={colors.primary} />
-                  <Typo size={13} fontWeight="500" color={colors.primary}>
+                  <Icons.Plus size={16} color={colors.primary} />
+                  <Typo size={14} color={colors.primary}>
                     Add Set
                   </Typo>
                 </TouchableOpacity>
@@ -322,22 +320,17 @@ const DayWorkout = () => {
             ))}
 
             <TouchableOpacity
-              onPress={addExercise}
               style={styles.addExerciseButton}
+              onPress={addExercise}
             >
-              <Icons.PlusCircleIcon
-                size={22}
-                color={colors.primary}
-                weight="fill"
-              />
-              <Typo size={15} fontWeight="600" color={colors.primary}>
+              <Icons.Plus size={20} color={colors.primary} />
+              <Typo size={16} fontWeight="600" color={colors.primary}>
                 Add Exercise
               </Typo>
             </TouchableOpacity>
           </>
         </ScrollView>
 
-        {/* Footer - Save Button */}
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button
             onPress={handleAddExercises}
