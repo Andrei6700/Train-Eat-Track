@@ -18,7 +18,7 @@ import { verticalScale } from "@/src/utils/styling";
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -30,17 +30,7 @@ import {
 import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const DAYS_OF_WEEK = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
-
-const SPLIT_OPTIONS = [2, 4, 7, 9, 14];
+const SPLIT_OPTIONS = [1, 2, 4, 7, 9, 14];
 
 const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
@@ -52,15 +42,28 @@ const WorkoutPlanScreen = () => {
   const [deleting, setDeleting] = useState(false);
   const [planName, setPlanName] = useState("");
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
-  const [splitDays, setSplitDays] = useState(7);
+  const [splitDays, setSplitDays] = useState(1);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [days, setDays] = useState<DayWorkout[]>(
-    DAYS_OF_WEEK.map((day) => ({
-      day,
-      isRestDay: false,
-      exercises: [],
-    }))
-  );
+  const [days, setDays] = useState<DayWorkout[]>([]);
+
+  const daysOfWeek = useMemo(() => {
+    return Array.from({ length: splitDays }, (_, i) => `Day ${i + 1}`);
+  }, [splitDays]);
+
+  useEffect(() => {
+    const newDays = daysOfWeek.map((day) => {
+      const existingDay = days.find((d) => d.day === day);
+      if (existingDay) {
+        return existingDay;
+      }
+      return {
+        day,
+        isRestDay: false,
+        exercises: [],
+      };
+    });
+    setDays(newDays);
+  }, [daysOfWeek]);
 
   useFocusEffect(
     useCallback(() => {
@@ -221,7 +224,6 @@ const WorkoutPlanScreen = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Plan Name Input */}
           <Animated.View 
             entering={FadeInDown.duration(400)}
             style={styles.inputContainer}
@@ -237,7 +239,6 @@ const WorkoutPlanScreen = () => {
             />
           </Animated.View>
 
-          {/* Split Days Selector with Info Button */}
           <Animated.View 
             entering={FadeInDown.duration(400).delay(50)}
             style={styles.splitContainer}
@@ -279,7 +280,6 @@ const WorkoutPlanScreen = () => {
             </View>
           </Animated.View>
 
-          {/* Stats Overview */}
           <Animated.View 
             entering={FadeInDown.duration(400).delay(100)}
             style={styles.statsContainer}
@@ -315,9 +315,8 @@ const WorkoutPlanScreen = () => {
             </View>
           </Animated.View>
 
-          {/* Days Container */}
           <View style={styles.daysContainer}>
-            {DAYS_OF_WEEK.map((day, index) => {
+            {daysOfWeek.map((day, index) => {
               const dayData = getDayStatus(day);
               const isRest = dayData?.isRestDay;
               const hasExercises = dayData && dayData.exercises.length > 0;
@@ -391,7 +390,6 @@ const WorkoutPlanScreen = () => {
             })}
           </View>
 
-          {/* Delete Button - DOAR dacă există un plan salvat */}
           {existingPlanId && (
             <Animated.View entering={FadeInDown.duration(400).delay(400)}>
               <TouchableOpacity
@@ -421,7 +419,6 @@ const WorkoutPlanScreen = () => {
           </Button>
         </View>
 
-        {/* Info Modal */}
         <Modal
           visible={showInfoModal}
           transparent
@@ -451,6 +448,11 @@ const WorkoutPlanScreen = () => {
 
                 <View style={styles.infoExamples}>
                   <View style={styles.exampleItem}>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>1-Day Split</Typo>
+                    <Typo size={13} color={colors.neutral400}>Full Body Workout</Typo>
+                  </View>
+
+                  <View style={styles.exampleItem}>
                     <Typo size={14} fontWeight="600" color={colors.primary}>2-Day Split</Typo>
                     <Typo size={13} color={colors.neutral400}>Upper/Lower Body</Typo>
                   </View>
@@ -462,7 +464,7 @@ const WorkoutPlanScreen = () => {
 
                   <View style={styles.exampleItem}>
                     <Typo size={14} fontWeight="600" color={colors.primary}>7-Day Split</Typo>
-                    <Typo size={13} color={colors.neutral400}>Weekly routine (default)</Typo>
+                    <Typo size={13} color={colors.neutral400}>Weekly routine</Typo>
                   </View>
                 </View>
 
