@@ -1,17 +1,16 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
+import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
-import * as Icons from "phosphor-react-native";
-import { FlashList } from "@shopify/flash-list";
-import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
 
@@ -39,7 +38,6 @@ const Statistics = () => {
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Exercise specific stats
   const [availableExercises, setAvailableExercises] = useState<string[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string>("");
   const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(
@@ -47,7 +45,6 @@ const Statistics = () => {
   );
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
 
-  // Chart data
   const [weightChartData, setWeightChartData] = useState<ChartDataPoint[]>([]);
   const [repsChartData, setRepsChartData] = useState<ChartDataPoint[]>([]);
 
@@ -107,7 +104,6 @@ const Statistics = () => {
     const now = new Date();
     let filteredWorkouts: WorkoutHistory[] = [];
 
-    // filtrering based on selected period
     if (selectedPeriod === "Weekly") {
       const weekAgo = new Date();
       weekAgo.setDate(now.getDate() - 7);
@@ -128,7 +124,6 @@ const Statistics = () => {
       );
     }
 
-    // cronological sort
     filteredWorkouts.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
@@ -150,7 +145,6 @@ const Statistics = () => {
         workoutCount++;
         const workoutDate = new Date(workout.date);
 
-        // Calculate stats for this workout
         let maxWeightThisWorkout = 0;
         let totalRepsThisWorkout = 0;
         let totalWeightThisWorkout = 0;
@@ -191,7 +185,6 @@ const Statistics = () => {
       reps,
     });
 
-    // Generate data for charts
     generateChartData(dates, weights, reps);
   };
 
@@ -273,14 +266,12 @@ const Statistics = () => {
     <SwipeableScreen>
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.header}>
           <Typo size={28} fontWeight="700">
             Statistics
           </Typo>
         </View>
 
-        {/* Segmented Control */}
         <View style={styles.segmentedContainer}>
           <SegmentedControl
             values={["Weekly", "Monthly", "Yearly"]}
@@ -310,7 +301,6 @@ const Statistics = () => {
           />
         </View>
 
-        {/* General Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
@@ -343,7 +333,6 @@ const Statistics = () => {
           </View>
         </View>
 
-        {/* Exercise Selector */}
         {availableExercises.length > 0 && (
           <View style={styles.exerciseSelectorContainer}>
             <TouchableOpacity
@@ -373,54 +362,52 @@ const Statistics = () => {
 
             {showExerciseSelector && (
               <View style={styles.exerciseDropdown}>
-                <View style={styles.exerciseListWrapper}>
-                  <FlashList
-                    data={availableExercises}
-                    renderItem={({ item: exercise, index }) => (
-                      <TouchableOpacity
-                        style={[
-                          styles.exerciseItem,
-                          selectedExercise === exercise &&
-                            styles.exerciseItemSelected,
-                        ]}
-                        onPress={() => {
-                          setSelectedExercise(exercise);
-                          setShowExerciseSelector(false);
-                        }}
+                <ScrollView
+                  style={styles.exerciseList}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {availableExercises.map((exercise, index) => (
+                    <TouchableOpacity
+                      key={`${exercise}-${index}`}
+                      style={[
+                        styles.exerciseItem,
+                        selectedExercise === exercise &&
+                          styles.exerciseItemSelected,
+                      ]}
+                      onPress={() => {
+                        setSelectedExercise(exercise);
+                        setShowExerciseSelector(false);
+                      }}
+                    >
+                      <Typo
+                        size={15}
+                        fontWeight={
+                          selectedExercise === exercise ? "600" : "400"
+                        }
+                        color={
+                          selectedExercise === exercise
+                            ? colors.primary
+                            : colors.white
+                        }
                       >
-                        <Typo
-                          size={15}
-                          fontWeight={
-                            selectedExercise === exercise ? "600" : "400"
-                          }
-                          color={
-                            selectedExercise === exercise
-                              ? colors.primary
-                              : colors.white
-                          }
-                        >
-                          {exercise}
-                        </Typo>
-                        {selectedExercise === exercise && (
-                          <Icons.CheckIcon
-                            size={18}
-                            color={colors.primary}
-                            weight="bold"
-                          />
-                        )}
-                      </TouchableOpacity>
-                    )}
-                    keyExtractor={(item, index) => `${item}-${index}`}
-                    estimatedItemSize={48}
-                    showsVerticalScrollIndicator={false}
-                  />
-                </View>
+                        {exercise}
+                      </Typo>
+                      {selectedExercise === exercise && (
+                        <Icons.CheckIcon
+                          size={18}
+                          color={colors.primary}
+                          weight="bold"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
             )}
           </View>
         )}
 
-        {/* Exercise Stats Cards */}
         {exerciseStats && exerciseStats.workoutCount > 0 && (
           <>
             <View style={styles.exerciseStatsContainer}>
@@ -474,7 +461,6 @@ const Statistics = () => {
               </View>
             </View>
 
-            {/* Weight Progress Chart */}
             {weightChartData.length > 0 && (
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
@@ -523,7 +509,6 @@ const Statistics = () => {
               </View>
             )}
 
-            {/* Reps Progress Chart */}
             {repsChartData.length > 0 && (
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
@@ -685,9 +670,11 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
-    maxHeight: verticalScale(250),
+    maxHeight: verticalScale(300),
+    overflow: "hidden",
   },
   exerciseList: {
+    maxHeight: verticalScale(300),
     padding: spacingX._10,
   },
   exerciseItem: {
@@ -739,9 +726,5 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: "center",
     paddingVertical: spacingY._50,
-  },
-  exerciseListWrapper: {
-    height: verticalScale(250),
-    padding: spacingX._10,
   },
 });

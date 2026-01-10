@@ -77,8 +77,6 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
   inputRef?: React.RefObject<TextInput>;
-  //   label?: string;
-  //   error?: string;
 }
 
 export interface CustomButtonProps extends TouchableOpacityProps {
@@ -130,7 +128,6 @@ export type ResponseType = {
   msg?: string;
 };
 
-
 export type WorkoutSet = {
   reps: number;
   weight: number;
@@ -146,7 +143,7 @@ export type WorkoutHistory = {
   id?: string;
   userID: string;
   date: Date | string;
-  duration: number; // in secunde
+  duration: number;
   exercises: WorkoutExercise[];
 };
 
@@ -157,9 +154,8 @@ export type WorkoutHistoryListProps = {
   refreshing?: boolean;
 };
 
-// Workout Plan Types
 export type DayWorkout = {
-  day: string; // "Luni", "Marti", etc.
+  day: string; 
   isRestDay: boolean;
   exercises: WorkoutExercise[];
   notes?: string;
@@ -169,12 +165,12 @@ export type WorkoutPlan = {
   id?: string;
   userID: string;
   planName: string;
+  splitDays?: number; // Cycle length: 2, 4, 7, 9, 14, etc. Default: 7
   days: DayWorkout[];
   createdAt: Date | string;
   updatedAt: Date | string;
 };
 
-// Nutrition Types
 export type Food = {
   name: string;
   calories: number;
