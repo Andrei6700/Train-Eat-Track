@@ -115,28 +115,46 @@ const Workout = React.memo(() => {
     return selected > today;
   }, [selectedDay]);
 
+  /**
+   * Calculate which day index in the split cycle a given date corresponds to
+   * This is the core function for split days functionality
+   */
   const getDayIndexFromDate = useCallback(
     (date: Date): number => {
       if (!workoutPlan || !workoutPlan.splitDays) {
+        // Fallback to weekly schedule if no split is defined
         return date.getDay() === 0 ? 6 : date.getDay() - 1;
       }
 
-      const planCreatedDate = new Date(workoutPlan.createdAt);
+      // Handle both Firestore Timestamp and Date objects
+      let planCreatedDate: Date;
+      if (workoutPlan.createdAt && typeof workoutPlan.createdAt === 'object' && 'toDate' in workoutPlan.createdAt) {
+        // Firestore Timestamp
+        planCreatedDate = (workoutPlan.createdAt as any).toDate();
+      } else {
+        // Regular Date or string
+        planCreatedDate = new Date(workoutPlan.createdAt);
+      }
       planCreatedDate.setHours(0, 0, 0, 0);
 
       const targetDate = new Date(date);
       targetDate.setHours(0, 0, 0, 0);
 
+      // Calculate days since plan was created
       const daysDifference = Math.floor(
         (targetDate.getTime() - planCreatedDate.getTime()) /
           (1000 * 60 * 60 * 24)
       );
 
+      // Return the day index in the split cycle (0-indexed)
       return daysDifference % workoutPlan.splitDays;
     },
     [workoutPlan]
   );
 
+  /**
+   * Get the day name (e.g., "Day 1") for a given date based on split cycle
+   */
   const getDayNameFromDate = useCallback(
     (date: Date): string => {
       const dayIndex = getDayIndexFromDate(date);
@@ -297,6 +315,7 @@ const Workout = React.memo(() => {
           setSelectedWorkout(null);
         }
 
+        // Get the workout plan for the selected day based on split cycle
         const dayName = getDayNameFromDate(day);
         const planDay = workoutPlan?.days?.find((d) => d.day === dayName);
         setTodayWorkout(planDay || null);
@@ -308,10 +327,15 @@ const Workout = React.memo(() => {
     [user?.uid, workoutsHistory, workoutPlan, getDayNameFromDate]
   );
 
+  /**
+   * FIXED: Handle start workout with proper split days functionality
+   * This now correctly routes to addWorkout modal when starting a workout
+   */
   const handleStartWorkout = useCallback(() => {
     const today = new Date();
     const isToday = selectedDay.toDateString() === today.toDateString();
 
+    // If workout already exists today, navigate to history
     if (isToday && hasWorkoutToday) {
       router.push({
         pathname: "/(tabs)/history",
@@ -323,6 +347,8 @@ const Workout = React.memo(() => {
       return;
     }
 
+    // Start new workout - this will open the addWorkout modal
+    // The addWorkout modal will handle loading the correct exercises for today's split
     if (isToday) {
       router.push("/(modals)/addWorkout");
     }
@@ -718,46 +744,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(8),
     borderRadius: radius._12,
     backgroundColor: colors.neutral800,
-    minWidth: scale(45),
+    borderWidth: 1,
+    borderColor: colors.neutral700,
     position: "relative",
   },
   dayCardToday: {
     backgroundColor: colors.primary,
-  },
-  dayCardSelected: {
-    backgroundColor: colors.neutral700,
-    borderWidth: 2,
     borderColor: colors.primary,
   },
+  dayCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
   dayCardRest: {
-    backgroundColor: "#FFD54F",
+    backgroundColor: colors.neutral700,
+    borderColor: colors.neutral600,
   },
   completedIndicator: {
     position: "absolute",
-    top: 4,
-    right: 4,
-    zIndex: 10,
+    top: -6,
+    right: -6,
+    backgroundColor: colors.neutral900,
+    borderRadius: 10,
+    padding: 2,
   },
   workoutSection: {
-    marginBottom: spacingY._30,
+    gap: spacingY._15,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacingY._15,
+    marginBottom: spacingY._10,
   },
   exerciseCountBadge: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.neutral800,
     paddingHorizontal: spacingX._12,
     paddingVertical: verticalScale(4),
     borderRadius: radius._10,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   exerciseCard: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
     padding: spacingX._15,
-    marginBottom: spacingY._12,
     borderWidth: 1,
     borderColor: colors.neutral700,
   },
@@ -776,9 +807,9 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
   },
   setNumberSmall: {
-    width: verticalScale(24),
-    height: verticalScale(24),
-    borderRadius: 100,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.neutral700,
     alignItems: "center",
     justifyContent: "center",
@@ -790,59 +821,64 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
     backgroundColor: colors.primary,
     paddingVertical: spacingY._15,
-    borderRadius: radius._15,
+    borderRadius: radius._17,
     marginTop: spacingY._10,
   },
   restDayContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: verticalScale(60),
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._20,
-    marginTop: spacingY._10,
+    paddingVertical: spacingY._50,
   },
   restDayIcon: {
-    backgroundColor: colors.neutral700,
-    padding: spacingX._20,
-    borderRadius: 100,
+    width: verticalScale(80),
+    height: verticalScale(80),
+    borderRadius: 40,
+    backgroundColor: colors.neutral800,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   noWorkoutContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: verticalScale(60),
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._20,
-    marginTop: spacingY._10,
+    paddingVertical: spacingY._50,
   },
   emptyIconContainer: {
-    backgroundColor: colors.neutral700,
-    padding: spacingX._20,
-    borderRadius: 100,
+    width: verticalScale(80),
+    height: verticalScale(80),
+    borderRadius: 40,
+    backgroundColor: colors.neutral800,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacingY._20,
+    padding: spacingX._20,
   },
   pastDayMessage: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacingY._15,
+    paddingVertical: spacingY._20,
+    paddingHorizontal: spacingX._20,
     backgroundColor: colors.neutral800,
-    borderRadius: radius._12,
+    borderRadius: radius._15,
     marginTop: spacingY._10,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   futureDayMessage: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacingY._15,
+    paddingVertical: spacingY._20,
+    paddingHorizontal: spacingX._20,
     backgroundColor: colors.neutral800,
-    borderRadius: radius._12,
+    borderRadius: radius._15,
     marginTop: spacingY._10,
     borderWidth: 1,
-    borderColor: colors.primary,
-    borderStyle: "dashed",
+    borderColor: colors.neutral700,
   },
 });

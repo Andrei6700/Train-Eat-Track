@@ -10,12 +10,12 @@ import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   addWorkout,
   checkWorkoutExistsToday,
-  getLastWeekWorkout,
+  getUserWorkouts,
 } from "@/src/services/workoutService";
-import { WorkoutExercise, WorkoutSet } from "@/src/types/index";
+import { WorkoutExercise, WorkoutHistory, WorkoutSet } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -26,16 +26,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-const DAYS_FULL = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
 
 const AddWorkout = () => {
   const { user } = useAuth();
@@ -50,7 +40,7 @@ const AddWorkout = () => {
   const [totalTime, setTotalTime] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // keep history exercises to show last week's data
+  // Keep history of exercises to show previous workout data
   const [historyExercises, setHistoryExercises] = useState<
     Record<string, WorkoutExercise>
   >({});
@@ -62,44 +52,150 @@ const AddWorkout = () => {
     },
   ]);
 
+  /**
+   * Calculate which day index in the split cycle today corresponds to
+   * This matches the logic in workout.tsx
+   */
+  const getTodayDayIndex = (): number => {
+    if (!workoutPlan || !workoutPlan.splitDays) {
+      console.log('[addWorkout] No workout plan or splitDays');
+      return 0;
+    }
+
+    // Handle both Firestore Timestamp and Date objects
+    let planCreatedDate: Date;
+    if (workoutPlan.createdAt && typeof workoutPlan.createdAt === 'object' && 'toDate' in workoutPlan.createdAt) {
+      // Firestore Timestamp
+      planCreatedDate = (workoutPlan.createdAt as any).toDate();
+    } else {
+      // Regular Date or string
+      planCreatedDate = new Date(workoutPlan.createdAt);
+    }
+    planCreatedDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const daysDifference = Math.floor(
+      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    console.log('[addWorkout] Plan created:', planCreatedDate.toISOString());
+    console.log('[addWorkout] Today:', today.toISOString());
+    console.log('[addWorkout] Days difference:', daysDifference);
+    console.log('[addWorkout] Split days:', workoutPlan.splitDays);
+    console.log('[addWorkout] Day index:', daysDifference % workoutPlan.splitDays);
+
+    return daysDifference % workoutPlan.splitDays;
+  };
+
+  /**
+   * Get the day name for today based on split cycle
+   */
+  const getTodayDayName = (): string => {
+    const dayIndex = getTodayDayIndex();
+    return `Day ${dayIndex + 1}`;
+  };
+
+  /**
+   * Find the most recent workout that contains a specific exercise
+   * Used to prefill weights and reps from previous sessions
+   */
+  const findMostRecentExercise = (
+    exerciseName: string,
+    history: WorkoutHistory[]
+  ): WorkoutExercise | null => {
+    if (!history || history.length === 0) return null;
+
+    const normalizedName = exerciseName.toLowerCase().trim();
+
+    // Sort history by date descending (most recent first)
+    const sortedHistory = [...history].sort((a, b) => {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+
+    // Find the first workout that contains this exercise
+    for (const workout of sortedHistory) {
+      const exercise = workout.exercises?.find(
+        (ex) => ex.exerciseName.toLowerCase().trim() === normalizedName
+      );
+      if (exercise) {
+        return exercise;
+      }
+    }
+
+    return null;
+  };
+
   useEffect(() => {
     loadWorkoutData();
   }, [workoutPlan, user?.uid]);
 
+  /**
+   * Load workout data with proper split days support and fallback logic
+   * 
+   * Priority 1: Load exercises from workout plan for today's split day
+   * Priority 2: For each exercise in plan, prefill with historical data
+   * Priority 3: If plan has no exercises, load the most recent complete workout
+   */
   const loadWorkoutData = async () => {
     if (!workoutPlan || !user?.uid) return;
 
     const today = new Date();
-    const dayName = DAYS_FULL[today.getDay() === 0 ? 6 : today.getDay() - 1];
+    
+    // Get today's day name based on split cycle
+    const dayName = getTodayDayName();
+    
+    console.log('[addWorkout] Loading workout for:', dayName);
+    console.log('[addWorkout] Available days in plan:', workoutPlan.days?.map(d => d.day));
+    
+    // Find the workout plan for today
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
-    if (!planDay || !planDay.exercises || planDay.exercises.length === 0) {
+    if (!planDay) {
+      console.log('[addWorkout] No plan found for', dayName);
       return;
     }
 
-    // Load last week's data
-    const lastWeekResult = await getLastWeekWorkout(user.uid, dayName);
-    let newHistoryExercises: Record<string, WorkoutExercise> = {};
+    console.log('[addWorkout] Plan day found:', planDay.day, 'Exercises:', planDay.exercises?.length || 0);
 
-    if (lastWeekResult.success && lastWeekResult.data) {
-      // keep history exercises to show last week's data
-      lastWeekResult.data.exercises?.forEach((ex: WorkoutExercise) => {
-        newHistoryExercises[ex.exerciseName.toLowerCase()] = ex;
-      });
+    // Load workout history for prefilling
+    let workoutHistory: WorkoutHistory[] = [];
+    try {
+      const historyResult = await getUserWorkouts(user.uid);
+      if (historyResult.success && historyResult.data) {
+        workoutHistory = historyResult.data;
+        console.log('[addWorkout] Loaded workout history:', workoutHistory.length, 'workouts');
+      }
+    } catch (error) {
+      console.error("[addWorkout] Error loading workout history:", error);
+    }
 
-      setHistoryExercises(newHistoryExercises);
+    // CASE 1: Plan has exercises - use them as template
+    if (planDay.exercises && planDay.exercises.length > 0) {
+      console.log('[addWorkout] Plan has exercises, using them as template');
+      
+      let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
-      // Prefill with last week's values
+      // For each exercise in today's plan, find the most recent historical data
       const mergedExercises = planDay.exercises.map((planEx) => {
-        const lastWeekEx = lastWeekResult.data.exercises?.find(
-          (ex: WorkoutExercise) =>
-            ex.exerciseName.toLowerCase() === planEx.exerciseName.toLowerCase()
+        console.log('[addWorkout] Processing exercise:', planEx.exerciseName);
+        
+        const historicalExercise = findMostRecentExercise(
+          planEx.exerciseName,
+          workoutHistory
         );
 
-        if (lastWeekEx) {
+        if (historicalExercise) {
+          console.log('[addWorkout] Found historical data for', planEx.exerciseName);
+          newHistoryExercises[planEx.exerciseName.toLowerCase()] = historicalExercise;
+        }
+
+        // If we have historical data, use it as prefill
+        if (historicalExercise) {
           return {
             exerciseName: planEx.exerciseName,
-            sets: lastWeekEx.sets.map((s: WorkoutSet) => ({
+            sets: historicalExercise.sets.map((s: WorkoutSet) => ({
               reps: s.reps || 0,
               weight: s.weight || 0,
               weightUnit: s.weightUnit || "kg",
@@ -107,7 +203,7 @@ const AddWorkout = () => {
           };
         }
 
-        // If not in history, use the plan
+        // No history, use the plan's default values
         return {
           exerciseName: planEx.exerciseName,
           sets:
@@ -125,27 +221,64 @@ const AddWorkout = () => {
         };
       });
 
+      console.log('[addWorkout] Final exercises count:', mergedExercises.length);
+      setHistoryExercises(newHistoryExercises);
       setExercises(mergedExercises as WorkoutExercise[]);
-    } else {
-      // No history, load only the plan
-      const cloned = planDay.exercises.map((ex) => ({
-        exerciseName: ex.exerciseName || "",
-        sets:
-          ex.sets?.map((s) => ({
-            reps:
-              typeof s.reps === "number"
-                ? s.reps
-                : parseInt(s.reps as any) || 0,
-            weight:
-              typeof s.weight === "number"
-                ? s.weight
-                : parseFloat(s.weight as any) || 0,
-            weightUnit: s.weightUnit || "kg",
-          })) || [{ reps: 0, weight: 0, weightUnit: "kg" }],
-      })) as WorkoutExercise[];
-      setExercises(cloned);
-      setHistoryExercises({});
+      return;
     }
+
+    // CASE 2: Plan has NO exercises - load last complete workout
+    console.log('[addWorkout] Plan has no exercises, loading last complete workout');
+    
+    if (workoutHistory.length === 0) {
+      console.log('[addWorkout] No workout history found, starting with empty form');
+      setExercises([{
+        exerciseName: "",
+        sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
+      }]);
+      setHistoryExercises({});
+      return;
+    }
+
+    // Sort history by date descending (most recent first)
+    const sortedHistory = [...workoutHistory].sort((a, b) => {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+
+    // Get the most recent workout
+    const lastWorkout = sortedHistory[0];
+    console.log('[addWorkout] Loading last workout from:', new Date(lastWorkout.date).toISOString());
+    console.log('[addWorkout] Last workout had', lastWorkout.exercises?.length || 0, 'exercises');
+
+    if (!lastWorkout.exercises || lastWorkout.exercises.length === 0) {
+      console.log('[addWorkout] Last workout had no exercises, starting with empty form');
+      setExercises([{
+        exerciseName: "",
+        sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
+      }]);
+      setHistoryExercises({});
+      return;
+    }
+
+    // Build history lookup and exercises from last workout
+    let newHistoryExercises: Record<string, WorkoutExercise> = {};
+    
+    const loadedExercises = lastWorkout.exercises.map((ex) => {
+      newHistoryExercises[ex.exerciseName.toLowerCase()] = ex;
+      
+      return {
+        exerciseName: ex.exerciseName,
+        sets: ex.sets.map((s: WorkoutSet) => ({
+          reps: s.reps || 0,
+          weight: s.weight || 0,
+          weightUnit: s.weightUnit || "kg",
+        })),
+      };
+    });
+
+    console.log('[addWorkout] Loaded', loadedExercises.length, 'exercises from last workout');
+    setHistoryExercises(newHistoryExercises);
+    setExercises(loadedExercises as WorkoutExercise[]);
   };
 
   useEffect(() => {
@@ -240,27 +373,17 @@ const AddWorkout = () => {
     const newExercises = [...exercises];
     if (field === "reps") {
       newExercises[exerciseIndex].sets[setIndex][field] =
-        parseInt(value as any) || 0;
+        parseInt(value) || 0;
     } else if (field === "weight") {
       newExercises[exerciseIndex].sets[setIndex][field] =
-        parseFloat(value as any) || 0;
+        parseFloat(value) || 0;
     } else {
       newExercises[exerciseIndex].sets[setIndex][field] = value;
     }
     setExercises(newExercises);
   };
 
-  const toggleWeightUnit = (exerciseIndex: number, setIndex: number) => {
-    const newExercises = [...exercises];
-    const currentUnit = newExercises[exerciseIndex].sets[setIndex].weightUnit;
-    newExercises[exerciseIndex].sets[setIndex].weightUnit =
-      currentUnit === "kg" ? "lbs" : "kg";
-    setExercises(newExercises);
-  };
-
-  const handleSaveWorkout = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
+  const handleSave = async () => {
     const hasEmptyExerciseName = exercises.some(
       (ex) => !ex.exerciseName.trim()
     );
@@ -337,7 +460,9 @@ const AddWorkout = () => {
     }
   };
 
-  // Helper function to get the historical set
+  /**
+   * Helper function to get the historical set data for display
+   */
   const getHistoricalSet = (
     exerciseName: string,
     setIndex: number
@@ -420,7 +545,7 @@ const AddWorkout = () => {
                     containerStyle={styles.exerciseNameInput}
                   />
 
-                  {/* Show full history */}
+                  {/* Show historical data if available */}
                   {exercise.exerciseName &&
                     historyExercises[exercise.exerciseName.toLowerCase()] && (
                       <View style={styles.historyContainer}>
@@ -433,7 +558,7 @@ const AddWorkout = () => {
                           color={colors.primary}
                           style={{ flex: 1 }}
                         >
-                          Last week:{" "}
+                          Previous workout:{" "}
                           {historyExercises[exercise.exerciseName.toLowerCase()]
                             .sets.map((s) => `${s.weight}${s.weightUnit} × ${s.reps}`)
                             .join(", ")}
@@ -504,7 +629,6 @@ const AddWorkout = () => {
                           updateSet(exerciseIndex, setIndex, "reps", text)
                         }
                         containerStyle={styles.smallInput}
-                        inputStyle={{ textAlign: "center" }}
                       />
                     </View>
 
@@ -520,31 +644,22 @@ const AddWorkout = () => {
                           updateSet(exerciseIndex, setIndex, "weight", text)
                         }
                         containerStyle={styles.smallInput}
-                        inputStyle={{ textAlign: "center" }}
                       />
-                    </View>
-
-                    <TouchableOpacity
-                      onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
-                      style={styles.unitButton}
-                    >
                       <Typo
                         size={12}
-                        fontWeight="600"
                         color={colors.neutral400}
+                        style={styles.unitLabel}
                       >
                         {set.weightUnit}
                       </Typo>
-                    </TouchableOpacity>
+                    </View>
 
-                    {exercise.sets.length > 1 && (
-                      <TouchableOpacity
-                        onPress={() => removeSet(exerciseIndex, setIndex)}
-                        style={styles.removeSetButton}
-                      >
-                        <Icons.X size={16} color={colors.neutral500} />
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      onPress={() => removeSet(exerciseIndex, setIndex)}
+                      style={styles.removeSetButton}
+                    >
+                      <Icons.X size={16} color={colors.rose} weight="bold" />
+                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -553,7 +668,7 @@ const AddWorkout = () => {
                 onPress={() => addSet(exerciseIndex)}
                 style={styles.addSetButton}
               >
-                <Icons.Plus size={16} color={colors.primary} />
+                <Icons.Plus size={16} color={colors.primary} weight="bold" />
                 <Typo size={14} fontWeight="600" color={colors.primary}>
                   Add Set
                 </Typo>
@@ -561,25 +676,19 @@ const AddWorkout = () => {
             </View>
           ))}
 
-          <TouchableOpacity
-            onPress={addExercise}
-            style={styles.addExerciseButton}
-          >
-            <Icons.PlusCircle size={24} color={colors.white} weight="fill" />
-            <Typo size={16} fontWeight="600" color={colors.white}>
+          <TouchableOpacity onPress={addExercise} style={styles.addExerciseButton}>
+            <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
+            <Typo size={16} fontWeight="600" color={colors.primary}>
               Add Exercise
             </Typo>
           </TouchableOpacity>
         </ScrollView>
 
-        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button
-            onPress={handleSaveWorkout}
-            loading={loading}
-            style={styles.finishButton}
-          >
-            <Typo color={colors.black} fontWeight="700" size={18}>
-              Finish Workout
+        {/* Save Button - Fixed at bottom */}
+        <View style={[styles.saveButtonContainer, { bottom: insets.bottom + 12 }]}>
+          <Button onPress={handleSave} loading={loading}>
+            <Typo size={18} fontWeight="700" color={colors.black}>
+              Save Workout
             </Typo>
           </Button>
         </View>
@@ -598,19 +707,14 @@ const styles = StyleSheet.create({
   timerContainer: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
-    padding: spacingX._15,
-    marginBottom: spacingY._15,
+    padding: spacingX._20,
+    marginBottom: spacingY._20,
     borderWidth: 1,
     borderColor: colors.neutral700,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4,
   },
   currentTimeSection: {
     alignItems: "center",
+    marginBottom: spacingY._15,
   },
   lapButton: {
     flexDirection: "row",
@@ -618,18 +722,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacingX._7,
     backgroundColor: colors.primary,
-    paddingVertical: spacingY._7,
+    paddingVertical: spacingY._10,
     paddingHorizontal: spacingX._20,
     borderRadius: radius._12,
-    marginVertical: spacingY._10,
+    marginBottom: spacingY._15,
   },
   totalTimeSection: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    justifyContent: "center",
   },
   scrollContent: {
-    paddingBottom: verticalScale(20),
     gap: spacingY._15,
   },
   exerciseCard: {
@@ -641,35 +744,37 @@ const styles = StyleSheet.create({
   },
   exerciseHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: spacingX._10,
     marginBottom: spacingY._15,
   },
   exerciseNameInput: {
-    backgroundColor: colors.neutral900,
-    height: verticalScale(40),
-    borderRadius: radius._10,
-    borderWidth: 0,
+    backgroundColor: colors.neutral700,
+    marginBottom: spacingY._10,
   },
   historyContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-    backgroundColor: "rgba(163, 230, 53, 0.1)",
-    padding: 6,
-    borderRadius: radius._6,
+    gap: spacingX._7,
+    backgroundColor: colors.neutral700,
+    padding: spacingX._10,
+    borderRadius: radius._10,
+    marginTop: spacingY._5,
   },
   removeButton: {
-    padding: spacingX._7,
-    backgroundColor: colors.neutral900,
-    borderRadius: radius._10,
-    marginLeft: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.neutral700,
+    alignItems: "center",
+    justifyContent: "center",
   },
   setHeaderRow: {
     flexDirection: "row",
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    alignItems: "center",
+    gap: spacingX._10,
+    marginBottom: spacingY._10,
+    paddingHorizontal: spacingX._5,
   },
   setRow: {
     flexDirection: "row",
@@ -679,22 +784,33 @@ const styles = StyleSheet.create({
   },
   setNumber: {
     width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.neutral700,
     alignItems: "center",
     justifyContent: "center",
   },
   setInput: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._7,
   },
   smallInput: {
+    flex: 1,
+    backgroundColor: colors.neutral700,
     height: verticalScale(40),
-    backgroundColor: colors.neutral900,
-    borderWidth: 0,
   },
-  unitButton: {
-    paddingHorizontal: 4,
+  unitLabel: {
+    width: 24,
   },
   removeSetButton: {
-    padding: 5,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.neutral700,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addSetButton: {
     flexDirection: "row",
@@ -702,9 +818,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacingX._7,
     paddingVertical: spacingY._10,
-    marginTop: spacingY._5,
-    backgroundColor: colors.neutral900,
+    marginTop: spacingY._10,
     borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderStyle: "dashed",
   },
   addExerciseButton: {
     flexDirection: "row",
@@ -712,21 +830,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacingX._10,
     paddingVertical: spacingY._15,
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.neutral800,
     borderRadius: radius._17,
-    marginTop: spacingY._10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderStyle: "dashed",
   },
-  footerSticky: {
+  saveButtonContainer: {
     position: "absolute",
     left: spacingX._20,
     right: spacingX._20,
-    zIndex: 30,
-  },
-  finishButton: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
+    zIndex: 10,
   },
 });
