@@ -544,27 +544,6 @@ const AddWorkout = () => {
                     }
                     containerStyle={styles.exerciseNameInput}
                   />
-
-                  {/* Show historical data if available */}
-                  {exercise.exerciseName &&
-                    historyExercises[exercise.exerciseName.toLowerCase()] && (
-                      <View style={styles.historyContainer}>
-                        <Icons.ClockCounterClockwise
-                          size={14}
-                          color={colors.primary}
-                        />
-                        <Typo
-                          size={12}
-                          color={colors.primary}
-                          style={{ flex: 1 }}
-                        >
-                          Previous workout:{" "}
-                          {historyExercises[exercise.exerciseName.toLowerCase()]
-                            .sets.map((s) => `${s.weight}${s.weightUnit} × ${s.reps}`)
-                            .join(", ")}
-                        </Typo>
-                      </View>
-                    )}
                 </View>
 
                 {exercises.length > 1 && (
