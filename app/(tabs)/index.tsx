@@ -1,36 +1,21 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
-import AICoachCard from "@/src/components/ui/AICoachCard";
-import HistoryCard from "@/src/components/ui/HistoryCard";
 import LatestScienceCard from "@/src/components/ui/LatestScienceCard";
-import TodayGoalsCard from "@/src/components/ui/TodayGoalsCard";
+import QuickStatsGrid from "@/src/components/ui/QuickStatsGrid";
+import RecentWorkouts from "@/src/components/ui/RecentWorkouts";
 import Typo from "@/src/components/ui/Typo";
+import WeeklyActivityChart from "@/src/components/ui/WeeklyActivityChart";
 import { useAuth } from "@/src/contexts/authContext";
-import { useNutrition } from "@/src/contexts/nutritionContext";
-import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import { getAICoachTip } from "@/src/services/aiCoachService";
+import { invalidateCache } from "@/src/services/workoutCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-
-const DAYS_FULL = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
 
 const Home = React.memo(() => {
   const { user } = useAuth();
-  const { workoutPlan } = useWorkoutPlan();
-  const { todayNutrition, todayWater } = useNutrition();
-
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,48 +42,10 @@ const Home = React.memo(() => {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    invalidateCache();
     await loadWorkouts();
     setRefreshing(false);
   }, [loadWorkouts]);
-
-  const aiCoachTip = useMemo(() => {
-    return getAICoachTip(workoutsHistory);
-  }, [workoutsHistory]);
-
-  const getTodayWorkoutName = useCallback(() => {
-    if (!workoutPlan || !workoutPlan.days) return null;
-
-    const today = new Date();
-    const dayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
-    const dayName = DAYS_FULL[dayIndex];
-
-    const todayPlan = workoutPlan.days.find((d) => d.day === dayName);
-    if (!todayPlan) return null;
-
-    if (todayPlan.isRestDay) {
-      return "Rest Day 😴";
-    }
-
-    return todayPlan.sessionName || dayName;
-  }, [workoutPlan]);
-
-  const getCurrentCalories = useCallback(() => {
-    if (!todayNutrition) return 0;
-    return todayNutrition.meals.reduce((total, meal) => {
-      return (
-        total + meal.foods.reduce((mealTotal, food) => mealTotal + food.calories, 0)
-      );
-    }, 0);
-  }, [todayNutrition]);
-
-  const getCalorieGoal = useCallback(() => {
-    return todayNutrition?.calorieGoal || 2500;
-  }, [todayNutrition]);
-
-  const getWaterPercentage = useCallback(() => {
-    if (!todayWater) return 0;
-    return Math.min(100, Math.round((todayWater.total / todayWater.goal) * 100));
-  }, [todayWater]);
 
   return (
     <SwipeableScreen>
@@ -115,37 +62,23 @@ const Home = React.memo(() => {
               />
             }
           >
-            {/* Header */}
             <View style={styles.header}>
               <View>
                 <Typo size={16} color={colors.neutral400}>
                   Welcome back,
                 </Typo>
                 <Typo size={24} fontWeight="700">
-                  {user?.name || "User"} 👋
+                  {user?.name || "User"}
                 </Typo>
               </View>
             </View>
 
-            {/* AI Coach Card */}
-            <AICoachCard
-              tip={aiCoachTip.tip}
-              emoji={aiCoachTip.emoji}
-              type={aiCoachTip.type}
-            />
+            <QuickStatsGrid workouts={workoutsHistory} loading={loading} />
 
-            {/* Today Goals Card */}
-            <TodayGoalsCard
-              workoutName={getTodayWorkoutName()}
-              currentCalories={getCurrentCalories()}
-              calorieGoal={getCalorieGoal()}
-              waterPercentage={getWaterPercentage()}
-            />
+            <WeeklyActivityChart workouts={workoutsHistory} />
 
-            {/* History Card */}
-            <HistoryCard />
+            <RecentWorkouts workouts={workoutsHistory} loading={loading} />
 
-            {/* Latest Science Card */}
             <LatestScienceCard />
           </ScrollView>
         </View>
