@@ -1,21 +1,21 @@
+import { colors } from "@/constants/theme";
+import OfflineBanner from "@/src/components/ui/OfflineBanner";
 import { AuthProvider } from "@/src/contexts/authContext";
 import { NetworkProvider, useNetwork } from "@/src/contexts/networkContext";
 import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
-import OfflineBanner from "@/src/components/ui/OfflineBanner";
+import { addRecentFood } from "@/src/services/recentFoodsService";
 import {
-  processSyncQueue,
-  getOfflineWorkouts,
-  removeOfflineWorkout,
   clearOfflineRecentFoods,
+  getOfflineWorkouts,
+  processSyncQueue,
+  removeOfflineWorkout,
 } from "@/src/services/syncQueueService";
 import { addWorkout } from "@/src/services/workoutService";
-import { addRecentFood } from "@/src/services/recentFoodsService";
 import { Stack } from "expo-router";
 import React, { useEffect, useRef } from "react";
-import { View, Alert, StatusBar } from "react-native";
+import { Alert, StatusBar, View } from "react-native";
 import "react-native-reanimated";
-import { colors } from "@/constants/theme";
 
 if (__DEV__) {
   const originalWarn = console.warn;
@@ -30,7 +30,7 @@ if (__DEV__) {
   };
 }
 
-//  SYNC MANAGER
+// SYNC MANAGER
 const SyncManager = () => {
   const { isConnected } = useNetwork();
   const wasOffline = useRef(false);
@@ -121,12 +121,23 @@ const StackLayout = () => {
       <Stack
         screenOptions={{ 
           headerShown: false, 
-          animation: "none", // Remove animations for instant transitions
+          animation: "none",
           contentStyle: {
             backgroundColor: colors.neutral900,
           },
         }}
       >
+        {/* Main application routes  */}
+        <Stack.Screen 
+          name="(tabs)" 
+          options={{ headerShown: false }} 
+        />
+        <Stack.Screen 
+          name="(auth)" 
+          options={{ headerShown: false }} 
+        />
+        
+        {/* Modal screens */}
         <Stack.Screen
           name="(modals)/profileModal"
           options={{ presentation: "modal" }}
