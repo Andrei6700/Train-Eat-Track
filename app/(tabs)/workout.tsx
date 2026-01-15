@@ -713,6 +713,7 @@ const Workout = React.memo(() => {
             <TouchableOpacity
               style={styles.startButton}
               onPress={handleStartWorkout}
+              activeOpacity={0.8}
             >
               <Icons.Play size={20} color={colors.black} weight="fill" />
               <Typo size={16} fontWeight="700" color={colors.black}>
@@ -1126,11 +1127,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: spacingY._15,
     borderRadius: radius._15,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 0,
+    overflow: "hidden",
   },
   restDayContainer: {
     flex: 1,
@@ -1180,10 +1178,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._30,
     borderRadius: radius._15,
     marginTop: spacingY._20,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 0,
+    overflow: "hidden",
   },
 });
