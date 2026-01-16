@@ -1,23 +1,24 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
+  addFoodToCache,
+  cacheNutritionWeek,
+  clearAllCache,
+  getCachedNutritionForDate,
+} from "@/src/services/cacheService";
+import {
   getDailyNutrition,
   saveDailyNutrition,
 } from "@/src/services/nutritionService";
 import { addRecentFood } from "@/src/services/recentFoodsService";
 import { getDailyWater, saveDailyWater } from "@/src/services/waterService";
 import {
-  cacheNutritionWeek,
-  getCachedNutritionForDate,
-  addFoodToCache,
-} from "@/src/services/cacheService";
-import {
   DailyNutrition,
   DailyWater,
   Food,
   WaterIntake,
 } from "@/src/types/index";
-import React, { createContext, useContext, useEffect, useState } from "react";
 import NetInfo from "@react-native-community/netinfo";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react"; // ✅ useRef added
 
 type NutritionContextType = {
   todayNutrition: DailyNutrition | null;
@@ -62,16 +63,34 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
   );
   const [todayWater, setTodayWater] = useState<DailyWater | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Track previous user ID to detect user changes
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (user?.uid) {
-      loadTodayData();
-      preloadWeekData();
-    } else {
-      setTodayNutrition(null);
-      setTodayWater(null);
-      setLoading(false);
-    }
+    const handleUserChange = async () => {
+      // Check if user changed
+      if (previousUserIdRef.current !== null && previousUserIdRef.current !== user?.uid) {
+        console.log(" [NutritionContext] User changed - clearing cache");
+        await clearAllCache();
+        setTodayNutrition(null);
+        setTodayWater(null);
+      }
+      
+      // Update previous user ID
+      previousUserIdRef.current = user?.uid || null;
+
+      if (user?.uid) {
+        loadTodayData();
+        preloadWeekData();
+      } else {
+        setTodayNutrition(null);
+        setTodayWater(null);
+        setLoading(false);
+      }
+    };
+
+    handleUserChange();
   }, [user?.uid]);
 
   /**
@@ -137,12 +156,12 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    // 2️ Check if we are online
+    // Check if we are online
     const state = await NetInfo.fetch();
     if (!state.isConnected) {
       console.log(" [NutritionContext] Offline - creating default nutrition");
       const defaultNutrition: DailyNutrition = {
-        userID: user.uid,
+        userID: user.uid, 
         date,
         calorieGoal: 2500,
         proteinGoal: 150,

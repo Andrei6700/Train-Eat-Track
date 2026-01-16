@@ -12,24 +12,30 @@ import React, { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 const Login = () => {
-const emailRef = useRef("");
-const passwordRef = useRef("");
-const [isLoading, setIsLoading] = useState(false);
-const router = useRouter();
-const {login: loginUser} = useAuth();
+  const emailRef = useRef("");
+  const passwordRef = useRef("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const router = useRouter();
+  const { login: loginUser } = useAuth();
 
-const handleSubmit = async () => {
-  if (!emailRef.current || !passwordRef.current) {
-    Alert.alert("Login", "Please fill all the fields");
-    return;
-  }
-  setIsLoading(true);
-  const res = await loginUser(emailRef.current, passwordRef.current);
-  setIsLoading(false);
-  if (!res.success) {
-    Alert.alert("Login", res.msg);
-  }
-};
+  const handleSubmit = async () => {
+    if (!emailRef.current || !passwordRef.current) {
+      Alert.alert("Login", "Please fill all the fields");
+      return;
+    }
+    setIsLoading(true);
+    const res = await loginUser(emailRef.current, passwordRef.current);
+    setIsLoading(false);
+    if (!res.success) {
+      Alert.alert("Login", res.msg);
+    }
+  };
+
+  const togglePasswordVisibility = () => {
+    setIsPasswordVisible(!isPasswordVisible);
+  };
+
   return (
     <ScreenWrapper>
       <View style={styles.container}>
@@ -59,17 +65,38 @@ const handleSubmit = async () => {
               />
             }
           />
-          <Input
-            placeholder="Enter your password"
-            onChangeText={(value) => (passwordRef.current = value)}
-            icon={
-              <Icons.Lock
-                size={verticalScale(26)}
-                color={colors.neutral300}
-                weight="fill"
-              />
-            }
-          />
+          <View style={styles.passwordContainer}>
+            <Input
+              placeholder="Enter your password"
+              onChangeText={(value) => (passwordRef.current = value)}
+              secureTextEntry={!isPasswordVisible}
+              icon={
+                <Icons.Lock
+                  size={verticalScale(26)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              }
+            />
+            <Pressable
+              onPress={togglePasswordVisibility}
+              style={styles.eyeButton}
+            >
+              {isPasswordVisible ? (
+                <Icons.Eye
+                  size={verticalScale(24)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              ) : (
+                <Icons.EyeSlash
+                  size={verticalScale(24)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              )}
+            </Pressable>
+          </View>
           <Typo size={14} color={colors.text} style={{ alignSelf: "flex-end" }}>
             Forgot Password?
           </Typo>
@@ -123,5 +150,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: colors.text,
     fontSize: verticalScale(15),
+  },
+  passwordContainer: {
+    position: "relative",
+    justifyContent: "center",
+  },
+  eyeButton: {
+    position: "absolute",
+    right: spacingX._15,
+    padding: 5,
+    alignSelf: "center",
   },
 });

@@ -16,6 +16,7 @@ const Register = () => {
   const passwordRef = useRef("");
   const nameRef = useRef("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const router = useRouter();
   const { register: registerUser } = useAuth();
 
@@ -35,6 +36,10 @@ const Register = () => {
     if (!res.success) {
       Alert.alert("Sign Up",res.msg);
     }
+  };
+
+  const togglePasswordVisibility = () => {
+    setIsPasswordVisible(!isPasswordVisible);
   };
 
   return (
@@ -77,17 +82,38 @@ const Register = () => {
               />
             }
           />
-          <Input
-            placeholder="Enter your password"
-            onChangeText={(value) => (passwordRef.current = value)}
-            icon={
-              <Icons.Lock
-                size={verticalScale(26)}
-                color={colors.neutral300}
-                weight="fill"
-              />
-            }
-          />
+          <View style={styles.passwordContainer}>
+            <Input
+              placeholder="Enter your password"
+              onChangeText={(value) => (passwordRef.current = value)}
+              secureTextEntry={!isPasswordVisible}
+              icon={
+                <Icons.Lock
+                  size={verticalScale(26)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              }
+            />
+            <Pressable
+              onPress={togglePasswordVisibility}
+              style={styles.eyeButton}
+            >
+              {isPasswordVisible ? (
+                <Icons.Eye
+                  size={verticalScale(24)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              ) : (
+                <Icons.EyeSlash
+                  size={verticalScale(24)}
+                  color={colors.neutral300}
+                  weight="fill"
+                />
+              )}
+            </Pressable>
+          </View>
 
           <Button loading={isLoading} onPress={handleSubmit}>
             <Typo fontWeight={"700"} color={colors.black} size={21}>
@@ -139,5 +165,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: colors.text,
     fontSize: verticalScale(15),
+  },
+  passwordContainer: {
+    position: "relative",
+    justifyContent: "center",
+  },
+  eyeButton: {
+    position: "absolute",
+    right: spacingX._15,
+    padding: 5,
+    alignSelf: "center",
   },
 });
