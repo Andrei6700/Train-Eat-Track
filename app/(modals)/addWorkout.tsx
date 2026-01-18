@@ -54,21 +54,22 @@ const AddWorkout = () => {
 
   /**
    * Calculate which day index in the split cycle today corresponds to
-   * This matches the logic in workout.tsx
    */
   const getTodayDayIndex = (): number => {
     if (!workoutPlan || !workoutPlan.splitDays) {
-      console.log('[addWorkout] No workout plan or splitDays');
+      console.log("[addWorkout] No workout plan or splitDays");
       return 0;
     }
 
     // Handle both Firestore Timestamp and Date objects
     let planCreatedDate: Date;
-    if (workoutPlan.createdAt && typeof workoutPlan.createdAt === 'object' && 'toDate' in workoutPlan.createdAt) {
-      // Firestore Timestamp
+    if (
+      workoutPlan.createdAt &&
+      typeof workoutPlan.createdAt === "object" &&
+      "toDate" in workoutPlan.createdAt
+    ) {
       planCreatedDate = (workoutPlan.createdAt as any).toDate();
     } else {
-      // Regular Date or string
       planCreatedDate = new Date(workoutPlan.createdAt);
     }
     planCreatedDate.setHours(0, 0, 0, 0);
@@ -77,14 +78,17 @@ const AddWorkout = () => {
     today.setHours(0, 0, 0, 0);
 
     const daysDifference = Math.floor(
-      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24),
     );
 
-    console.log('[addWorkout] Plan created:', planCreatedDate.toISOString());
-    console.log('[addWorkout] Today:', today.toISOString());
-    console.log('[addWorkout] Days difference:', daysDifference);
-    console.log('[addWorkout] Split days:', workoutPlan.splitDays);
-    console.log('[addWorkout] Day index:', daysDifference % workoutPlan.splitDays);
+    console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
+    console.log("[addWorkout] Today:", today.toISOString());
+    console.log("[addWorkout] Days difference:", daysDifference);
+    console.log("[addWorkout] Split days:", workoutPlan.splitDays);
+    console.log(
+      "[addWorkout] Day index:",
+      daysDifference % workoutPlan.splitDays,
+    );
 
     return daysDifference % workoutPlan.splitDays;
   };
@@ -103,21 +107,19 @@ const AddWorkout = () => {
    */
   const findMostRecentExercise = (
     exerciseName: string,
-    history: WorkoutHistory[]
+    history: WorkoutHistory[],
   ): WorkoutExercise | null => {
     if (!history || history.length === 0) return null;
 
     const normalizedName = exerciseName.toLowerCase().trim();
 
-    // Sort history by date descending (most recent first)
     const sortedHistory = [...history].sort((a, b) => {
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
 
-    // Find the first workout that contains this exercise
     for (const workout of sortedHistory) {
       const exercise = workout.exercises?.find(
-        (ex) => ex.exerciseName.toLowerCase().trim() === normalizedName
+        (ex) => ex.exerciseName.toLowerCase().trim() === normalizedName,
       );
       if (exercise) {
         return exercise;
@@ -132,32 +134,56 @@ const AddWorkout = () => {
   }, [workoutPlan, user?.uid]);
 
   /**
-   * Load workout data with proper split days support and fallback logic
-   * 
-   * Priority 1: Load exercises from workout plan for today's split day
-   * Priority 2: For each exercise in plan, prefill with historical data
-   * Priority 3: If plan has no exercises, load the most recent complete workout
+   * Load workout data with proper split days support
+   *
+   * Priority 1: For first cycle - use workout plan exercises as template
+   * Priority 2: For subsequent cycles - copy from previous cycle (splitDays days ago)
+   * Priority 3: If no data available - start with empty form
    */
   const loadWorkoutData = async () => {
     if (!workoutPlan || !user?.uid) return;
 
     const today = new Date();
-    
-    // Get today's day name based on split cycle
-    const dayName = getTodayDayName();
-    
-    console.log('[addWorkout] Loading workout for:', dayName);
-    console.log('[addWorkout] Available days in plan:', workoutPlan.days?.map(d => d.day));
-    
+    today.setHours(0, 0, 0, 0);
+
+    // Handle both Firestore Timestamp and Date objects
+    let planCreatedDate: Date;
+    if (
+      workoutPlan.createdAt &&
+      typeof workoutPlan.createdAt === "object" &&
+      "toDate" in workoutPlan.createdAt
+    ) {
+      planCreatedDate = (workoutPlan.createdAt as any).toDate();
+    } else {
+      planCreatedDate = new Date(workoutPlan.createdAt);
+    }
+    planCreatedDate.setHours(0, 0, 0, 0);
+
+    const daysDifference = Math.floor(
+      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    // Calculate which day in the current cycle
+    const currentDayIndex = daysDifference % workoutPlan.splitDays;
+    const dayName = `Day ${currentDayIndex + 1}`;
+
+    console.log("[addWorkout] Days since plan created:", daysDifference);
+    console.log("[addWorkout] Current cycle day:", dayName);
+
     // Find the workout plan for today
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
     if (!planDay) {
-      console.log('[addWorkout] No plan found for', dayName);
+      console.log("[addWorkout] No plan found for", dayName);
       return;
     }
 
-    console.log('[addWorkout] Plan day found:', planDay.day, 'Exercises:', planDay.exercises?.length || 0);
+    console.log(
+      "[addWorkout] Plan day found:",
+      planDay.day,
+      "Exercises:",
+      planDay.exercises?.length || 0,
+    );
 
     // Load workout history for prefilling
     let workoutHistory: WorkoutHistory[] = [];
@@ -165,33 +191,74 @@ const AddWorkout = () => {
       const historyResult = await getUserWorkouts(user.uid);
       if (historyResult.success && historyResult.data) {
         workoutHistory = historyResult.data;
-        console.log('[addWorkout] Loaded workout history:', workoutHistory.length, 'workouts');
+        console.log(
+          "[addWorkout] Loaded workout history:",
+          workoutHistory.length,
+          "workouts",
+        );
       }
     } catch (error) {
       console.error("[addWorkout] Error loading workout history:", error);
     }
 
-    // CASE 1: Plan has exercises - use them as template
-    if (planDay.exercises && planDay.exercises.length > 0) {
-      console.log('[addWorkout] Plan has exercises, using them as template');
-      
+    // Look back exactly one cycle (splitDays days ago)
+    const lookbackDays = daysDifference - workoutPlan.splitDays;
+    console.log(
+      "[addWorkout] Looking back to day:",
+      lookbackDays,
+      "from plan start",
+    );
+
+    // Find the workout from one cycle ago (same day in previous cycle)
+    let previousCycleWorkout: WorkoutHistory | null = null;
+    if (lookbackDays >= 0) {
+      const targetDate = new Date(planCreatedDate);
+      targetDate.setDate(targetDate.getDate() + lookbackDays);
+      targetDate.setHours(0, 0, 0, 0);
+
+      console.log(
+        "[addWorkout] Target date for previous cycle:",
+        targetDate.toISOString(),
+      );
+
+      previousCycleWorkout = workoutHistory.find((w) => {
+        const workoutDate = new Date(w.date);
+        workoutDate.setHours(0, 0, 0, 0);
+        return workoutDate.getTime() === targetDate.getTime();
+      });
+
+      if (previousCycleWorkout) {
+        console.log(
+          "[addWorkout] Found workout from previous cycle with",
+          previousCycleWorkout.exercises?.length,
+          "exercises",
+        );
+      }
+    }
+
+    // CASE 1: Plan has exercises - use them as template for FIRST CYCLE ONLY
+    if (
+      planDay.exercises &&
+      planDay.exercises.length > 0 &&
+      daysDifference < workoutPlan.splitDays
+    ) {
+      console.log(
+        "[addWorkout] First cycle - using plan exercises as template",
+      );
+
       let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
-      // For each exercise in today's plan, find the most recent historical data
       const mergedExercises = planDay.exercises.map((planEx) => {
-        console.log('[addWorkout] Processing exercise:', planEx.exerciseName);
-        
         const historicalExercise = findMostRecentExercise(
           planEx.exerciseName,
-          workoutHistory
+          workoutHistory,
         );
 
         if (historicalExercise) {
-          console.log('[addWorkout] Found historical data for', planEx.exerciseName);
-          newHistoryExercises[planEx.exerciseName.toLowerCase()] = historicalExercise;
+          newHistoryExercises[planEx.exerciseName.toLowerCase()] =
+            historicalExercise;
         }
 
-        // If we have historical data, use it as prefill
         if (historicalExercise) {
           return {
             exerciseName: planEx.exerciseName,
@@ -203,82 +270,73 @@ const AddWorkout = () => {
           };
         }
 
-        // No history, use the plan's default values
         return {
           exerciseName: planEx.exerciseName,
-          sets:
-            planEx.sets?.map((s) => ({
-              reps:
-                typeof s.reps === "number"
-                  ? s.reps
-                  : parseInt(s.reps as any) || 0,
-              weight:
-                typeof s.weight === "number"
-                  ? s.weight
-                  : parseFloat(s.weight as any) || 0,
-              weightUnit: s.weightUnit || "kg",
-            })) || [{ reps: 0, weight: 0, weightUnit: "kg" }],
+          sets: planEx.sets?.map((s) => ({
+            reps:
+              typeof s.reps === "number"
+                ? s.reps
+                : parseInt(s.reps as any) || 0,
+            weight:
+              typeof s.weight === "number"
+                ? s.weight
+                : parseFloat(s.weight as any) || 0,
+            weightUnit: s.weightUnit || "kg",
+          })) || [{ reps: 0, weight: 0, weightUnit: "kg" }],
         };
       });
 
-      console.log('[addWorkout] Final exercises count:', mergedExercises.length);
       setHistoryExercises(newHistoryExercises);
       setExercises(mergedExercises as WorkoutExercise[]);
       return;
     }
 
-    // CASE 2: Plan has NO exercises - load last complete workout
-    console.log('[addWorkout] Plan has no exercises, loading last complete workout');
-    
-    if (workoutHistory.length === 0) {
-      console.log('[addWorkout] No workout history found, starting with empty form');
-      setExercises([{
-        exerciseName: "",
-        sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
-      }]);
-      setHistoryExercises({});
+    // CASE 2: After first cycle - copy from previous cycle
+    if (
+      previousCycleWorkout &&
+      previousCycleWorkout.exercises &&
+      previousCycleWorkout.exercises.length > 0
+    ) {
+      console.log(
+        "[addWorkout] After first cycle - copying from previous cycle",
+      );
+
+      let newHistoryExercises: Record<string, WorkoutExercise> = {};
+
+      const loadedExercises = previousCycleWorkout.exercises.map((ex) => {
+        newHistoryExercises[ex.exerciseName.toLowerCase()] = ex;
+
+        return {
+          exerciseName: ex.exerciseName,
+          sets: ex.sets.map((s: WorkoutSet) => ({
+            reps: s.reps || 0,
+            weight: s.weight || 0,
+            weightUnit: s.weightUnit || "kg",
+          })),
+        };
+      });
+
+      console.log(
+        "[addWorkout] Loaded",
+        loadedExercises.length,
+        "exercises from previous cycle",
+      );
+      setHistoryExercises(newHistoryExercises);
+      setExercises(loadedExercises as WorkoutExercise[]);
       return;
     }
 
-    // Sort history by date descending (most recent first)
-    const sortedHistory = [...workoutHistory].sort((a, b) => {
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
-
-    // Get the most recent workout
-    const lastWorkout = sortedHistory[0];
-    console.log('[addWorkout] Loading last workout from:', new Date(lastWorkout.date).toISOString());
-    console.log('[addWorkout] Last workout had', lastWorkout.exercises?.length || 0, 'exercises');
-
-    if (!lastWorkout.exercises || lastWorkout.exercises.length === 0) {
-      console.log('[addWorkout] Last workout had no exercises, starting with empty form');
-      setExercises([{
+    // CASE 3: No previous workout found, start with empty form
+    console.log(
+      "[addWorkout] No previous cycle workout found, starting with empty form",
+    );
+    setExercises([
+      {
         exerciseName: "",
         sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
-      }]);
-      setHistoryExercises({});
-      return;
-    }
-
-    // Build history lookup and exercises from last workout
-    let newHistoryExercises: Record<string, WorkoutExercise> = {};
-    
-    const loadedExercises = lastWorkout.exercises.map((ex) => {
-      newHistoryExercises[ex.exerciseName.toLowerCase()] = ex;
-      
-      return {
-        exerciseName: ex.exerciseName,
-        sets: ex.sets.map((s: WorkoutSet) => ({
-          reps: s.reps || 0,
-          weight: s.weight || 0,
-          weightUnit: s.weightUnit || "kg",
-        })),
-      };
-    });
-
-    console.log('[addWorkout] Loaded', loadedExercises.length, 'exercises from last workout');
-    setHistoryExercises(newHistoryExercises);
-    setExercises(loadedExercises as WorkoutExercise[]);
+      },
+    ]);
+    setHistoryExercises({});
   };
 
   useEffect(() => {
@@ -359,7 +417,7 @@ const AddWorkout = () => {
     }
     const newExercises = [...exercises];
     newExercises[exerciseIndex].sets = newExercises[exerciseIndex].sets.filter(
-      (_, i) => i !== setIndex
+      (_, i) => i !== setIndex,
     );
     setExercises(newExercises);
   };
@@ -368,12 +426,11 @@ const AddWorkout = () => {
     exerciseIndex: number,
     setIndex: number,
     field: keyof WorkoutSet,
-    value: any
+    value: any,
   ) => {
     const newExercises = [...exercises];
     if (field === "reps") {
-      newExercises[exerciseIndex].sets[setIndex][field] =
-        parseInt(value) || 0;
+      newExercises[exerciseIndex].sets[setIndex][field] = parseInt(value) || 0;
     } else if (field === "weight") {
       newExercises[exerciseIndex].sets[setIndex][field] =
         parseFloat(value) || 0;
@@ -385,7 +442,7 @@ const AddWorkout = () => {
 
   const handleSave = async () => {
     const hasEmptyExerciseName = exercises.some(
-      (ex) => !ex.exerciseName.trim()
+      (ex) => !ex.exerciseName.trim(),
     );
     if (hasEmptyExerciseName) {
       Alert.alert("Error", "Please fill in all exercise names");
@@ -393,13 +450,10 @@ const AddWorkout = () => {
     }
 
     const hasInvalidSets = exercises.some((ex) =>
-      ex.sets.some((set) => set.reps <= 0 || set.weight < 0)
+      ex.sets.some((set) => set.reps <= 0 || set.weight < 0),
     );
     if (hasInvalidSets) {
-      Alert.alert(
-        "Error",
-        "Please fill in valid reps and weight for all sets"
-      );
+      Alert.alert("Error", "Please fill in valid reps and weight for all sets");
       return;
     }
 
@@ -413,7 +467,7 @@ const AddWorkout = () => {
       Alert.alert(
         "Already Logged",
         "You already have a workout logged for today.",
-        [{ text: "OK" }]
+        [{ text: "OK" }],
       );
       return;
     }
@@ -431,13 +485,12 @@ const AddWorkout = () => {
       setLoading(false);
 
       if (result.success) {
-        // Check if saved offline
         const isOffline = result.data?.offline;
 
         Alert.alert(
           isOffline ? "Saved Offline" : "Success",
           isOffline
-            ? "Antrenamentul a fost salvat local și va fi sincronizat când vei avea conexiune la internet."
+            ? "Workout saved locally and will sync when online."
             : "Workout saved successfully!",
           [
             {
@@ -449,7 +502,7 @@ const AddWorkout = () => {
                 });
               },
             },
-          ]
+          ],
         );
       } else {
         Alert.alert("Error", result.msg || "Could not save workout");
@@ -465,7 +518,7 @@ const AddWorkout = () => {
    */
   const getHistoricalSet = (
     exerciseName: string,
-    setIndex: number
+    setIndex: number,
   ): WorkoutSet | null => {
     const histEx = historyExercises[exerciseName.toLowerCase()];
     if (histEx && histEx.sets && histEx.sets[setIndex]) {
@@ -585,13 +638,17 @@ const AddWorkout = () => {
               {exercise.sets.map((set, setIndex) => {
                 const historicalSet = getHistoricalSet(
                   exercise.exerciseName,
-                  setIndex
+                  setIndex,
                 );
 
                 return (
                   <View key={setIndex} style={styles.setRow}>
                     <View style={styles.setNumber}>
-                      <Typo size={14} fontWeight="600" color={colors.neutral400}>
+                      <Typo
+                        size={14}
+                        fontWeight="600"
+                        color={colors.neutral400}
+                      >
                         {setIndex + 1}
                       </Typo>
                     </View>
@@ -655,7 +712,10 @@ const AddWorkout = () => {
             </View>
           ))}
 
-          <TouchableOpacity onPress={addExercise} style={styles.addExerciseButton}>
+          <TouchableOpacity
+            onPress={addExercise}
+            style={styles.addExerciseButton}
+          >
             <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
             <Typo size={16} fontWeight="600" color={colors.primary}>
               Add Exercise
@@ -664,7 +724,9 @@ const AddWorkout = () => {
         </ScrollView>
 
         {/* Save Button - Fixed at bottom */}
-        <View style={[styles.saveButtonContainer, { bottom: insets.bottom + 12 }]}>
+        <View
+          style={[styles.saveButtonContainer, { bottom: insets.bottom + 12 }]}
+        >
           <Button onPress={handleSave} loading={loading}>
             <Typo size={18} fontWeight="700" color={colors.black}>
               Save Workout
@@ -730,15 +792,6 @@ const styles = StyleSheet.create({
   exerciseNameInput: {
     backgroundColor: colors.neutral700,
     marginBottom: spacingY._10,
-  },
-  historyContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._7,
-    backgroundColor: colors.neutral700,
-    padding: spacingX._10,
-    borderRadius: radius._10,
-    marginTop: spacingY._5,
   },
   removeButton: {
     width: 36,

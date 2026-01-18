@@ -31,15 +31,6 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const DAYS_FULL = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
 const MONTHS = [
   "January",
   "February",
@@ -90,8 +81,8 @@ const DayCard = React.memo(
             isFuture
               ? colors.neutral600
               : isSelected
-              ? colors.black
-              : colors.neutral400
+                ? colors.black
+                : colors.neutral400
           }
           fontWeight="500"
         >
@@ -111,10 +102,10 @@ const DayCard = React.memo(
               isFuture
                 ? colors.neutral600
                 : isSelected
-                ? colors.black
-                : isTodayCard
-                ? colors.primary
-                : colors.white
+                  ? colors.black
+                  : isTodayCard
+                    ? colors.primary
+                    : colors.white
             }
           >
             {day.getDate()}
@@ -140,7 +131,7 @@ const DayCard = React.memo(
         </View>
       </TouchableOpacity>
     );
-  }
+  },
 );
 
 const Workout = React.memo(() => {
@@ -159,7 +150,7 @@ const Workout = React.memo(() => {
   const [workoutPlanName, setWorkoutPlanName] = useState("");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutHistory | null>(
-    null
+    null,
   );
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
   const flashListRef = useRef<FlashList<Date>>(null);
@@ -191,9 +182,11 @@ const Workout = React.memo(() => {
   // Calculate which day index in the split cycle a given date corresponds to
   const getDayIndexFromDate = useCallback(
     (date: Date): number => {
-      if (!workoutPlan || !workoutPlan.splitDays) {
-        // Fallback to weekly schedule if no split is defined
-        return date.getDay() === 0 ? 6 : date.getDay() - 1;
+      if (!workoutPlan || !workoutPlan.splitDays || !workoutPlan.createdAt) {
+        console.log(
+          "[Workout] No workout plan or incomplete data, defaulting to day 0",
+        );
+        return 0;
       }
 
       // Handle both Firestore Timestamp and Date objects
@@ -203,10 +196,8 @@ const Workout = React.memo(() => {
         typeof workoutPlan.createdAt === "object" &&
         "toDate" in workoutPlan.createdAt
       ) {
-        // Firestore Timestamp
         planCreatedDate = (workoutPlan.createdAt as any).toDate();
       } else {
-        // Regular Date or string
         planCreatedDate = new Date(workoutPlan.createdAt);
       }
       planCreatedDate.setHours(0, 0, 0, 0);
@@ -217,22 +208,32 @@ const Workout = React.memo(() => {
       // Calculate days since plan was created
       const daysDifference = Math.floor(
         (targetDate.getTime() - planCreatedDate.getTime()) /
-          (1000 * 60 * 60 * 24)
+          (1000 * 60 * 60 * 24),
       );
 
+      console.log("[Workout] Plan created:", planCreatedDate.toISOString());
+      console.log("[Workout] Target date:", targetDate.toISOString());
+      console.log("[Workout] Days difference:", daysDifference);
+      console.log("[Workout] Split days:", workoutPlan.splitDays);
+
       // Return the day index in the split cycle (0-indexed)
-      return daysDifference % workoutPlan.splitDays;
+      const dayIndex = daysDifference % workoutPlan.splitDays;
+      console.log("[Workout] Calculated day index:", dayIndex);
+
+      return dayIndex;
     },
-    [workoutPlan]
+    [workoutPlan],
   );
 
   // Get the day name (e.g., "Day 1") for a given date based on split cycle
   const getDayNameFromDate = useCallback(
     (date: Date): string => {
       const dayIndex = getDayIndexFromDate(date);
-      return `Day ${dayIndex + 1}`;
+      const dayName = `Day ${dayIndex + 1}`;
+      console.log("[Workout] Day name for date:", dayName);
+      return dayName;
     },
-    [getDayIndexFromDate]
+    [getDayIndexFromDate],
   );
 
   // Generate calendar days from first workout to today
@@ -256,7 +257,7 @@ const Workout = React.memo(() => {
 
       setCalendarDays(days);
       const safeIndex = days.findIndex(
-        (d) => d.toDateString() === today.toDateString()
+        (d) => d.toDateString() === today.toDateString(),
       );
       setInitialIndex(safeIndex !== -1 ? safeIndex : days.length - 2);
       setSelectedDay(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
@@ -265,7 +266,7 @@ const Workout = React.memo(() => {
     }
 
     const sortedWorkouts = [...workoutsHistory].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
     const earliestWorkout = new Date(sortedWorkouts[0].date);
@@ -274,7 +275,7 @@ const Workout = React.memo(() => {
     const firstDay = new Date(
       earliestWorkout.getFullYear(),
       earliestWorkout.getMonth(),
-      1
+      1,
     );
 
     const days: Date[] = [];
@@ -289,7 +290,7 @@ const Workout = React.memo(() => {
     setCalendarDays(days);
 
     const safeIndex = days.findIndex(
-      (d) => d.toDateString() === today.toDateString()
+      (d) => d.toDateString() === today.toDateString(),
     );
     setInitialIndex(safeIndex !== -1 ? safeIndex : days.length - 2);
     setSelectedDay(days[safeIndex !== -1 ? safeIndex : days.length - 2]);
@@ -310,7 +311,7 @@ const Workout = React.memo(() => {
       loadTodayWorkout();
 
       return () => {};
-    }, [user?.uid])
+    }, [user?.uid]),
   );
 
   useEffect(() => {
@@ -377,10 +378,32 @@ const Workout = React.memo(() => {
     await loadWorkoutsHistory();
 
     if (workoutPlan) {
+      console.log("[Workout] Loading workout plan:", workoutPlan.planName);
       setWorkoutPlanName(workoutPlan.planName || "");
+
       const today = new Date();
       const dayName = getDayNameFromDate(today);
-      const todayPlan = workoutPlan.days.find((d) => d.day === dayName);
+      console.log("[Workout] Looking for day:", dayName);
+      console.log(
+        "[Workout] Available days:",
+        workoutPlan.days?.map((d) => d.day),
+      );
+
+      const todayPlan = workoutPlan.days?.find((d) => d.day === dayName);
+
+      if (todayPlan) {
+        console.log(
+          "[Workout] Found plan for today:",
+          todayPlan.day,
+          "IsRestDay:",
+          todayPlan.isRestDay,
+          "Exercises:",
+          todayPlan.exercises?.length,
+        );
+      } else {
+        console.log("[Workout] No plan found for today");
+      }
+
       setTodayWorkout(todayPlan || null);
     }
 
@@ -435,14 +458,21 @@ const Workout = React.memo(() => {
 
         // Get the workout plan for the selected day based on split cycle
         const dayName = getDayNameFromDate(day);
+        console.log("[Workout] Selected day name:", dayName);
         const planDay = workoutPlan?.days?.find((d) => d.day === dayName);
+        console.log(
+          "[Workout] Plan day found:",
+          planDay?.day,
+          "IsRestDay:",
+          planDay?.isRestDay,
+        );
         setTodayWorkout(planDay || null);
       } catch (err) {
         console.error("[Workout] error fetching workouts for day:", err);
         setSelectedWorkout(null);
       }
     },
-    [user?.uid, workoutsHistory, workoutPlan, getDayNameFromDate]
+    [user?.uid, workoutsHistory, workoutPlan, getDayNameFromDate],
   );
 
   // Handle start workout
@@ -488,7 +518,7 @@ const Workout = React.memo(() => {
         return workoutDate.toDateString() === day.toDateString();
       });
     },
-    [workoutsHistory]
+    [workoutsHistory],
   );
 
   // Handle content size change for initial scroll
@@ -531,7 +561,7 @@ const Workout = React.memo(() => {
         setCurrentMonth(calendarDays[clampedIndex]);
       }
     },
-    [calendarDays]
+    [calendarDays],
   );
 
   const getItemLayout = useCallback(
@@ -540,12 +570,12 @@ const Workout = React.memo(() => {
       offset: ITEM_WIDTH * index,
       index,
     }),
-    []
+    [],
   );
 
   const keyExtractor = useCallback(
     (item: Date, index: number) => `${item.toISOString()}-${index}`,
-    []
+    [],
   );
 
   // Render calendar day
@@ -559,12 +589,9 @@ const Workout = React.memo(() => {
       const isFuture = day > today;
       const hasWorkout = hasWorkoutOnDay(day);
 
-      const dayOfWeek = day.getDay();
-      const adjustedDayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-      const planDay = workoutPlan?.days?.find(
-        (d) => d.day === DAYS_FULL[adjustedDayOfWeek]
-      );
+      // Get plan day for this calendar day
+      const dayName = getDayNameFromDate(day);
+      const planDay = workoutPlan?.days?.find((d) => d.day === dayName);
       const isRestDay = planDay?.isRestDay ?? false;
 
       return (
@@ -581,11 +608,32 @@ const Workout = React.memo(() => {
         />
       );
     },
-    [selectedDay, hasWorkoutToday, hasWorkoutOnDay, workoutPlan, handleDayPress]
+    [
+      selectedDay,
+      hasWorkoutToday,
+      hasWorkoutOnDay,
+      workoutPlan,
+      handleDayPress,
+      getDayNameFromDate,
+    ],
   );
 
   // Render workout content based on state
   const renderContent = useCallback(() => {
+    console.log(
+      "[Workout] Rendering content - selectedWorkout:",
+      !!selectedWorkout,
+      "todayWorkout:",
+      !!todayWorkout,
+      "isRestDay:",
+      todayWorkout?.isRestDay,
+      "isToday:",
+      isSelectedDayToday,
+      "workoutPlan:",
+      !!workoutPlan,
+    );
+
+    // Case 1: Show logged workout if exists
     if (selectedWorkout) {
       return (
         <Animated.View
@@ -662,7 +710,39 @@ const Workout = React.memo(() => {
       );
     }
 
-    if (todayWorkout && !todayWorkout.isRestDay && isSelectedDayToday) {
+    // Case 2: Show rest day if it's a rest day and no workout has been logged
+    if (todayWorkout?.isRestDay && !selectedWorkout) {
+      return (
+        <View style={styles.restDayContainer}>
+          <View style={styles.restDayIcon}>
+            <Icons.BedIcon size={40} color={colors.primary} weight="fill" />
+          </View>
+          <Typo size={22} fontWeight="700" style={{ marginTop: spacingY._15 }}>
+            Rest Day
+          </Typo>
+          <Typo
+            size={15}
+            color={colors.neutral400}
+            style={{ marginTop: spacingY._7, textAlign: "center" }}
+          >
+            Recovery is part of the process
+          </Typo>
+        </View>
+      );
+    }
+
+    // Case 3: Show "Start Workout" button if today and workout plan exists
+    // CRITICAL FIX: Show "Start Workout" even if todayWorkout has no exercises
+    // The AddWorkout screen will handle loading exercises from history
+    if (
+      workoutPlan &&
+      isSelectedDayToday &&
+      !selectedWorkout &&
+      (!todayWorkout || !todayWorkout.isRestDay)
+    ) {
+      const hasExercises =
+        todayWorkout?.exercises && todayWorkout.exercises.length > 0;
+
       return (
         <Animated.View
           entering={FadeInDown.duration(400).delay(200)}
@@ -691,24 +771,42 @@ const Workout = React.memo(() => {
                   {workoutPlanName}
                 </Typo>
                 <Typo size={14} color={colors.neutral400}>
-                  {todayWorkout.exercises?.length || 0} exercises planned
+                  {hasExercises
+                    ? `${todayWorkout.exercises.length} exercises planned`
+                    : "Continue your training cycle"}
                 </Typo>
               </View>
             </View>
 
-            <View style={styles.exercisesList}>
-              {todayWorkout.exercises?.map((exercise, idx) => (
-                <View key={idx} style={styles.exerciseListItem}>
-                  <View style={styles.exerciseDot} />
-                  <Typo size={15} color={colors.neutral200}>
-                    {exercise.exerciseName}
-                  </Typo>
-                  <Typo size={13} color={colors.neutral500}>
-                    {exercise.sets?.length || 0} sets
-                  </Typo>
-                </View>
-              ))}
-            </View>
+            {hasExercises && (
+              <View style={styles.exercisesList}>
+                {todayWorkout.exercises.map((exercise, idx) => (
+                  <View key={idx} style={styles.exerciseListItem}>
+                    <View style={styles.exerciseDot} />
+                    <Typo size={15} color={colors.neutral200}>
+                      {exercise.exerciseName}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral500}>
+                      {exercise.sets?.length || 0} sets
+                    </Typo>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {!hasExercises && (
+              <View style={styles.infoBox}>
+                <Icons.Info size={16} color={colors.primary} weight="fill" />
+                <Typo
+                  size={13}
+                  color={colors.neutral300}
+                  style={{ flex: 1, marginLeft: spacingX._10 }}
+                >
+                  Your exercises from previous workouts will be loaded
+                  automatically
+                </Typo>
+              </View>
+            )}
 
             <TouchableOpacity
               style={styles.startButton}
@@ -725,26 +823,7 @@ const Workout = React.memo(() => {
       );
     }
 
-    if (todayWorkout?.isRestDay && isSelectedDayToday) {
-      return (
-        <View style={styles.restDayContainer}>
-          <View style={styles.restDayIcon}>
-            <Icons.BedIcon size={40} color={colors.primary} weight="fill" />
-          </View>
-          <Typo size={22} fontWeight="700" style={{ marginTop: spacingY._15 }}>
-            Rest Day
-          </Typo>
-          <Typo
-            size={15}
-            color={colors.neutral400}
-            style={{ marginTop: spacingY._7, textAlign: "center" }}
-          >
-            Recovery is part of the process
-          </Typo>
-        </View>
-      );
-    }
-
+    // Case 4: Past day with no workout
     if (isSelectedDayPast) {
       return (
         <View style={styles.emptyContainer}>
@@ -774,6 +853,7 @@ const Workout = React.memo(() => {
       );
     }
 
+    // Case 5: Future day
     if (isSelectedDayFuture) {
       return (
         <View style={styles.emptyContainer}>
@@ -803,6 +883,7 @@ const Workout = React.memo(() => {
       );
     }
 
+    // Case 6: No workout plan exists at all
     return (
       <View style={styles.noPlanContainer}>
         <View style={styles.emptyIconContainer}>
@@ -840,6 +921,7 @@ const Workout = React.memo(() => {
     workoutPlanName,
     handleStartWorkout,
     handleEditPlan,
+    workoutPlan,
   ]);
 
   if (loading) {
@@ -861,7 +943,6 @@ const Workout = React.memo(() => {
       </SwipeableScreen>
     );
   }
-
   return (
     <SwipeableScreen>
       <ScreenWrapper>
@@ -872,7 +953,6 @@ const Workout = React.memo(() => {
               Workout
             </Typo>
           </Animated.View>
-
           {/* Month/Year Header */}
           <Animated.View
             entering={FadeInDown.duration(400).delay(100)}
@@ -1118,6 +1198,16 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.primary,
+  },
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.neutral900,
+    borderRadius: radius._10,
+    padding: spacingY._12,
+    marginBottom: spacingY._20,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   startButton: {
     flexDirection: "row",
