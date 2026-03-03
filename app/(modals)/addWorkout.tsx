@@ -7,15 +7,11 @@ import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import {
-  addWorkout,
-  checkWorkoutExistsToday,
-  getUserWorkouts,
-} from "@/src/services/workoutService";
+import { addWorkout, getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutExercise, WorkoutHistory, WorkoutSet } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -31,9 +27,27 @@ const AddWorkout = () => {
   const { user } = useAuth();
   const router = useRouter();
   const { workoutPlan } = useWorkoutPlan();
+  const { selectedDate, isHistorical } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
+
+  // CRITICAL FIX: Parse and normalize the target date at component initialization
+  // This ensures the date is set correctly and doesn't change during the session
+  const targetDate = React.useMemo(() => {
+    if (selectedDate) {
+      const parsed = new Date(selectedDate as string);
+      // Normalize to noon to avoid timezone issues
+      parsed.setHours(12, 0, 0, 0);
+      return parsed;
+    }
+    // Default to today if no date provided
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    return today;
+  }, [selectedDate]);
+
+  const isHistoricalWorkout = isHistorical === "true";
 
   // Timer states
   const [currentTime, setCurrentTime] = useState(0);
@@ -53,7 +67,7 @@ const AddWorkout = () => {
   ]);
 
   /**
-   * Calculate which day index in the split cycle today corresponds to
+   * Calculate which day index in the split cycle the target date corresponds to
    */
   const getTodayDayIndex = (): number => {
     if (!workoutPlan || !workoutPlan.splitDays) {
@@ -74,15 +88,17 @@ const AddWorkout = () => {
     }
     planCreatedDate.setHours(0, 0, 0, 0);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // CRITICAL FIX: Use targetDate instead of creating a new Date()
+    const workoutDate = new Date(targetDate);
+    workoutDate.setHours(0, 0, 0, 0);
 
     const daysDifference = Math.floor(
-      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24),
+      (workoutDate.getTime() - planCreatedDate.getTime()) /
+        (1000 * 60 * 60 * 24),
     );
 
     console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
-    console.log("[addWorkout] Today:", today.toISOString());
+    console.log("[addWorkout] Target workout date:", workoutDate.toISOString());
     console.log("[addWorkout] Days difference:", daysDifference);
     console.log("[addWorkout] Split days:", workoutPlan.splitDays);
     console.log(
@@ -94,7 +110,7 @@ const AddWorkout = () => {
   };
 
   /**
-   * Get the day name for today based on split cycle
+   * Get the day name for target date based on split cycle
    */
   const getTodayDayName = (): string => {
     const dayIndex = getTodayDayIndex();
@@ -143,8 +159,9 @@ const AddWorkout = () => {
   const loadWorkoutData = async () => {
     if (!workoutPlan || !user?.uid) return;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // CRITICAL FIX: Use targetDate for all calculations
+    const workoutDate = new Date(targetDate);
+    workoutDate.setHours(0, 0, 0, 0);
 
     // Handle both Firestore Timestamp and Date objects
     let planCreatedDate: Date;
@@ -160,7 +177,8 @@ const AddWorkout = () => {
     planCreatedDate.setHours(0, 0, 0, 0);
 
     const daysDifference = Math.floor(
-      (today.getTime() - planCreatedDate.getTime()) / (1000 * 60 * 60 * 24),
+      (workoutDate.getTime() - planCreatedDate.getTime()) /
+        (1000 * 60 * 60 * 24),
     );
 
     // Calculate which day in the current cycle
@@ -170,7 +188,7 @@ const AddWorkout = () => {
     console.log("[addWorkout] Days since plan created:", daysDifference);
     console.log("[addWorkout] Current cycle day:", dayName);
 
-    // Find the workout plan for today
+    // Find the workout plan for the target date
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
     if (!planDay) {
@@ -212,19 +230,19 @@ const AddWorkout = () => {
     // Find the workout from one cycle ago (same day in previous cycle)
     let previousCycleWorkout: WorkoutHistory | null = null;
     if (lookbackDays >= 0) {
-      const targetDate = new Date(planCreatedDate);
-      targetDate.setDate(targetDate.getDate() + lookbackDays);
-      targetDate.setHours(0, 0, 0, 0);
+      const targetPreviousDate = new Date(planCreatedDate);
+      targetPreviousDate.setDate(targetPreviousDate.getDate() + lookbackDays);
+      targetPreviousDate.setHours(0, 0, 0, 0);
 
       console.log(
         "[addWorkout] Target date for previous cycle:",
-        targetDate.toISOString(),
+        targetPreviousDate.toISOString(),
       );
 
       previousCycleWorkout = workoutHistory.find((w) => {
-        const workoutDate = new Date(w.date);
-        workoutDate.setHours(0, 0, 0, 0);
-        return workoutDate.getTime() === targetDate.getTime();
+        const workoutHistoryDate = new Date(w.date);
+        workoutHistoryDate.setHours(0, 0, 0, 0);
+        return workoutHistoryDate.getTime() === targetPreviousDate.getTime();
       });
 
       if (previousCycleWorkout) {
@@ -362,6 +380,16 @@ const AddWorkout = () => {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
+  const formatTargetDate = () => {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    };
+    return targetDate.toLocaleDateString("en-US", options);
+  };
+
   const handleLap = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCurrentTime(0);
@@ -462,19 +490,20 @@ const AddWorkout = () => {
       return;
     }
 
-    const existsCheck = await checkWorkoutExistsToday(user.uid);
-    if (!existsCheck.success && existsCheck.data?.exists) {
-      Alert.alert(
-        "Already Logged",
-        "You already have a workout logged for today.",
-        [{ text: "OK" }],
-      );
-      return;
-    }
+    // CRITICAL FIX: Create a new date object from targetDate to ensure immutability
+    // and proper date handling. Normalize to noon to avoid timezone issues.
+    const workoutDateToSave = new Date(targetDate);
+    workoutDateToSave.setHours(12, 0, 0, 0);
+
+    console.log(
+      "[addWorkout] Saving workout for date:",
+      workoutDateToSave.toISOString(),
+    );
+    console.log("[addWorkout] Is historical:", isHistoricalWorkout);
 
     const workoutData = {
       userID: user.uid,
-      date: new Date(),
+      date: workoutDateToSave, // Use the properly set target date
       duration: totalTime,
       exercises,
     };
@@ -491,7 +520,9 @@ const AddWorkout = () => {
           isOffline ? "Saved Offline" : "Success",
           isOffline
             ? "Workout saved locally and will sync when online."
-            : "Workout saved successfully!",
+            : isHistoricalWorkout
+              ? `Workout logged successfully for ${formatTargetDate()}!`
+              : "Workout saved successfully!",
           [
             {
               text: "OK",
@@ -531,10 +562,29 @@ const AddWorkout = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title="Log Workout"
+          title={isHistoricalWorkout ? "Log Past Workout" : "Log Workout"}
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._15 }}
         />
+
+        {/* Historical Date Banner */}
+        {isHistoricalWorkout && (
+          <View style={styles.historicalBanner}>
+            <Icons.ClockCounterClockwise
+              size={20}
+              color={colors.primary}
+              weight="fill"
+            />
+            <View style={{ flex: 1 }}>
+              <Typo size={13} fontWeight="600" color={colors.primary}>
+                Logging workout for:
+              </Typo>
+              <Typo size={14} color={colors.white}>
+                {formatTargetDate()}
+              </Typo>
+            </View>
+          </View>
+        )}
 
         {/* Timer Container */}
         <View style={styles.timerContainer}>
@@ -729,7 +779,7 @@ const AddWorkout = () => {
         >
           <Button onPress={handleSave} loading={loading}>
             <Typo size={18} fontWeight="700" color={colors.black}>
-              Save Workout
+              {isHistoricalWorkout ? "Log Workout" : "Save Workout"}
             </Typo>
           </Button>
         </View>
@@ -744,6 +794,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacingX._20,
+  },
+  historicalBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._12,
+    backgroundColor: "rgba(163, 230, 53, 0.1)",
+    borderRadius: radius._12,
+    padding: spacingX._15,
+    marginBottom: spacingY._15,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   timerContainer: {
     backgroundColor: colors.neutral800,

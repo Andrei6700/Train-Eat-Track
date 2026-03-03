@@ -140,10 +140,8 @@ const Workout = React.memo(() => {
   const { workoutPlan } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
-  const [todayIndex, setTodayIndex] = useState(0);
   const [initialIndex, setInitialIndex] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
   const [todayWorkout, setTodayWorkout] = useState<DayWorkout | null>(null);
@@ -175,6 +173,53 @@ const Workout = React.memo(() => {
     selected.setHours(0, 0, 0, 0);
     return selected > today;
   }, [selectedDay]);
+
+  // Get the earliest workout date (first time user logged a workout)
+  const earliestWorkoutDate = useMemo(() => {
+    if (workoutsHistory.length === 0) return null;
+
+    const sorted = [...workoutsHistory].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    const date = new Date(sorted[0].date);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, [workoutsHistory]);
+
+  // CRITICAL FIX: Determine if "Log workout for this day" button should show
+  const shouldShowLogButton = useMemo(() => {
+    // Don't show for today (use "Start Workout" instead)
+    if (isSelectedDayToday) return false;
+
+    // Don't show for future days
+    if (isSelectedDayFuture) return false;
+
+    // Don't show if workout already logged
+    if (selectedWorkout) return false;
+
+    // Don't show on rest days
+    if (todayWorkout?.isRestDay) return false;
+
+    // Don't show if no workouts have ever been logged
+    if (!earliestWorkoutDate) return false;
+
+    // CRITICAL: Only show from first workout date onwards
+    const selected = new Date(selectedDay);
+    selected.setHours(0, 0, 0, 0);
+
+    if (selected < earliestWorkoutDate) return false;
+
+    // All conditions met: show the button
+    return true;
+  }, [
+    isSelectedDayToday,
+    isSelectedDayFuture,
+    selectedWorkout,
+    todayWorkout,
+    earliestWorkoutDate,
+    selectedDay,
+  ]);
 
   const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
@@ -335,7 +380,6 @@ const Workout = React.memo(() => {
   // Check if workout exists today
   const checkTodayWorkout = useCallback(async () => {
     if (!user?.uid) return;
-
     const existsCheck = await checkWorkoutExistsToday(user.uid);
     setHasWorkoutToday(existsCheck.data?.exists || false);
   }, [user?.uid]);
@@ -475,7 +519,17 @@ const Workout = React.memo(() => {
     [user?.uid, workoutsHistory, workoutPlan, getDayNameFromDate],
   );
 
-  // Handle start workout
+  // Handle logging workout for selected day (including past days)
+  const handleLogWorkout = useCallback(() => {
+    router.push({
+      pathname: "/(modals)/addWorkout",
+      params: {
+        selectedDate: selectedDay.toISOString(),
+        isHistorical: (!isSelectedDayToday).toString(),
+      },
+    });
+  }, [selectedDay, isSelectedDayToday, router]);
+
   const handleStartWorkout = useCallback(() => {
     const today = new Date();
     const isToday = selectedDay.toDateString() === today.toDateString();
@@ -631,6 +685,8 @@ const Workout = React.memo(() => {
       isSelectedDayToday,
       "workoutPlan:",
       !!workoutPlan,
+      "shouldShowLogButton:",
+      shouldShowLogButton,
     );
 
     // Case 1: Show logged workout if exists
@@ -732,7 +788,7 @@ const Workout = React.memo(() => {
     }
 
     // Case 3: Show "Start Workout" button if today and workout plan exists
-    // CRITICAL FIX: Show "Start Workout" even if todayWorkout has no exercises
+    // Show "Start Workout" even if todayWorkout has no exercises
     // The AddWorkout screen will handle loading exercises from history
     if (
       workoutPlan &&
@@ -823,10 +879,14 @@ const Workout = React.memo(() => {
       );
     }
 
-    // Case 4: Past day with no workout
-    if (isSelectedDayPast) {
+    // Case 4: Past day without workout
+    // Only show "Log Workout" button if shouldShowLogButton is true
+    if (shouldShowLogButton) {
       return (
-        <View style={styles.emptyContainer}>
+        <Animated.View
+          entering={FadeInDown.duration(400).delay(200)}
+          style={styles.emptyContainer}
+        >
           <View style={styles.emptyIconContainer}>
             <Icons.ClockCounterClockwise
               size={48}
@@ -845,15 +905,63 @@ const Workout = React.memo(() => {
           <Typo
             size={15}
             color={colors.neutral400}
+            style={{
+              marginTop: spacingY._7,
+              textAlign: "center",
+              marginBottom: spacingY._20,
+            }}
+          >
+            Forgot to log your workout that day?
+          </Typo>
+
+          {/* FIXED: Log Past Workout Button - only shows when appropriate */}
+          <TouchableOpacity
+            style={styles.logPastButton}
+            onPress={handleLogWorkout}
+            activeOpacity={0.8}
+          >
+            <Icons.Plus size={20} color={colors.black} weight="bold" />
+            <Typo size={16} fontWeight="700" color={colors.black}>
+              Log Workout for This Day
+            </Typo>
+          </TouchableOpacity>
+        </Animated.View>
+      );
+    }
+
+    // Case 5: Past day before first workout OR past rest day - no button
+    if (isSelectedDayPast && !selectedWorkout) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconContainer}>
+            <Icons.CalendarBlank
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+          </View>
+          <Typo
+            size={18}
+            fontWeight="600"
+            color={colors.neutral200}
+            style={{ marginTop: spacingY._15, textAlign: "center" }}
+          >
+            No workout logged
+          </Typo>
+          <Typo
+            size={15}
+            color={colors.neutral400}
             style={{ marginTop: spacingY._7, textAlign: "center" }}
           >
-            You didn't log a workout on this day
+            {todayWorkout?.isRestDay
+              ? "This was a rest day"
+              : "You can only log workouts from your first training day onwards"}
           </Typo>
         </View>
       );
     }
 
-    // Case 5: Future day
+    // Case 6: Future day
     if (isSelectedDayFuture) {
       return (
         <View style={styles.emptyContainer}>
@@ -883,7 +991,7 @@ const Workout = React.memo(() => {
       );
     }
 
-    // Case 6: No workout plan exists at all
+    // Case 7: No workout plan exists at all
     return (
       <View style={styles.noPlanContainer}>
         <View style={styles.emptyIconContainer}>
@@ -921,7 +1029,9 @@ const Workout = React.memo(() => {
     workoutPlanName,
     handleStartWorkout,
     handleEditPlan,
+    handleLogWorkout,
     workoutPlan,
+    shouldShowLogButton,
   ]);
 
   if (loading) {
@@ -943,6 +1053,7 @@ const Workout = React.memo(() => {
       </SwipeableScreen>
     );
   }
+
   return (
     <SwipeableScreen>
       <ScreenWrapper>
@@ -1167,6 +1278,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
+    gap: spacingY._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
   },
@@ -1270,5 +1382,23 @@ const styles = StyleSheet.create({
     marginTop: spacingY._20,
     borderWidth: 0,
     overflow: "hidden",
+  },
+
+  logPastButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._10,
+    backgroundColor: colors.primary,
+    paddingVertical: spacingY._15,
+    paddingHorizontal: spacingX._25,
+    borderRadius: radius._15,
+    borderWidth: 0,
+    overflow: "hidden",
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
 });
