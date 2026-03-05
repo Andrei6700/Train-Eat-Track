@@ -16,9 +16,14 @@ import * as Icons from "phosphor-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  PanResponder,
+  Platform,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,6 +36,9 @@ const AddWorkout = () => {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [activePage, setActivePage] = useState(1);
+  const activePageRef = useRef(activePage);
 
   // CRITICAL FIX: Parse and normalize the target date at component initialization
   // This ensures the date is set correctly and doesn't change during the session
@@ -370,6 +378,60 @@ const AddWorkout = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    activePageRef.current = activePage;
+  }, [activePage]);
+
+  const goToPage = (page: number) => {
+    setActivePage(page);
+    Keyboard.dismiss();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        const absDx = Math.abs(gestureState.dx);
+        const absDy = Math.abs(gestureState.dy);
+        return absDx > 14 && absDx > absDy + 8;
+      },
+      onPanResponderTerminationRequest: () => true,
+      onPanResponderRelease: (_, gestureState) => {
+        const shouldGoRight = gestureState.dx > 34 || gestureState.vx > 0.2;
+        const shouldGoLeft = gestureState.dx < -34 || gestureState.vx < -0.2;
+        const currentPage = activePageRef.current;
+
+        if (currentPage === 1 && shouldGoRight) {
+          goToPage(0);
+          return;
+        }
+        if (currentPage === 0 && shouldGoLeft) {
+          goToPage(1);
+        }
+      },
+    }),
+  ).current;
+
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -560,230 +622,355 @@ const AddWorkout = () => {
 
   return (
     <ModalWrapper>
-      <View style={styles.container}>
-        <Header
-          title={isHistoricalWorkout ? "Log Past Workout" : "Log Workout"}
-          leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._15 }}
-        />
-
-        {/* Historical Date Banner */}
-        {isHistoricalWorkout && (
-          <View style={styles.historicalBanner}>
-            <Icons.ClockCounterClockwise
-              size={20}
-              color={colors.primary}
-              weight="fill"
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.container}>
+            <Header
+              title={isHistoricalWorkout ? "Log Past Workout" : "Log Workout"}
+              leftIcon={<BackButton />}
+              style={{ marginBottom: spacingY._12 }}
             />
-            <View style={{ flex: 1 }}>
-              <Typo size={13} fontWeight="600" color={colors.primary}>
-                Logging workout for:
-              </Typo>
-              <Typo size={14} color={colors.white}>
-                {formatTargetDate()}
-              </Typo>
-            </View>
-          </View>
-        )}
 
-        {/* Timer Container */}
-        <View style={styles.timerContainer}>
-          <View style={styles.currentTimeSection}>
-            <Typo
-              size={12}
-              color={colors.neutral400}
-              style={{ marginBottom: spacingY._5 }}
-            >
-              REST TIMER
-            </Typo>
-            <Typo size={36} fontWeight="700" color={colors.primary}>
-              {formatTime(currentTime)}
-            </Typo>
-          </View>
-          <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
-            <Icons.ArrowCounterClockwise
-              size={18}
-              color={colors.black}
-              weight="bold"
-            />
-            <Typo size={14} fontWeight="700" color={colors.black}>
-              RESET REST
-            </Typo>
-          </TouchableOpacity>
-          <View style={styles.totalTimeSection}>
-            <Typo size={12} color={colors.neutral400}>
-              TOTAL TIME:{" "}
-            </Typo>
-            <Typo size={14} fontWeight="600" color={colors.white}>
-              {formatTime(totalTime)}
-            </Typo>
-          </View>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: verticalScale(100) },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {exercises.map((exercise, exerciseIndex) => (
-            <View key={exerciseIndex} style={styles.exerciseCard}>
-              <View style={styles.exerciseHeader}>
+            {/* Historical Date Banner */}
+            {isHistoricalWorkout && (
+              <View style={styles.historicalBanner}>
+                <Icons.ClockCounterClockwise
+                  size={20}
+                  color={colors.primary}
+                  weight="fill"
+                />
                 <View style={{ flex: 1 }}>
-                  <Typo
-                    size={16}
-                    fontWeight="600"
-                    color={colors.neutral300}
-                    style={{ marginBottom: 4 }}
-                  >
-                    Exercise {exerciseIndex + 1}
+                  <Typo size={13} fontWeight="600" color={colors.primary}>
+                    Logging workout for:
                   </Typo>
-                  <Input
-                    placeholder="Exercise Name"
-                    value={exercise.exerciseName}
-                    onChangeText={(text) =>
-                      updateExerciseName(exerciseIndex, text)
-                    }
-                    containerStyle={styles.exerciseNameInput}
-                  />
+                  <Typo size={14} color={colors.white}>
+                    {formatTargetDate()}
+                  </Typo>
                 </View>
-
-                {exercises.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => removeExercise(exerciseIndex)}
-                    style={styles.removeButton}
-                  >
-                    <Icons.Trash size={20} color={colors.rose} />
-                  </TouchableOpacity>
-                )}
               </View>
+            )}
 
-              {/* Header Row for Sets */}
-              <View style={styles.setHeaderRow}>
-                <Typo
-                  size={12}
-                  color={colors.neutral400}
-                  style={{ width: 30, textAlign: "center" }}
-                >
-                  Set
-                </Typo>
-                <Typo
-                  size={12}
-                  color={colors.neutral400}
-                  style={{ flex: 1, textAlign: "center" }}
-                >
-                  Reps
-                </Typo>
-                <Typo
-                  size={12}
-                  color={colors.neutral400}
-                  style={{ flex: 1, textAlign: "center" }}
-                >
-                  Weight
-                </Typo>
-                <View style={{ width: 30 }} />
-              </View>
-
-              {exercise.sets.map((set, setIndex) => {
-                const historicalSet = getHistoricalSet(
-                  exercise.exerciseName,
-                  setIndex,
-                );
-
-                return (
-                  <View key={setIndex} style={styles.setRow}>
-                    <View style={styles.setNumber}>
-                      <Typo
-                        size={14}
-                        fontWeight="600"
-                        color={colors.neutral400}
-                      >
-                        {setIndex + 1}
-                      </Typo>
-                    </View>
-
-                    {/* Input Reps with historical placeholder */}
-                    <View style={styles.setInput}>
-                      <Input
-                        placeholder={
-                          historicalSet ? `${historicalSet.reps}` : "0"
-                        }
-                        keyboardType="numeric"
-                        value={set.reps > 0 ? set.reps.toString() : ""}
-                        onChangeText={(text) =>
-                          updateSet(exerciseIndex, setIndex, "reps", text)
-                        }
-                        containerStyle={styles.smallInput}
-                      />
-                    </View>
-
-                    {/* Input Weight with historical placeholder */}
-                    <View style={styles.setInput}>
-                      <Input
-                        placeholder={
-                          historicalSet ? `${historicalSet.weight}` : "0"
-                        }
-                        keyboardType="numeric"
-                        value={set.weight > 0 ? set.weight.toString() : ""}
-                        onChangeText={(text) =>
-                          updateSet(exerciseIndex, setIndex, "weight", text)
-                        }
-                        containerStyle={styles.smallInput}
-                      />
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={styles.unitLabel}
-                      >
-                        {set.weightUnit}
-                      </Typo>
-                    </View>
-
-                    <TouchableOpacity
-                      onPress={() => removeSet(exerciseIndex, setIndex)}
-                      style={styles.removeSetButton}
-                    >
-                      <Icons.X size={16} color={colors.rose} weight="bold" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-
+            <View style={styles.pageSwitch}>
               <TouchableOpacity
-                onPress={() => addSet(exerciseIndex)}
-                style={styles.addSetButton}
+                onPress={() => goToPage(0)}
+                style={[
+                  styles.pageSwitchButton,
+                  activePage === 0 && styles.pageSwitchButtonActive,
+                ]}
               >
-                <Icons.Plus size={16} color={colors.primary} weight="bold" />
-                <Typo size={14} fontWeight="600" color={colors.primary}>
-                  Add Set
+                <Icons.Timer
+                  size={16}
+                  color={activePage === 0 ? colors.black : colors.neutral300}
+                  weight="bold"
+                />
+                <Typo
+                  size={12}
+                  fontWeight="700"
+                  color={activePage === 0 ? colors.black : colors.neutral300}
+                >
+                  Timer
+                </Typo>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => goToPage(1)}
+                style={[
+                  styles.pageSwitchButton,
+                  activePage === 1 && styles.pageSwitchButtonActive,
+                ]}
+              >
+                <Icons.Barbell
+                  size={16}
+                  color={activePage === 1 ? colors.black : colors.neutral300}
+                  weight="bold"
+                />
+                <Typo
+                  size={12}
+                  fontWeight="700"
+                  color={activePage === 1 ? colors.black : colors.neutral300}
+                >
+                  Workout Log
                 </Typo>
               </TouchableOpacity>
             </View>
-          ))}
 
-          <TouchableOpacity
-            onPress={addExercise}
-            style={styles.addExerciseButton}
-          >
-            <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
-            <Typo size={16} fontWeight="600" color={colors.primary}>
-              Add Exercise
-            </Typo>
-          </TouchableOpacity>
-        </ScrollView>
+            <View style={styles.pageFrame} {...panResponder.panHandlers}>
+              {activePage === 0 ? (
+                <View style={styles.timerPage}>
+                  {/* Timer Container */}
+                  <View style={styles.timerContainer}>
+                    <View style={styles.currentTimeSection}>
+                      <Typo
+                        size={12}
+                        color={colors.neutral400}
+                        style={{ marginBottom: spacingY._5 }}
+                      >
+                        REST TIMER
+                      </Typo>
+                      <Typo size={44} fontWeight="700" color={colors.primary}>
+                        {formatTime(currentTime)}
+                      </Typo>
+                    </View>
+                    <View style={styles.timerStatsRow}>
+                      <View style={styles.timerStatCard}>
+                        <Typo size={11} color={colors.neutral400}>
+                          TOTAL TIME
+                        </Typo>
+                        <Typo size={16} fontWeight="600" color={colors.white}>
+                          {formatTime(totalTime)}
+                        </Typo>
+                      </View>
+                      <View style={styles.timerStatCard}>
+                        <Typo size={11} color={colors.neutral400}>
+                          TARGET DATE
+                        </Typo>
+                        <Typo size={14} fontWeight="600" color={colors.white}>
+                          {targetDate.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </Typo>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={handleLap} style={styles.lapButton}>
+                      <Icons.ArrowCounterClockwise
+                        size={18}
+                        color={colors.black}
+                        weight="bold"
+                      />
+                      <Typo size={14} fontWeight="700" color={colors.black}>
+                        RESET REST
+                      </Typo>
+                    </TouchableOpacity>
+                  </View>
 
-        {/* Save Button - Fixed at bottom */}
-        <View
-          style={[styles.saveButtonContainer, { bottom: insets.bottom + 12 }]}
-        >
-          <Button onPress={handleSave} loading={loading}>
-            <Typo size={18} fontWeight="700" color={colors.black}>
-              {isHistoricalWorkout ? "Log Workout" : "Save Workout"}
-            </Typo>
-          </Button>
-        </View>
-      </View>
+                  <View style={styles.timerHintCard}>
+                    <Icons.ArrowsHorizontal
+                      size={18}
+                      color={colors.primary}
+                      weight="bold"
+                    />
+                    <Typo size={13} color={colors.neutral300} style={{ flex: 1 }}>
+                      Swipe left to log exercises, sets, reps and weight.
+                    </Typo>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => goToPage(1)}
+                    style={styles.timerActionButton}
+                  >
+                    <Icons.CaretRight size={16} color={colors.black} weight="bold" />
+                    <Typo size={14} fontWeight="700" color={colors.black}>
+                      Go to Workout Log
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.page}>
+                  <View style={styles.workoutTopRow}>
+                    <Typo size={16} fontWeight="700">
+                      Exercises
+                    </Typo>
+                    <TouchableOpacity
+                      onPress={() => goToPage(0)}
+                      style={styles.timerBadge}
+                    >
+                      <Icons.Timer size={14} color={colors.primary} weight="bold" />
+                      <Typo size={12} fontWeight="600" color={colors.primary}>
+                        {formatTime(currentTime)}
+                      </Typo>
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={
+                      Platform.OS === "ios" ? "interactive" : "on-drag"
+                    }
+                    nestedScrollEnabled
+                  >
+                    {exercises.map((exercise, exerciseIndex) => (
+                      <View key={exerciseIndex} style={styles.exerciseCard}>
+                        <View style={styles.exerciseHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Typo
+                              size={16}
+                              fontWeight="600"
+                              color={colors.neutral300}
+                              style={{ marginBottom: 4 }}
+                            >
+                              Exercise {exerciseIndex + 1}
+                            </Typo>
+                            <Input
+                              placeholder="Exercise Name"
+                              value={exercise.exerciseName}
+                              onChangeText={(text) =>
+                                updateExerciseName(exerciseIndex, text)
+                              }
+                              containerStyle={styles.exerciseNameInput}
+                            />
+                          </View>
+
+                          {exercises.length > 1 && (
+                            <TouchableOpacity
+                              onPress={() => removeExercise(exerciseIndex)}
+                              style={styles.removeButton}
+                            >
+                              <Icons.Trash size={20} color={colors.rose} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        {/* Header Row for Sets */}
+                        <View style={styles.setHeaderRow}>
+                          <Typo
+                            size={12}
+                            color={colors.neutral400}
+                            style={{ width: 30, textAlign: "center" }}
+                          >
+                            Set
+                          </Typo>
+                          <Typo
+                            size={12}
+                            color={colors.neutral400}
+                            style={{ flex: 1, textAlign: "center" }}
+                          >
+                            Reps
+                          </Typo>
+                          <Typo
+                            size={12}
+                            color={colors.neutral400}
+                            style={{ flex: 1, textAlign: "center" }}
+                          >
+                            Weight
+                          </Typo>
+                          <View style={{ width: 30 }} />
+                        </View>
+
+                        {exercise.sets.map((set, setIndex) => {
+                          const historicalSet = getHistoricalSet(
+                            exercise.exerciseName,
+                            setIndex,
+                          );
+
+                          return (
+                            <View key={setIndex} style={styles.setRow}>
+                              <View style={styles.setNumber}>
+                                <Typo
+                                  size={14}
+                                  fontWeight="600"
+                                  color={colors.neutral400}
+                                >
+                                  {setIndex + 1}
+                                </Typo>
+                              </View>
+
+                              {/* Input Reps with historical placeholder */}
+                              <View style={styles.setInput}>
+                                <Input
+                                  placeholder={
+                                    historicalSet ? `${historicalSet.reps}` : "0"
+                                  }
+                                  keyboardType="numeric"
+                                  value={set.reps > 0 ? set.reps.toString() : ""}
+                                  onChangeText={(text) =>
+                                    updateSet(exerciseIndex, setIndex, "reps", text)
+                                  }
+                                  containerStyle={styles.smallInput}
+                                />
+                              </View>
+
+                              {/* Input Weight with historical placeholder */}
+                              <View style={styles.setInput}>
+                                <Input
+                                  placeholder={
+                                    historicalSet ? `${historicalSet.weight}` : "0"
+                                  }
+                                  keyboardType="numeric"
+                                  value={set.weight > 0 ? set.weight.toString() : ""}
+                                  onChangeText={(text) =>
+                                    updateSet(exerciseIndex, setIndex, "weight", text)
+                                  }
+                                  containerStyle={styles.smallInput}
+                                />
+                                <Typo
+                                  size={12}
+                                  color={colors.neutral400}
+                                  style={styles.unitLabel}
+                                >
+                                  {set.weightUnit}
+                                </Typo>
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={() => removeSet(exerciseIndex, setIndex)}
+                                style={styles.removeSetButton}
+                              >
+                                <Icons.X size={16} color={colors.rose} weight="bold" />
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+
+                        <TouchableOpacity
+                          onPress={() => addSet(exerciseIndex)}
+                          style={styles.addSetButton}
+                        >
+                          <Icons.Plus size={16} color={colors.primary} weight="bold" />
+                          <Typo size={14} fontWeight="600" color={colors.primary}>
+                            Add Set
+                          </Typo>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+
+                    <TouchableOpacity
+                      onPress={addExercise}
+                      style={styles.addExerciseButton}
+                    >
+                      <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
+                      <Typo size={16} fontWeight="600" color={colors.primary}>
+                        Add Exercise
+                      </Typo>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {/* Save Button - Fixed at bottom */}
+            <View
+              style={[
+                styles.saveButtonContainer,
+                { paddingBottom: Math.max(insets.bottom, spacingY._10) },
+              ]}
+            >
+              <View
+                pointerEvents={
+                  !isKeyboardVisible && activePage === 1 ? "auto" : "none"
+                }
+                style={[
+                  styles.saveButtonSlot,
+                  (isKeyboardVisible || activePage !== 1) &&
+                    styles.saveButtonSlotHidden,
+                ]}
+              >
+                <Button onPress={handleSave} loading={loading}>
+                  <Typo size={18} fontWeight="700" color={colors.black}>
+                    {isHistoricalWorkout ? "Log Workout" : "Save Workout"}
+                  </Typo>
+                </Button>
+              </View>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </ModalWrapper>
   );
 };
@@ -791,6 +978,9 @@ const AddWorkout = () => {
 export default AddWorkout;
 
 const styles = StyleSheet.create({
+  keyboardView: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     paddingHorizontal: spacingX._20,
@@ -802,21 +992,74 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(163, 230, 53, 0.1)",
     borderRadius: radius._12,
     padding: spacingX._15,
-    marginBottom: spacingY._15,
+    marginBottom: spacingY._12,
     borderWidth: 1,
     borderColor: colors.primary,
+  },
+  pageSwitch: {
+    flexDirection: "row",
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    padding: spacingX._5,
+    marginBottom: spacingY._12,
+    gap: spacingX._7,
+  },
+  pageSwitchButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._7,
+    paddingVertical: spacingY._7,
+    borderRadius: radius._10,
+  },
+  pageSwitchButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  pageFrame: {
+    flex: 1,
+  },
+  page: {
+    flex: 1,
+  },
+  timerPage: {
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: spacingY._20,
   },
   timerContainer: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    marginBottom: spacingY._20,
+    marginBottom: spacingY._12,
     borderWidth: 1,
     borderColor: colors.neutral700,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 6,
   },
   currentTimeSection: {
     alignItems: "center",
-    marginBottom: spacingY._15,
+    marginBottom: spacingY._12,
+  },
+  timerStatsRow: {
+    flexDirection: "row",
+    gap: spacingX._10,
+    marginBottom: spacingY._12,
+  },
+  timerStatCard: {
+    flex: 1,
+    backgroundColor: colors.neutral700,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral600,
+    paddingHorizontal: spacingX._10,
+    paddingVertical: spacingY._10,
+    alignItems: "center",
   },
   lapButton: {
     flexDirection: "row",
@@ -827,15 +1070,57 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._10,
     paddingHorizontal: spacingX._20,
     borderRadius: radius._12,
-    marginBottom: spacingY._15,
+    marginBottom: spacingY._12,
   },
   totalTimeSection: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
+  timerHintCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    paddingHorizontal: spacingX._12,
+    paddingVertical: spacingY._10,
+    marginBottom: spacingY._12,
+  },
+  timerActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._7,
+    paddingVertical: spacingY._10,
+    borderRadius: radius._12,
+    backgroundColor: colors.primary,
+  },
+  workoutTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacingY._10,
+  },
+  timerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._5,
+    paddingHorizontal: spacingX._10,
+    paddingVertical: spacingY._5,
+    backgroundColor: "rgba(163, 230, 53, 0.08)",
+    borderRadius: radius._10,
+    borderWidth: 1,
+    borderColor: "rgba(163, 230, 53, 0.25)",
+  },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     gap: spacingY._15,
+    paddingBottom: verticalScale(120),
   },
   exerciseCard: {
     backgroundColor: colors.neutral800,
@@ -930,9 +1215,14 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   saveButtonContainer: {
-    position: "absolute",
-    left: spacingX._20,
-    right: spacingX._20,
-    zIndex: 10,
+    paddingTop: spacingY._10,
+    backgroundColor: colors.neutral800,
+    minHeight: verticalScale(76),
+  },
+  saveButtonSlot: {
+    opacity: 1,
+  },
+  saveButtonSlotHidden: {
+    opacity: 0,
   },
 });
