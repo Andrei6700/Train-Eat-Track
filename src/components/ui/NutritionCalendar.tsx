@@ -1,19 +1,27 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { scale, verticalScale } from "@/src/utils/styling";
-import React, { useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { ActivityIndicator, InteractionManager, StyleSheet, TouchableOpacity, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import Typo from "../ui/Typo";
 
-const DAYS_FULL = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sâm", "Dum"];
+const DAYS_FULL = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sam", "Dum"];
 const DAY_WIDTH = scale(52);
-const ITEM_SPACING = spacingX._8 ?? 6;
+const ITEM_SPACING = spacingX._7 ?? 6;
 const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
+const CalendarFlashList = FlashList as any;
 
 type DayData = {
   date: Date;
   calories: number;
   goal: number;
+};
+
+type DayStatus = {
+  type: "empty" | "complete" | "warning" | "danger" | "progress";
+  percentage: number;
+  color: string;
 };
 
 type NutritionCalendarProps = {
@@ -24,58 +32,67 @@ type NutritionCalendarProps = {
   onDayPress: (date: Date, index: number) => void;
 };
 
-const DayCard = React.memo(({ 
-  date, 
-  index, 
-  isSelected, 
-  isToday, 
-  status, 
-  onPress 
-}: { 
-  date: Date; 
-  index: number; 
-  isSelected: boolean; 
-  isToday: boolean; 
-  status: { type: string; percentage: number; color: string }; 
+const STATUS_EMPTY: DayStatus = {
+  type: "empty",
+  percentage: 0,
+  color: colors.neutral700,
+};
+
+const dayKey = (date: Date): string =>
+  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+const getDayLabel = (date: Date): string => DAYS_FULL[date.getDay() === 0 ? 6 : date.getDay() - 1];
+
+const getStatusForDay = (dayData: DayData | undefined): DayStatus => {
+  if (!dayData || dayData.calories === 0) {
+    return STATUS_EMPTY;
+  }
+
+  const percentage = (dayData.calories / dayData.goal) * 100;
+  const excess = dayData.calories - dayData.goal;
+
+  if (percentage >= 100 && excess <= 50) {
+    return { type: "complete", percentage: 100, color: "#10B981" };
+  }
+  if (percentage >= 100 && excess <= 350) {
+    return { type: "warning", percentage: 100, color: "#F59E0B" };
+  }
+  if (percentage >= 100) {
+    return { type: "danger", percentage: 100, color: "#EF4444" };
+  }
+
+  return {
+    type: "progress",
+    percentage: Math.min(percentage, 100),
+    color: colors.primary,
+  };
+};
+
+type DayCardProps = {
+  date: Date;
+  isToday: boolean;
+  status: DayStatus;
   onPress: () => void;
-}) => {
+};
+
+const DayCardInner = ({ date, isToday, status, onPress }: DayCardProps) => {
   const circumference = 2 * Math.PI * 22;
   const strokeDashoffset = circumference - (status.percentage / 100) * circumference;
 
-  const getDayNumberColor = () => {
-    if (isToday) return colors.primary;
-    if (isSelected) return colors.white;
-    return colors.white;
-  };
-
-  const getDayLabelColor = () => {
-    if (isToday) return colors.primary; 
-    return colors.neutral400; 
-  };
-
   return (
-    <TouchableOpacity
-      style={[
-        styles.dayCard,
-        { marginRight: index === 6 ? 0 : ITEM_SPACING },
-      ]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.dayCard} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.dayContent}>
-        {/* number of the day  */}
         <Typo
           size={11}
           fontWeight="600"
-          color={getDayLabelColor()}
+          color={isToday ? colors.primary : colors.neutral400}
           style={styles.dayLabel}
         >
-          {DAYS_FULL[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+          {getDayLabel(date)}
         </Typo>
 
         <View style={styles.ringContainer}>
           <Svg width={DAY_WIDTH} height={DAY_WIDTH} viewBox="0 0 52 52">
-            {/* Background circle */}
             <Circle
               cx="26"
               cy="26"
@@ -84,7 +101,6 @@ const DayCard = React.memo(({
               strokeWidth="3.5"
               fill="none"
             />
-            {/* Progress circle */}
             {status.percentage > 0 && (
               <Circle
                 cx="26"
@@ -101,14 +117,9 @@ const DayCard = React.memo(({
               />
             )}
           </Svg>
-          
-          {/* number of the day  */}
+
           <View style={styles.dayNumberContainer}>
-            <Typo
-              size={20}
-              fontWeight="700"
-              color={getDayNumberColor()}
-            >
+            <Typo size={20} fontWeight="700" color={isToday ? colors.primary : colors.white}>
               {date.getDate()}
             </Typo>
           </View>
@@ -116,100 +127,90 @@ const DayCard = React.memo(({
       </View>
     </TouchableOpacity>
   );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.isSelected === nextProps.isSelected &&
+};
+
+const DayCard = React.memo(
+  DayCardInner,
+  (prevProps, nextProps) =>
     prevProps.isToday === nextProps.isToday &&
     prevProps.status.percentage === nextProps.status.percentage &&
-    prevProps.status.color === nextProps.status.color
-  );
-});
+    prevProps.status.color === nextProps.status.color &&
+    prevProps.date.getDate() === nextProps.date.getDate(),
+);
+DayCard.displayName = "DayCard";
 
 const NutritionCalendar = ({
   currentWeek,
-  selectedDate,
+  selectedDate: _selectedDate,
   daysData,
   loading = false,
   onDayPress,
 }: NutritionCalendarProps) => {
-  const flatListRef = useRef<FlatList>(null);
-  const initialScrollDone = useRef(false);
+  const listRef = useRef<any>(null);
+  const initialScrollDoneRef = useRef(false);
 
-  const dayStatusCache = useMemo(() => {
-    const cache = new Map();
-    
-    currentWeek.forEach((date) => {
-      const dayData = daysData.find(
-        (d) => d.date.toDateString() === date.toDateString()
-      );
+  const todayKey = useMemo(() => dayKey(new Date()), []);
 
-      if (!dayData || dayData.calories === 0) {
-        cache.set(date.toDateString(), { 
-          type: 'empty', 
-          percentage: 0, 
-          color: colors.neutral700 
+  const dayDataByKey = useMemo(() => {
+    const map = new Map<string, DayData>();
+    for (const day of daysData) {
+      map.set(dayKey(day.date), day);
+    }
+    return map;
+  }, [daysData]);
+
+  const dayStatusByKey = useMemo(() => {
+    const map = new Map<string, DayStatus>();
+    for (const date of currentWeek) {
+      const key = dayKey(date);
+      map.set(key, getStatusForDay(dayDataByKey.get(key)));
+    }
+    return map;
+  }, [currentWeek, dayDataByKey]);
+
+  useEffect(() => {
+    if (currentWeek.length === 0) return;
+    if (initialScrollDoneRef.current) return;
+
+    const todayIndex = currentWeek.findIndex((date) => dayKey(date) === todayKey);
+    if (todayIndex < 0) return;
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      try {
+        listRef.current?.scrollToIndex({
+          index: todayIndex,
+          animated: false,
+          viewPosition: 0.5,
         });
-      } else {
-        const percentage = (dayData.calories / dayData.goal) * 100;
-        const excess = dayData.calories - dayData.goal;
-
-        let status;
-        if (percentage >= 100 && excess <= 50) {
-          status = { type: 'complete', percentage: 100, color: '#10B981' };
-        } else if (percentage >= 100 && excess > 50 && excess <= 350) {
-          status = { type: 'warning', percentage: 100, color: '#F59E0B' };
-        } else if (percentage >= 100 && excess > 350) {
-          status = { type: 'danger', percentage: 100, color: '#EF4444' };
-        } else {
-          status = { type: 'progress', percentage: Math.min(percentage, 100), color: colors.primary };
-        }
-        
-        cache.set(date.toDateString(), status);
+        initialScrollDoneRef.current = true;
+      } catch {
+        listRef.current?.scrollToOffset({
+          offset: todayIndex * ITEM_WIDTH,
+          animated: false,
+        });
+        initialScrollDoneRef.current = true;
       }
     });
 
-    return cache;
-  }, [daysData, currentWeek]);
+    return () => interaction.cancel();
+  }, [currentWeek, todayKey]);
 
-  useEffect(() => {
-    if (!initialScrollDone.current && currentWeek.length > 0) {
-      const todayIndex = currentWeek.findIndex(
-        (d) => d.toDateString() === new Date().toDateString()
+  const renderDay = useCallback(
+    ({ item, index }: { item: Date; index: number }) => {
+      const key = dayKey(item);
+      return (
+        <DayCard
+          date={item}
+          isToday={key === todayKey}
+          status={dayStatusByKey.get(key) || STATUS_EMPTY}
+          onPress={() => onDayPress(item, index)}
+        />
       );
-      
-      if (todayIndex !== -1 && flatListRef.current) {
-        setTimeout(() => {
-          flatListRef.current?.scrollToIndex({
-            index: todayIndex,
-            animated: false,
-            viewPosition: 0.5,
-          });
-          initialScrollDone.current = true;
-        }, 50);
-      }
-    }
-  }, [currentWeek]);
+    },
+    [dayStatusByKey, onDayPress, todayKey],
+  );
 
-  const renderDay = ({ item: date, index }: { item: Date; index: number }) => {
-    const isSelected = date.toDateString() === selectedDate.toDateString();
-    const isToday = date.toDateString() === new Date().toDateString();
-    const status = dayStatusCache.get(date.toDateString()) || { 
-      type: 'empty', 
-      percentage: 0, 
-      color: colors.neutral700 
-    };
-
-    return (
-      <DayCard
-        date={date}
-        index={index}
-        isSelected={isSelected}
-        isToday={isToday}
-        status={status}
-        onPress={() => onDayPress(date, index)}
-      />
-    );
-  };
+  const keyExtractor = useCallback((item: Date) => item.toISOString(), []);
 
   if (loading) {
     return (
@@ -221,16 +222,18 @@ const NutritionCalendar = ({
 
   return (
     <View style={styles.container}>
-      <FlatList
-        ref={flatListRef}
+      <CalendarFlashList
+        ref={listRef}
         data={currentWeek}
         renderItem={renderDay}
-        keyExtractor={(item) => item.toISOString()}
+        keyExtractor={keyExtractor}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.calendarContainer}
         style={styles.calendar}
-        getItemLayout={(data, index) => ({
+        estimatedItemSize={ITEM_WIDTH}
+        getItemType={() => "day"}
+        getItemLayout={(_data: Date[] | null, index: number) => ({
           length: ITEM_WIDTH,
           offset: ITEM_WIDTH * index,
           index,
@@ -238,14 +241,19 @@ const NutritionCalendar = ({
         initialNumToRender={7}
         maxToRenderPerBatch={7}
         windowSize={7}
-        removeClippedSubviews={true}
-        scrollEnabled={true}
+        removeClippedSubviews
+        scrollEnabled
         snapToInterval={ITEM_WIDTH}
         decelerationRate="fast"
+        ItemSeparatorComponent={Separator}
       />
     </View>
   );
 };
+
+const SeparatorInner = () => <View style={styles.separator} />;
+const Separator = React.memo(SeparatorInner);
+Separator.displayName = "CalendarSeparator";
 
 export default React.memo(NutritionCalendar);
 
@@ -269,27 +277,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     width: DAY_WIDTH,
   },
+  separator: {
+    width: ITEM_SPACING,
+  },
   dayContent: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   dayLabel: {
     marginBottom: verticalScale(8),
-    textAlign: 'center',
+    textAlign: "center",
   },
   ringContainer: {
     width: DAY_WIDTH,
     height: DAY_WIDTH,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
   },
   dayNumberContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
