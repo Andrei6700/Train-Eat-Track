@@ -181,6 +181,10 @@ const StackLayout = () => {
           name="(modals)/createFood"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
+        <Stack.Screen
+          name="(modals)/privacyPolicy"
+          options={{ presentation: "modal", animation: "slide_from_right" }}
+        />
       </Stack>
     </View>
   );
