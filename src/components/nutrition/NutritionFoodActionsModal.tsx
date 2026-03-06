@@ -1,5 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import React, { useMemo } from "react";
 import { Modal, StyleSheet, TouchableOpacity, View, ViewStyle } from "react-native";
 import * as Icons from "phosphor-react-native";
@@ -26,6 +28,7 @@ const NutritionFoodActionsModal = ({
   onMove,
   onDelete,
 }: NutritionFoodActionsModalProps) => {
+  const { language, t } = useLanguage();
   const actionsModalStyle = useMemo<ViewStyle>(
     () => ({ bottom: bottomInset + 20 }),
     [bottomInset],
@@ -55,7 +58,7 @@ const NutritionFoodActionsModal = ({
                     color={colors.neutral400}
                     style={styles.actionGroupTitle}
                   >
-                    Copiaza la:
+                    {t("nutrition_copy_to")}
                   </Typo>
                   {availableMeals.map((meal, idx) => (
                     <TouchableOpacity
@@ -65,7 +68,7 @@ const NutritionFoodActionsModal = ({
                     >
                       <Icons.Copy size={20} color={colors.primary} weight="bold" />
                       <Typo size={16} fontWeight="500">
-                        {meal}
+                        {getMealLabel(language, meal)}
                       </Typo>
                     </TouchableOpacity>
                   ))}
@@ -78,7 +81,7 @@ const NutritionFoodActionsModal = ({
                     color={colors.neutral400}
                     style={styles.actionGroupTitle}
                   >
-                    Muta la:
+                    {t("nutrition_move_to")}
                   </Typo>
                   {availableMeals.map((meal, idx) => (
                     <TouchableOpacity
@@ -88,7 +91,7 @@ const NutritionFoodActionsModal = ({
                     >
                       <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
                       <Typo size={16} fontWeight="500">
-                        {meal}
+                        {getMealLabel(language, meal)}
                       </Typo>
                     </TouchableOpacity>
                   ))}
@@ -100,7 +103,7 @@ const NutritionFoodActionsModal = ({
                 >
                   <Icons.Trash size={20} color={colors.rose} weight="bold" />
                   <Typo size={16} fontWeight="600" color={colors.rose}>
-                    Sterge aliment
+                    {t("nutrition_delete_food")}
                   </Typo>
                 </TouchableOpacity>
               </View>

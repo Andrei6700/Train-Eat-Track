@@ -3,6 +3,7 @@ import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { exportWorkoutPlanToExcel } from "@/src/services/workoutPlanExportService";
 import { getUserWorkouts } from "@/src/services/workoutService";
@@ -86,17 +87,19 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({ title }) => {
 
 const Settings = () => {
   const { user } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState("Română");
+  const selectedLanguage =
+    language === "ro"
+      ? t("settings_language_romanian")
+      : t("settings_language_english");
 
   const handleLanguagePress = () => {
-    // UI only - toggle between languages
-    setSelectedLanguage((prev) =>
-      prev === "Română" ? "English" : "Română"
-    );
+    const nextLanguage = language === "en" ? "ro" : "en";
+    void setLanguage(nextLanguage);
   };
 
   const handleExportPlan = async () => {
@@ -361,3 +364,4 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._20,
   },
 });
+

@@ -1,5 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { DayWorkout, WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import React from "react";
@@ -36,6 +37,7 @@ const WorkoutContentState = ({
   onEditPlan,
   onLogWorkout,
 }: WorkoutContentStateProps) => {
+  const { t } = useLanguage();
   if (selectedWorkout) {
     return (
       <Animated.View
@@ -44,11 +46,13 @@ const WorkoutContentState = ({
       >
         <View style={styles.sectionHeader}>
           <Typo size={20} fontWeight="600">
-            {isSelectedDayToday ? "Today\u2019s Workout" : "Logged Workout"}
+            {isSelectedDayToday
+              ? t("workout_today_workout")
+              : t("workout_logged_workout")}
           </Typo>
           <View style={styles.exerciseCountBadge}>
             <Typo size={14} color={colors.neutral300}>
-              {selectedWorkout.exercises?.length || 0} exercises
+              {selectedWorkout.exercises?.length || 0} {t("common_exercises")}
             </Typo>
           </View>
         </View>
@@ -71,7 +75,7 @@ const WorkoutContentState = ({
                 </View>
                 <View style={styles.setCountBadge}>
                   <Typo size={12} fontWeight="600" color={colors.white}>
-                    {exercise.sets?.length || 0} sets
+                    {exercise.sets?.length || 0} {t("common_sets")}
                   </Typo>
                 </View>
               </View>
@@ -94,7 +98,7 @@ const WorkoutContentState = ({
                       <View style={styles.setDetail}>
                         <Icons.Repeat size={14} color={colors.neutral400} />
                         <Typo size={14} color={colors.white}>
-                          {set.reps} reps
+                          {set.reps} {t("common_reps")}
                         </Typo>
                       </View>
                     </View>
@@ -115,10 +119,10 @@ const WorkoutContentState = ({
           <Icons.BedIcon size={40} color={colors.primary} weight="fill" />
         </View>
         <Typo size={22} fontWeight="700" style={styles.restDayTitle}>
-          Rest Day
+          {t("workout_rest_day")}
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.restDaySubtitle}>
-          Rest day planned
+          {t("workout_rest_day_planned")}
         </Typo>
       </View>
     );
@@ -135,7 +139,7 @@ const WorkoutContentState = ({
       >
         <View style={styles.sectionHeader}>
           <Typo size={20} fontWeight="600">
-            {"Today's Plan"}
+            {t("workout_today_plan")}
           </Typo>
           <TouchableOpacity onPress={onEditPlan}>
             <Icons.PencilSimple size={20} color={colors.primary} />
@@ -153,8 +157,10 @@ const WorkoutContentState = ({
               </Typo>
               <Typo size={14} color={colors.neutral400}>
                 {hasExercises
-                  ? `${selectedPlanDay?.exercises.length || 0} exercises planned`
-                  : "Continue your training cycle"}
+                  ? t("workout_exercises_planned", {
+                      count: selectedPlanDay?.exercises.length || 0,
+                    })
+                  : t("workout_continue_cycle")}
               </Typo>
             </View>
           </View>
@@ -168,7 +174,7 @@ const WorkoutContentState = ({
                     {exercise.exerciseName}
                   </Typo>
                   <Typo size={13} color={colors.neutral500}>
-                    {exercise.sets?.length || 0} sets
+                    {exercise.sets?.length || 0} {t("common_sets")}
                   </Typo>
                 </View>
               ))}
@@ -179,7 +185,7 @@ const WorkoutContentState = ({
             <View style={styles.infoBox}>
               <Icons.Info size={16} color={colors.primary} weight="fill" />
               <Typo size={13} color={colors.neutral300} style={styles.infoText}>
-                Your exercises from previous workouts will be loaded automatically
+                {t("workout_auto_load_note")}
               </Typo>
             </View>
           )}
@@ -191,7 +197,7 @@ const WorkoutContentState = ({
           >
             <Icons.Play size={20} color={colors.black} weight="fill" />
             <Typo size={16} fontWeight="700" color={colors.black}>
-              Start Workout
+              {t("workout_start_workout")}
             </Typo>
           </TouchableOpacity>
         </View>
@@ -218,10 +224,10 @@ const WorkoutContentState = ({
           color={colors.neutral200}
           style={styles.emptyTitle}
         >
-          No workout logged
+          {t("workout_no_workout_logged")}
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.emptySubtitle}>
-          Forgot to log your workout that day?
+          {t("workout_forgot_log")}
         </Typo>
 
         <TouchableOpacity
@@ -231,7 +237,7 @@ const WorkoutContentState = ({
         >
           <Icons.Plus size={20} color={colors.black} weight="bold" />
           <Typo size={16} fontWeight="700" color={colors.black}>
-            Log Workout for This Day
+            {t("workout_log_for_day")}
           </Typo>
         </TouchableOpacity>
       </Animated.View>
@@ -250,10 +256,10 @@ const WorkoutContentState = ({
           color={colors.neutral200}
           style={styles.emptyTitle}
         >
-          No workout logged
+          {t("workout_no_workout_logged")}
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.emptyBody}>
-          You can only log workouts from your first training day onwards
+          {t("workout_first_training_day_note")}
         </Typo>
       </View>
     );
@@ -271,10 +277,10 @@ const WorkoutContentState = ({
           color={colors.neutral200}
           style={styles.emptyTitle}
         >
-          Future date
+          {t("workout_future_date")}
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.emptyBody}>
-          You can plan your workout when the day comes
+          {t("workout_future_date_note")}
         </Typo>
       </View>
     );
@@ -291,15 +297,15 @@ const WorkoutContentState = ({
         color={colors.neutral200}
         style={styles.emptyTitle}
       >
-        No workout plan
+        {t("workout_no_plan")}
       </Typo>
       <Typo size={15} color={colors.neutral400} style={styles.emptyBody}>
-        Create a workout plan to get started
+        {t("workout_create_plan_note")}
       </Typo>
       <TouchableOpacity style={styles.createButton} onPress={onEditPlan}>
         <Icons.Plus size={20} color={colors.black} weight="bold" />
         <Typo size={16} fontWeight="700" color={colors.black}>
-          Create Plan
+          {t("workout_create_plan")}
         </Typo>
       </TouchableOpacity>
     </View>

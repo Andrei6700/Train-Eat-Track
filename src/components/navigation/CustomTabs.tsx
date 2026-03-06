@@ -1,4 +1,5 @@
 import { colors, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Icons from "phosphor-react-native";
@@ -15,6 +16,7 @@ export default function CustomTabs({
   descriptors,
   navigation,
 }: BottomTabBarProps) {
+  const { t } = useLanguage();
   const tabbarIcons: any = {
     index: (isFocused: boolean) => (
       <Icons.HouseIcon
@@ -61,12 +63,12 @@ export default function CustomTabs({
   };
 
   const tabbarLabels: any = {
-    index: "Home",
-    statistics: "Statistics",
-    workout: "Workout",
-    history: "History",
-    nutrition: "Nutrition",
-    profile: "Profile",
+    index: t("tab_home"),
+    statistics: t("tab_statistics"),
+    workout: t("tab_workout"),
+    history: t("tab_history"),
+    nutrition: t("tab_nutrition"),
+    profile: t("tab_profile"),
   };
 
   return (
@@ -103,6 +105,8 @@ export default function CustomTabs({
           >
             {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
             <Text
+              numberOfLines={1}
+              ellipsizeMode="clip"
               style={[
                 styles.tabLabel,
                 { color: isFocused ? colors.primary : colors.neutral400 },
@@ -130,13 +134,17 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === "ios" ? spacingY._15 : spacingY._10,
   },
   tabbarItem: {
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "center",
     flex: 1,
+    minWidth: 0,
   },
   tabLabel: {
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 13,
     marginTop: 4,
     fontWeight: "500",
+    textAlign: "center",
+    width: "100%",
   },
 });

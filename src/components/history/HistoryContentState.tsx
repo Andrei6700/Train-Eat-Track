@@ -1,4 +1,5 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
 import WorkoutCard from "@/src/components/ui/WorkoutCard";
 import Typo from "@/src/components/ui/Typo";
 import { WorkoutHistory } from "@/src/types/index";
@@ -18,6 +19,7 @@ const HistoryContentState = ({
   hasAnyWorkouts,
   isSelectedDayRestDay,
 }: HistoryContentStateProps) => {
+  const { t } = useLanguage();
   if (selectedWorkout) {
     return (
       <View style={styles.selectedWorkoutSection}>
@@ -27,7 +29,7 @@ const HistoryContentState = ({
           color={colors.neutral200}
           style={styles.sectionTitle}
         >
-          Workout Details
+          {t("history_workout_details")}
         </Typo>
         <WorkoutCard workout={selectedWorkout} />
       </View>
@@ -50,14 +52,14 @@ const HistoryContentState = ({
           color={colors.neutral200}
           style={styles.emptyTitle}
         >
-          Rest Day
+          {t("workout_rest_day")}
         </Typo>
         <Typo
           size={15}
           color={colors.neutral400}
           style={styles.emptySubtitle}
         >
-          Rest day planned
+          {t("workout_rest_day_planned")}
         </Typo>
       </View>
     );
@@ -79,14 +81,14 @@ const HistoryContentState = ({
           color={colors.neutral200}
           style={styles.emptyTitle}
         >
-          No workouts logged yet
+          {t("history_no_workouts_logged")}
         </Typo>
         <Typo
           size={15}
           color={colors.neutral400}
           style={styles.emptySubtitle}
         >
-          Start training to see your history here!
+          {t("history_start_training_here")}
         </Typo>
       </View>
     );
@@ -107,14 +109,14 @@ const HistoryContentState = ({
         color={colors.neutral200}
         style={styles.emptyTitle}
       >
-        No workout on this day
+        {t("history_no_workout_on_day")}
       </Typo>
       <Typo
         size={15}
         color={colors.neutral400}
         style={styles.emptySubtitle}
       >
-        Select another day or start a new workout
+        {t("history_select_another_day")}
       </Typo>
     </View>
   );

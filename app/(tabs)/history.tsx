@@ -7,6 +7,7 @@ import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   clearWorkoutHistoryMemoryCache,
@@ -16,26 +17,12 @@ import {
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { MONTH_NAMES } from "@/src/i18n/translations";
 import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
 import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 const CACHE_MAX_AGE_MS = 60_000;
 
@@ -71,6 +58,7 @@ const getInitialIndex = (calendarDays: Date[], targetDateKey: string): number | 
 
 const History = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
 
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>(
@@ -357,7 +345,7 @@ const History = () => {
     return (
       <ScreenWrapper>
         <View style={styles.container}>
-          <Header title="History" style={styles.header} />
+          <Header title={t("tab_history")} style={styles.header} />
         </View>
         <Loading />
       </ScreenWrapper>
@@ -368,16 +356,18 @@ const History = () => {
     <SwipeableScreen>
       <ScreenWrapper>
         <View style={styles.container}>
-          <Header title="History" style={styles.header} />
+          <Header title={t("tab_history")} style={styles.header} />
 
           <View style={styles.monthHeader}>
             <Typo size={20} fontWeight="600" color={colors.white}>
-              {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Typo>
             <View style={styles.statsRow}>
               <Typo size={14} color={colors.neutral400}>
-                {workoutsHistory.length} workout
-                {workoutsHistory.length !== 1 ? "s" : ""}
+                {workoutsHistory.length}{" "}
+                {workoutsHistory.length === 1
+                  ? t("common_workout_singular")
+                  : t("common_workout_plural")}
               </Typo>
             </View>
           </View>

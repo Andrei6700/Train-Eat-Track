@@ -5,6 +5,7 @@ import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
 import { auth } from "@/src/config/firebase";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { getProfileImage } from "@/src/services/imageService";
 import { accountOptionType } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
@@ -18,28 +19,33 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 const Profile = () => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const router = useRouter();
   const accountOptions: accountOptionType[] = [
     {
-      title: "Edit Profile",
+      id: "edit-profile",
+      title: t("profile_edit_profile"),
       icon: <Icons.UserIcon size={26} color={colors.white} weight="fill" />,
       routeName: "/(modals)/profileModal",
       bgColor: "#6366f1",
     },
     {
-      title: "Settings",
+      id: "settings",
+      title: t("profile_settings"),
       icon: <Icons.GearSixIcon size={26} color={colors.white} weight="fill" />,
       routeName: "/(modals)/settings",
       bgColor: "#059669",
     },
     {
-      title: "Privacy Policy",
+      id: "privacy-policy",
+      title: t("profile_privacy_policy"),
       icon: <Icons.LockIcon size={26} color={colors.white} weight="fill" />,
       routeName: "/(modals)/privacyPolicy",
       bgColor: colors.neutral600,
     },
     {
-      title: "Logout",
+      id: "logout",
+      title: t("profile_logout"),
       icon: <Icons.PowerIcon size={26} color={colors.white} weight="fill" />,
       // routeName: "/(modals)/profileModal",
       bgColor: "#e11d48",
@@ -48,17 +54,17 @@ const Profile = () => {
 
     const handleLogout = async () => {
       await signOut(auth);
-    };
+  };
 
   const showLogoutAlert = () => {
-    Alert.alert("Confirm", "Are you sure you want to logout?", [
+    Alert.alert(t("profile_logout_confirm_title"), t("profile_logout_confirm_message"), [
       {
-        text: "Cancel",
+        text: t("common_cancel"),
         onPress: () => console.log("Cancel logout"),
         style: "cancel",
       },
       {
-        text: "Logout",
+        text: t("profile_logout"),
         onPress: () => handleLogout(), 
         style: "destructive"
       },
@@ -66,17 +72,18 @@ const Profile = () => {
   };
 
   const handlePress = (item: accountOptionType) => {
-    if (item.title === "Logout") {
+    if (item.id === "logout") {
       showLogoutAlert();
+      return;
     }
     if (item.routeName) router.push(item.routeName);
   };
 
   return (
     <SwipeableScreen>
-    <ScreenWrapper>
+      <ScreenWrapper>
       <View style={styles.container}>
-        <Header title="Profile" style={{ marginVertical: spacingY._10 }} />
+        <Header title={t("tab_profile")} style={{ marginVertical: spacingY._10 }} />
         {/* user info */}
         <View style={styles.userInfo}>
           {/* avatar */}

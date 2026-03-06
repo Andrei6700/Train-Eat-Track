@@ -1,5 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { scale, verticalScale } from "@/src/utils/styling";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
 import React from "react";
 import { Linking, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -34,6 +35,7 @@ const DEFAULT_ARTICLES: Article[] = [
 ];
 
 const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestScienceCardProps) => {
+  const { t } = useLanguage();
   const handleArticlePress = (url: string) => {
     Linking.openURL(url);
   };
@@ -50,7 +52,7 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
             <Icons.Flask size={22} color={"#8B5CF6"} weight="fill" />
           </View>
           <Typo size={18} fontWeight="700" color={colors.white}>
-            Latest Science
+            {t("home_latest_science")}
           </Typo>
         </View>
       </View>
@@ -95,6 +97,8 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
     </Animated.View>
   );
 });
+
+LatestScienceCard.displayName = "LatestScienceCard";
 
 export default LatestScienceCard;
 

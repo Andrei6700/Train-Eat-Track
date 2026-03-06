@@ -1,4 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { formatDuration } from "@/src/utils/utils";
@@ -16,6 +18,7 @@ type RecentWorkoutsProps = {
 
 const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) => {
   const router = useRouter();
+  const { language, t } = useLanguage();
 
   const formatDate = useCallback((date: Date | string) => {
     const workoutDate = new Date(date);
@@ -24,16 +27,16 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
     yesterday.setDate(today.getDate() - 1);
 
     if (workoutDate.toDateString() === today.toDateString()) {
-      return "Today";
+      return t("common_today");
     } else if (workoutDate.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
+      return t("common_yesterday");
     } else {
-      return workoutDate.toLocaleDateString("en-US", {
+      return workoutDate.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
         month: "short",
         day: "numeric",
       });
     }
-  }, []);
+  }, [language, t]);
 
   const handleViewAll = useCallback(() => {
     router.push("/(tabs)/history");
@@ -58,13 +61,13 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
         <View style={styles.titleRow}>
           <Icons.Calendar size={20} color={colors.primary} weight="fill" />
           <Typo size={18} fontWeight="700">
-            Recent Activity
+            {t("home_recent_activity")}
           </Typo>
         </View>
         {nonRestWorkouts.length > 0 && (
           <TouchableOpacity onPress={handleViewAll}>
             <Typo size={14} color={colors.primary} fontWeight="600">
-              See All
+              {t("home_see_all")}
             </Typo>
           </TouchableOpacity>
         )}
@@ -82,14 +85,14 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
             color={colors.neutral400}
             style={{ marginTop: spacingY._15, textAlign: "center" }}
           >
-            No workouts yet
+            {t("home_no_workouts_yet")}
           </Typo>
           <Typo
             size={14}
             color={colors.neutral500}
             style={{ marginTop: spacingY._7, textAlign: "center" }}
           >
-            Start training to see your history
+            {t("home_start_training_history")}
           </Typo>
         </View>
       ) : (
@@ -117,12 +120,12 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
                 <View style={styles.workoutExercises}>
                   {workout.exercises?.slice(0, 2).map((ex, idx) => (
                     <Typo key={idx} size={13} color={colors.neutral500}>
-                      • {ex.exerciseName}
+                      - {ex.exerciseName}
                     </Typo>
                   ))}
                   {workout.exercises && workout.exercises.length > 2 && (
                     <Typo size={12} color={colors.neutral600}>
-                      +{workout.exercises.length - 2} more
+                      {t("common_more_count", { count: workout.exercises.length - 2 })}
                     </Typo>
                   )}
                 </View>
@@ -205,3 +208,4 @@ const styles = StyleSheet.create({
     marginLeft: spacingX._15,
   },
 });
+

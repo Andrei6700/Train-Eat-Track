@@ -1,4 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
@@ -12,6 +14,7 @@ type WeeklyActivityChartProps = {
 };
 
 const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) => {
+  const { language, t } = useLanguage();
   const weekData = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -56,18 +59,18 @@ const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) 
         <View style={styles.titleRow}>
           <Icons.TrendUp size={22} color={colors.primary} weight="fill" />
           <Typo size={18} fontWeight="700">
-            This Week
+            {t("home_this_week")}
           </Typo>
         </View>
         <View style={styles.progressBadge}>
           <Typo size={13} fontWeight="600" color={colors.white}>
-            {weekData.workoutDaysCount}/7 days
+            {t("home_days_progress", { count: weekData.workoutDaysCount })}
           </Typo>
         </View>
       </View>
 
       <View style={styles.chartBars}>
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => (
+        {WEEK_DAY_SHORT_NAMES[language].map((day, index) => (
           <View key={day} style={styles.barContainer}>
             <View style={styles.barWrapper}>
               {/*

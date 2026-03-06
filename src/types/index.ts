@@ -19,6 +19,7 @@ export type ModalWrapperProps = {
   bg?: string;
 };
 export type accountOptionType = {
+  id?: string;
   title: string;
   icon: React.ReactNode;
   bgColor: string;

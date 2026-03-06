@@ -13,7 +13,9 @@ import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import NutritionCalendar from "@/src/components/ui/NutritionCalendar";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
 import { preloadWeekNutrition } from "@/src/services/nutritionCacheService";
 import { Food } from "@/src/types/index";
 import { useRouter } from "expo-router";
@@ -23,20 +25,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"] as const;
-const MONTHS = [
-  "ianuarie",
-  "februarie",
-  "martie",
-  "aprilie",
-  "mai",
-  "iunie",
-  "iulie",
-  "august",
-  "septembrie",
-  "octombrie",
-  "noiembrie",
-  "decembrie",
-];
 
 type FoodWithOptionalBrand = Food & { brand?: string };
 type DayData = { date: Date; calories: number; goal: number };
@@ -125,6 +113,7 @@ const buildMealSummaries = (
 const Nutrition = () => {
   const router = useRouter();
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const insets = useSafeAreaInsets();
   const {
     todayNutrition,
@@ -200,17 +189,17 @@ const Nutrition = () => {
     const normalizedSelected = normalizeDate(selectedDate);
     const normalizedToday = normalizeDate(today);
     if (normalizedSelected.toDateString() === normalizedToday.toDateString()) {
-      return "Azi";
+      return t("common_today");
     }
 
     const yesterday = new Date(normalizedToday);
     yesterday.setDate(yesterday.getDate() - 1);
     if (normalizedSelected.toDateString() === yesterday.toDateString()) {
-      return "Ieri";
+      return t("common_yesterday");
     }
 
-    return `${normalizedSelected.getDate()} ${MONTHS[normalizedSelected.getMonth()]}, ${normalizedSelected.getFullYear()}`;
-  }, [selectedDate]);
+    return `${normalizedSelected.getDate()} ${MONTH_NAMES[language][normalizedSelected.getMonth()]}, ${normalizedSelected.getFullYear()}`;
+  }, [language, selectedDate, t]);
 
   const loadNutritionData = useCallback(
     async (date: Date) => {
@@ -348,12 +337,12 @@ const Nutrition = () => {
 
   const handleResetWater = useCallback(() => {
     Alert.alert(
-      "Reset Water Intake",
-      "Are you sure you want to reset today's water intake?",
+      t("nutrition_reset_water_title"),
+      t("nutrition_reset_water_message"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common_cancel"), style: "cancel" },
         {
-          text: "Reset",
+          text: t("nutrition_reset"),
           style: "destructive",
           onPress: async () => {
             await resetWaterIntake();
@@ -361,7 +350,7 @@ const Nutrition = () => {
         },
       ],
     );
-  }, [resetWaterIntake]);
+  }, [resetWaterIntake, t]);
 
   const handleFoodPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
@@ -384,15 +373,15 @@ const Nutrition = () => {
   const handleSaveQuantity = useCallback(async () => {
     const parsedQuantity = Number.parseFloat(editQuantity);
     if (!editingFood || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate valida");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
     await updateFoodQuantity(editingFood.mealName, editingFood.foodIndex, parsedQuantity);
     setShowEditModal(false);
     setEditingFood(null);
-    Alert.alert("Success", "Cantitatea a fost actualizata!");
-  }, [editQuantity, editingFood, updateFoodQuantity]);
+    Alert.alert(t("common_success"), t("nutrition_quantity_updated"));
+  }, [editQuantity, editingFood, t, updateFoodQuantity]);
 
   const closeEditModal = useCallback(() => {
     setShowEditModal(false);
@@ -409,9 +398,15 @@ const Nutrition = () => {
       if (!actionFood) return;
       await copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
-      Alert.alert("Success", `${actionFood.food.name} copiat la ${toMeal}`);
+      Alert.alert(
+        t("common_success"),
+        t("nutrition_copied_to_meal", {
+          name: actionFood.food.name,
+          meal: getMealLabel(language, toMeal),
+        }),
+      );
     },
-    [actionFood, copyFoodToMeal],
+    [actionFood, copyFoodToMeal, language, t],
   );
 
   const handleMoveFood = useCallback(
@@ -419,27 +414,35 @@ const Nutrition = () => {
       if (!actionFood) return;
       await moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
-      Alert.alert("Success", `${actionFood.food.name} mutat la ${toMeal}`);
+      Alert.alert(
+        t("common_success"),
+        t("nutrition_moved_to_meal", {
+          name: actionFood.food.name,
+          meal: getMealLabel(language, toMeal),
+        }),
+      );
     },
-    [actionFood, moveFoodToMeal],
+    [actionFood, language, moveFoodToMeal, t],
   );
 
   const handleDeleteFood = useCallback(() => {
     if (!actionFood) return;
 
-    Alert.alert("Sterge aliment", `Esti sigur ca vrei sa stergi ${actionFood.food.name}?`, [
-      { text: "Anuleaza", style: "cancel" },
+    Alert.alert(t("nutrition_delete_food_title"), t("nutrition_delete_food_message", {
+      name: actionFood.food.name,
+    }), [
+      { text: t("common_cancel"), style: "cancel" },
       {
-        text: "Sterge",
+        text: t("nutrition_delete_food"),
         style: "destructive",
         onPress: async () => {
           await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
           setShowActionsModal(false);
-          Alert.alert("Success", "Alimentul a fost sters!");
+          Alert.alert(t("common_success"), t("nutrition_food_deleted"));
         },
       },
     ]);
-  }, [actionFood, removeFoodFromMeal]);
+  }, [actionFood, removeFoodFromMeal, t]);
 
   return (
     <SwipeableScreen>

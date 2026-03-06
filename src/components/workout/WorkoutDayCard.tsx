@@ -1,11 +1,11 @@
 import { colors, radius, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import Typo from "@/src/components/ui/Typo";
 import { scale, verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-
-const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export const DAY_WIDTH = scale(50);
 export const ITEM_SPACING = scale(8);
@@ -30,6 +30,7 @@ const WorkoutDayCard = ({
   isFuture,
   onPress,
 }: WorkoutDayCardProps) => {
+  const { language } = useLanguage();
   const dayOfWeek = day.getDay() === 0 ? 6 : day.getDay() - 1;
 
   return (
@@ -54,7 +55,7 @@ const WorkoutDayCard = ({
         }
         fontWeight="500"
       >
-        {DAYS_SHORT[dayOfWeek]}
+        {WEEK_DAY_SHORT_NAMES[language][dayOfWeek]}
       </Typo>
 
       <View

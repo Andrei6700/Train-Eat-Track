@@ -3,6 +3,8 @@ import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
@@ -49,6 +51,7 @@ const getPeriodStartDate = (period: PeriodType): Date => {
 
 const Statistics = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +83,7 @@ const Statistics = () => {
     setExerciseStats(null);
     setWeightChartData([]);
     setRepsChartData([]);
-  }, [selectedExercise, selectedPeriod, workoutsHistory]);
+  }, [language, selectedExercise, selectedPeriod, workoutsHistory]);
 
   const fetchWorkoutsHistory = async () => {
     if (!user?.uid) return;
@@ -224,7 +227,7 @@ const Statistics = () => {
     const repsData: ChartDataPoint[] = [];
 
     dates.forEach((date, index) => {
-      const label = date.toLocaleDateString("en-US", {
+      const label = date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
         month: "short",
         day: "numeric",
       });
@@ -272,13 +275,17 @@ const Statistics = () => {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Typo size={28} fontWeight="700">
-            Statistics
+            {t("tab_statistics")}
           </Typo>
         </View>
 
         <View style={styles.segmentedContainer}>
           <SegmentedControl
-            values={["Weekly", "Monthly", "Yearly"]}
+            values={[
+              t("statistics_period_weekly"),
+              t("statistics_period_monthly"),
+              t("statistics_period_yearly"),
+            ]}
             selectedIndex={
               selectedPeriod === "Weekly"
                 ? 0
@@ -317,7 +324,7 @@ const Statistics = () => {
               {getTotalWorkouts()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              Workouts
+              {t("statistics_workouts")}
             </Typo>
           </View>
 
@@ -332,7 +339,7 @@ const Statistics = () => {
               {getTotalTime()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              Minutes
+              {t("statistics_minutes")}
             </Typo>
           </View>
         </View>
@@ -350,7 +357,7 @@ const Statistics = () => {
                   weight="fill"
                 />
                 <Typo size={16} fontWeight="600" color={colors.white}>
-                  {selectedExercise || "Select Exercise"}
+                  {selectedExercise || t("statistics_select_exercise")}
                 </Typo>
               </View>
               <Icons.CaretDownIcon
@@ -430,7 +437,7 @@ const Statistics = () => {
                   {exerciseStats.maxWeight} kg
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Max Weight
+                  {t("statistics_max_weight")}
                 </Typo>
               </View>
 
@@ -445,7 +452,7 @@ const Statistics = () => {
                   {exerciseStats.totalReps}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Total Reps
+                  {t("statistics_total_reps")}
                 </Typo>
               </View>
 
@@ -460,7 +467,7 @@ const Statistics = () => {
                   {exerciseStats.totalWeight}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Total KG
+                  {t("statistics_total_kg")}
                 </Typo>
               </View>
             </View>
@@ -469,11 +476,13 @@ const Statistics = () => {
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
                   <Typo size={18} fontWeight="600">
-                    Weight Progress
+                    {t("statistics_weight_progress")}
                   </Typo>
                   <View style={styles.chartBadge}>
                     <Typo size={13} color={colors.white}>
-                      {exerciseStats.workoutCount} sessions
+                      {t("statistics_sessions_count", {
+                        count: exerciseStats.workoutCount,
+                      })}
                     </Typo>
                   </View>
                 </View>
@@ -517,11 +526,13 @@ const Statistics = () => {
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
                   <Typo size={18} fontWeight="600">
-                    Reps Progress
+                    {t("statistics_reps_progress")}
                   </Typo>
                   <View style={styles.chartBadge}>
                     <Typo size={13} color={colors.white}>
-                      Avg at max kg: {exerciseStats.averageTopSetReps} reps
+                      {t("statistics_avg_max_kg_reps", {
+                        count: exerciseStats.averageTopSetReps,
+                      })}
                     </Typo>
                   </View>
                 </View>
@@ -576,14 +587,14 @@ const Statistics = () => {
               color={colors.neutral200}
               style={{ marginTop: spacingY._15 }}
             >
-              No data for this period
+              {t("statistics_no_data_period")}
             </Typo>
             <Typo
               size={14}
               color={colors.neutral400}
               style={{ marginTop: spacingY._7, textAlign: "center" }}
             >
-              Train {selectedExercise} to see your progress
+              {t("statistics_train_exercise", { exercise: selectedExercise })}
             </Typo>
           </View>
         )}
@@ -602,8 +613,8 @@ const Statistics = () => {
               style={{ marginTop: spacingY._15 }}
             >
               {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
-                ? "No workouts this week"
-                : "No workouts yet"}
+                ? t("statistics_no_workouts_this_week")
+                : t("statistics_no_workouts_yet")}
             </Typo>
             <Typo
               size={14}
@@ -611,8 +622,8 @@ const Statistics = () => {
               style={{ marginTop: spacingY._7, textAlign: "center" }}
             >
               {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
-                ? "Log workouts this week to see weekly statistics"
-                : "Start training to see your statistics"}
+                ? t("statistics_log_weekly")
+                : t("statistics_start_training")}
             </Typo>
           </View>
         )}

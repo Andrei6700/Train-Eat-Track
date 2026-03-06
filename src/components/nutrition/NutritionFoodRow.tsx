@@ -1,5 +1,6 @@
 import { colors } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { Food } from "@/src/types/index";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
@@ -25,6 +26,7 @@ const roundSafe = (value: number | undefined): number => {
 };
 
 const NutritionFoodRow = ({ food, onPress, onLongPress }: NutritionFoodRowProps) => {
+  const { t } = useLanguage();
   return (
     <TouchableOpacity style={styles.foodItem} onPress={onPress} onLongPress={onLongPress}>
       <View style={styles.foodMainRow}>
@@ -55,7 +57,7 @@ const NutritionFoodRow = ({ food, onPress, onLongPress }: NutritionFoodRowProps)
             <View style={styles.metricItem}>
               <Icons.Scales size={12} color={colors.neutral400} weight="fill" />
               <Typo size={11} color={colors.white}>
-                {food.servingSize || "100"} Grame
+                {food.servingSize || "100"} {t("nutrition_grams")}
               </Typo>
             </View>
 

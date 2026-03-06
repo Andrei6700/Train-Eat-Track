@@ -1,5 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
@@ -44,11 +46,12 @@ const NutritionMealCard = ({
   onFoodPress,
   onFoodLongPress,
 }: NutritionMealCardProps) => {
+  const { language, t } = useLanguage();
   return (
     <View style={styles.mealCard}>
       <View style={styles.mealHeader}>
         <Typo size={18} fontWeight="700" color={colors.white}>
-          {summary.mealName}
+          {getMealLabel(language, summary.mealName)}
         </Typo>
       </View>
 
@@ -122,7 +125,7 @@ const NutritionMealCard = ({
               {Math.round(summary.macros.protein)} g
             </Typo>
             <Typo size={10} color={colors.neutral400} style={styles.macroLabel}>
-              Prot.
+              {t("nutrition_short_protein")}
             </Typo>
           </View>
 
@@ -134,7 +137,7 @@ const NutritionMealCard = ({
               {Math.round(summary.macros.carbs)} g
             </Typo>
             <Typo size={10} color={colors.neutral400} style={styles.macroLabel}>
-              Carb.
+              {t("nutrition_short_carbs")}
             </Typo>
           </View>
 
@@ -146,7 +149,7 @@ const NutritionMealCard = ({
               {Math.round(summary.macros.fat)} g
             </Typo>
             <Typo size={10} color={colors.neutral400} style={styles.macroLabel}>
-              Grasimi
+              {t("nutrition_short_fat")}
             </Typo>
           </View>
         </View>
@@ -171,7 +174,7 @@ const NutritionMealCard = ({
       >
         <Icons.Plus size={18} color={colors.primary} weight="bold" />
         <Typo size={15} fontWeight="600" color={colors.primary}>
-          Adauga alimente
+          {t("nutrition_add_foods")}
         </Typo>
       </TouchableOpacity>
     </View>

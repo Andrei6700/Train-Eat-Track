@@ -7,6 +7,7 @@ import RecentWorkouts from "@/src/components/ui/RecentWorkouts";
 import Typo from "@/src/components/ui/Typo";
 import WeeklyActivityChart from "@/src/components/ui/WeeklyActivityChart";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { invalidateCache } from "@/src/services/workoutCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
@@ -16,6 +17,7 @@ import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 const Home = React.memo(() => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,10 +67,10 @@ const Home = React.memo(() => {
             <View style={styles.header}>
               <View>
                 <Typo size={16} color={colors.neutral400}>
-                  Welcome back,
+                  {t("home_welcome_back")}
                 </Typo>
                 <Typo size={24} fontWeight="700">
-                  {user?.name || "User"}
+                  {user?.name || t("home_user_fallback")}
                 </Typo>
               </View>
             </View>

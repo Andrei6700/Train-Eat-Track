@@ -1,6 +1,7 @@
 import { colors } from "@/constants/theme";
 import OfflineBanner from "@/src/components/ui/OfflineBanner";
 import { AuthProvider } from "@/src/contexts/authContext";
+import { LanguageProvider } from "@/src/contexts/languageContext";
 import { NetworkProvider, useNetwork } from "@/src/contexts/networkContext";
 import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
@@ -193,13 +194,15 @@ const StackLayout = () => {
 export default function RootLayout() {
   return (
     <NetworkProvider>
-      <AuthProvider>
-        <WorkoutPlanProvider>
-          <NutritionProvider>
-            <StackLayout />
-          </NutritionProvider>
-        </WorkoutPlanProvider>
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <WorkoutPlanProvider>
+            <NutritionProvider>
+              <StackLayout />
+            </NutritionProvider>
+          </WorkoutPlanProvider>
+        </AuthProvider>
+      </LanguageProvider>
     </NetworkProvider>
   );
 }

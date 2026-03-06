@@ -1,4 +1,6 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { FlashList } from "@shopify/flash-list";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
@@ -6,7 +8,6 @@ import { ActivityIndicator, InteractionManager, StyleSheet, TouchableOpacity, Vi
 import Svg, { Circle } from "react-native-svg";
 import Typo from "../ui/Typo";
 
-const DAYS_FULL = ["Lun", "Mar", "Mie", "Joi", "Vin", "Sam", "Dum"];
 const DAY_WIDTH = scale(52);
 const ITEM_SPACING = spacingX._7 ?? 6;
 const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
@@ -41,7 +42,8 @@ const STATUS_EMPTY: DayStatus = {
 const dayKey = (date: Date): string =>
   `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
-const getDayLabel = (date: Date): string => DAYS_FULL[date.getDay() === 0 ? 6 : date.getDay() - 1];
+const getDayLabel = (date: Date, labels: string[]): string =>
+  labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
 
 const getStatusForDay = (dayData: DayData | undefined): DayStatus => {
   if (!dayData || dayData.calories === 0) {
@@ -76,6 +78,7 @@ type DayCardProps = {
 };
 
 const DayCardInner = ({ date, isToday, status, onPress }: DayCardProps) => {
+  const { language } = useLanguage();
   const circumference = 2 * Math.PI * 22;
   const strokeDashoffset = circumference - (status.percentage / 100) * circumference;
 
@@ -88,7 +91,7 @@ const DayCardInner = ({ date, isToday, status, onPress }: DayCardProps) => {
           color={isToday ? colors.primary : colors.neutral400}
           style={styles.dayLabel}
         >
-          {getDayLabel(date)}
+          {getDayLabel(date, WEEK_DAY_SHORT_NAMES[language])}
         </Typo>
 
         <View style={styles.ringContainer}>

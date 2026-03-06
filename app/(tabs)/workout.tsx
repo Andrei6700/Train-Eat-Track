@@ -6,6 +6,7 @@ import WorkoutContentState from "@/src/components/workout/WorkoutContentState";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   clearWorkoutHistoryMemoryCache,
@@ -18,27 +19,13 @@ import {
 } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { MONTH_NAMES } from "@/src/i18n/translations";
 import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
 import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 const CACHE_MAX_AGE_MS = 60_000;
 
@@ -96,6 +83,7 @@ const buildCalendarDays = (history: WorkoutHistory[]) => {
 const Workout = () => {
   const router = useRouter();
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
 
   const [loading, setLoading] = useState(true);
@@ -395,7 +383,7 @@ const Workout = () => {
           <View style={styles.container}>
             <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
               <Typo size={28} fontWeight="700">
-                Workout
+                {t("tab_workout")}
               </Typo>
             </Animated.View>
           </View>
@@ -411,7 +399,7 @@ const Workout = () => {
         <View style={styles.container}>
           <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
             <Typo size={28} fontWeight="700">
-              Workout
+              {t("tab_workout")}
             </Typo>
           </Animated.View>
 
@@ -420,12 +408,14 @@ const Workout = () => {
             style={styles.monthHeader}
           >
             <Typo size={20} fontWeight="600" color={colors.white}>
-              {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Typo>
             <View style={styles.statsRow}>
               <Typo size={14} color={colors.neutral400}>
-                {workoutsHistory.length} workout
-                {workoutsHistory.length !== 1 ? "s" : ""}
+                {workoutsHistory.length}{" "}
+                {workoutsHistory.length === 1
+                  ? t("common_workout_singular")
+                  : t("common_workout_plural")}
               </Typo>
             </View>
           </Animated.View>

@@ -1,19 +1,11 @@
 import { colors, radius, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import Typo from "@/src/components/ui/Typo";
 import { scale, verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-
-const DAYS_FULL = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
 
 export const DAY_WIDTH = scale(50);
 export const ITEM_SPACING = scale(8);
@@ -38,9 +30,10 @@ const HistoryDayCard = ({
   isRestDay,
   onPress,
 }: HistoryDayCardProps) => {
+  const { language } = useLanguage();
   const dayOfWeek = day.getDay();
   const adjustedDayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const dayName = DAYS_FULL[adjustedDayOfWeek].substring(0, 3);
+  const dayName = WEEK_DAY_SHORT_NAMES[language][adjustedDayOfWeek];
 
   return (
     <TouchableOpacity

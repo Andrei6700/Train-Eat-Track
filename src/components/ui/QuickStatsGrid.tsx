@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
@@ -13,6 +14,7 @@ type QuickStatsGridProps = {
 };
 
 const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) => {
+  const { t } = useLanguage();
   const stats = useMemo(() => {
     const nonRestWorkouts = (workouts || []).filter((workout) => !workout.isRestDay);
 
@@ -86,7 +88,7 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
           {stats.totalWorkouts}
         </Typo>
         <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
-          Total Workouts
+          {t("home_total_workouts")}
         </Typo>
       </View>
 
@@ -98,7 +100,7 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
           {stats.currentStreak}
         </Typo>
         <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
-          Day Streak
+          {t("home_day_streak")}
         </Typo>
       </View>
 
@@ -110,7 +112,7 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
           {stats.totalHoursDisplay}h
         </Typo>
         <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
-          Total Time
+          {t("home_total_time")}
         </Typo>
       </View>
     </Animated.View>

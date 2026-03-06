@@ -1,5 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import React, { useMemo } from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
@@ -26,6 +27,7 @@ const FAT_COLOR = "#F59E0B";
 const FIRE_COLOR = "#FF6B35";
 
 const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
+  const { t } = useLanguage();
   const progressFillStyle = useMemo<ViewStyle>(
     () => ({ height: `${stats.progress}%` }),
     [stats.progress],
@@ -55,7 +57,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
               <View style={styles.objectiveHeader}>
                 <Icons.Target size={20} color={colors.primary} weight="fill" />
                 <Typo size={16} fontWeight="600" color={colors.white}>
-                  Obiectiv
+                  {t("nutrition_target")}
                 </Typo>
               </View>
               <Typo
@@ -71,7 +73,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
               <View style={styles.objectiveHeader}>
                 <Icons.Fire size={20} color={FIRE_COLOR} weight="fill" />
                 <Typo size={16} fontWeight="600" color={colors.white}>
-                  Consumat
+                  {t("nutrition_consumed")}
                 </Typo>
               </View>
               <Typo
@@ -100,7 +102,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
                   {stats.remainingCalories}
                 </Typo>
                 <Typo size={12} color={colors.neutral400}>
-                  kcal ramase
+                  {t("nutrition_remaining_kcal")}
                 </Typo>
               </View>
             </View>
@@ -111,7 +113,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
       <View style={styles.macrosContainer}>
         <View style={styles.macroItem}>
           <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            Proteine
+            {t("nutrition_protein")}
           </Typo>
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, proteinFillStyle]} />
@@ -123,7 +125,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
 
         <View style={styles.macroItem}>
           <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            Carbohidrati
+            {t("nutrition_carbs")}
           </Typo>
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, carbsFillStyle]} />
@@ -135,7 +137,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
 
         <View style={styles.macroItem}>
           <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            Grasimi
+            {t("nutrition_fat")}
           </Typo>
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, fatFillStyle]} />

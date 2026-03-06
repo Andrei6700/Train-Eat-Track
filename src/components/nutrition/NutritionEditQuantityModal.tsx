@@ -2,6 +2,7 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import React, { useMemo } from "react";
 import {
   KeyboardAvoidingView,
@@ -46,6 +47,7 @@ const NutritionEditQuantityModal = ({
   onChangeQuantity,
   onSave,
 }: NutritionEditQuantityModalProps) => {
+  const { t } = useLanguage();
   const quantityValue = parseSafe(editQuantity);
   const editModalStyle = useMemo<ViewStyle>(
     () => ({ paddingBottom: bottomInset + 20 }),
@@ -82,7 +84,7 @@ const NutritionEditQuantityModal = ({
               <Icons.X size={24} color={colors.white} weight="bold" />
             </TouchableOpacity>
             <Typo size={20} fontWeight="700">
-              Editeaza cantitatea
+              {t("nutrition_edit_quantity")}
             </Typo>
             <View style={styles.modalHeaderSpacer} />
           </View>
@@ -101,7 +103,7 @@ const NutritionEditQuantityModal = ({
 
                 <View style={styles.quantitySection}>
                   <Typo size={16} fontWeight="600" style={styles.quantityTitle}>
-                    Cantitate (grame)
+                    {t("nutrition_quantity_grams")}
                   </Typo>
                   <Input
                     placeholder="100"
@@ -114,7 +116,7 @@ const NutritionEditQuantityModal = ({
 
                 <View style={styles.adjustedNutrition}>
                   <Typo size={15} fontWeight="600" style={styles.adjustedTitle}>
-                    Valori calculate pentru {editQuantity || "0"}g:
+                    {t("nutrition_calculated_values_for", { value: editQuantity || "0" })}
                   </Typo>
 
                   <View style={styles.nutritionGrid}>
@@ -132,7 +134,7 @@ const NutritionEditQuantityModal = ({
                         {adjustedValues.protein}g
                       </Typo>
                       <Typo size={12} color={colors.neutral400}>
-                        Proteine
+                        {t("nutrition_protein")}
                       </Typo>
                     </View>
 
@@ -141,7 +143,7 @@ const NutritionEditQuantityModal = ({
                         {adjustedValues.carbs}g
                       </Typo>
                       <Typo size={12} color={colors.neutral400}>
-                        Carbohidrati
+                        {t("nutrition_carbs")}
                       </Typo>
                     </View>
 
@@ -150,7 +152,7 @@ const NutritionEditQuantityModal = ({
                         {adjustedValues.fat}g
                       </Typo>
                       <Typo size={12} color={colors.neutral400}>
-                        Grasimi
+                        {t("nutrition_fat")}
                       </Typo>
                     </View>
                   </View>
@@ -158,7 +160,7 @@ const NutritionEditQuantityModal = ({
 
                 <Button onPress={onSave} style={styles.saveButton}>
                   <Typo size={18} fontWeight="700" color={colors.black}>
-                    Salveaza
+                    {t("common_save")}
                   </Typo>
                 </Button>
               </View>

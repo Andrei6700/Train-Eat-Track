@@ -1,5 +1,6 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import WaterWave from "@/src/components/ui/WaterWave";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
@@ -21,6 +22,7 @@ const NutritionWaterCard = ({
   onResetWater,
   onAddWater,
 }: NutritionWaterCardProps) => {
+  const { t } = useLanguage();
   return (
     <Animated.View
       entering={FadeInDown.duration(400).delay(200)}
@@ -29,7 +31,7 @@ const NutritionWaterCard = ({
       <View style={styles.waterHeader}>
         <Icons.Drop size={24} color={colors.primary} weight="fill" />
         <Typo size={20} fontWeight="600" style={styles.waterTitle}>
-          Aport apa
+          {t("nutrition_water_intake")}
         </Typo>
         <TouchableOpacity onPress={onResetWater}>
           <Icons.ArrowCounterClockwise size={20} color={colors.neutral400} />
