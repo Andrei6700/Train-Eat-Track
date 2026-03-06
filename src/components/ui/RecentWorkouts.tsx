@@ -4,7 +4,7 @@ import { verticalScale } from "@/src/utils/styling";
 import { formatDuration } from "@/src/utils/utils";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Typo from "./Typo";
@@ -46,7 +46,11 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
     });
   }, [router]);
 
-  const recentWorkouts = workouts.slice(0, 3);
+  const nonRestWorkouts = useMemo(
+    () => workouts.filter((workout) => !workout.isRestDay),
+    [workouts],
+  );
+  const recentWorkouts = nonRestWorkouts.slice(0, 3);
 
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(150)} style={styles.container}>
@@ -57,7 +61,7 @@ const RecentWorkouts = React.memo(({ workouts, loading }: RecentWorkoutsProps) =
             Recent Activity
           </Typo>
         </View>
-        {workouts.length > 0 && (
+        {nonRestWorkouts.length > 0 && (
           <TouchableOpacity onPress={handleViewAll}>
             <Typo size={14} color={colors.primary} fontWeight="600">
               See All

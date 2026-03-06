@@ -20,8 +20,8 @@ const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) 
     const monday = new Date(today);
     monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
 
-    const week: number[] = [0, 0, 0, 0, 0, 0, 0];
-    let workoutDaysCount = 0;
+    const weekWorkoutCounts: number[] = [0, 0, 0, 0, 0, 0, 0];
+    const weekRestDays: boolean[] = [false, false, false, false, false, false, false];
 
     workouts.forEach((workout) => {
       const workoutDate = new Date(workout.date);
@@ -32,13 +32,20 @@ const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) 
       );
 
       if (diffDays >= 0 && diffDays < 7) {
-        week[diffDays]++;
-        if (week[diffDays] === 1) workoutDaysCount++;
+        if (workout.isRestDay) {
+          weekRestDays[diffDays] = true;
+          return;
+        }
+
+        weekWorkoutCounts[diffDays]++;
       }
     });
 
+    const workoutDaysCount = weekWorkoutCounts.filter((count) => count > 0).length;
+
     return {
-      days: week,
+      days: weekWorkoutCounts,
+      restDays: weekRestDays,
       workoutDaysCount,
     };
   }, [workouts]);
@@ -63,10 +70,15 @@ const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) 
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => (
           <View key={day} style={styles.barContainer}>
             <View style={styles.barWrapper}>
+              {/*
+                Rest days are intentionally rendered as outlined/dashed bars
+                so users can distinguish them from no-data days.
+              */}
               <View
                 style={[
                   styles.bar,
                   weekData.days[index] > 0 && styles.barActive,
+                  weekData.days[index] === 0 && weekData.restDays[index] && styles.barRestDay,
                   weekData.days[index] > 1 && { height: verticalScale(75) },
                 ]}
               />
@@ -133,5 +145,12 @@ const styles = StyleSheet.create({
   barActive: {
     height: verticalScale(60),
     backgroundColor: colors.primary,
+  },
+  barRestDay: {
+    height: verticalScale(60),
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: colors.neutral500,
   },
 });

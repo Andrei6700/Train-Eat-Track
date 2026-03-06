@@ -25,11 +25,26 @@ type ExerciseStats = {
   totalWeight: number;
   maxWeight: number;
   totalReps: number;
-  averageReps: number;
+  averageTopSetReps: number;
   workoutCount: number;
   dates: Date[];
   weights: number[];
   reps: number[];
+};
+
+const getPeriodStartDate = (period: PeriodType): Date => {
+  const periodStart = new Date();
+  periodStart.setHours(0, 0, 0, 0);
+
+  if (period === "Weekly") {
+    periodStart.setDate(periodStart.getDate() - 7);
+  } else if (period === "Monthly") {
+    periodStart.setMonth(periodStart.getMonth() - 1);
+  } else {
+    periodStart.setFullYear(periodStart.getFullYear() - 1);
+  }
+
+  return periodStart;
 };
 
 const Statistics = () => {
@@ -53,15 +68,18 @@ const Statistics = () => {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (workoutsHistory.length > 0) {
-      extractExercises();
-    }
-  }, [workoutsHistory]);
+    extractExercises();
+  }, [workoutsHistory, selectedPeriod]);
 
   useEffect(() => {
     if (selectedExercise && workoutsHistory.length > 0) {
       generateExerciseStats();
+      return;
     }
+
+    setExerciseStats(null);
+    setWeightChartData([]);
+    setRepsChartData([]);
   }, [selectedExercise, selectedPeriod, workoutsHistory]);
 
   const fetchWorkoutsHistory = async () => {
@@ -79,10 +97,22 @@ const Statistics = () => {
     }
   };
 
+  const getFilteredWorkouts = (period: PeriodType): WorkoutHistory[] => {
+    const periodStart = getPeriodStartDate(period);
+
+    return workoutsHistory.filter(
+      (workout) => !workout.isRestDay && new Date(workout.date) >= periodStart
+    );
+  };
+
   const extractExercises = () => {
     const exerciseSet = new Set<string>();
+    const sourceWorkouts =
+      selectedPeriod === "Weekly"
+        ? getFilteredWorkouts("Weekly")
+        : workoutsHistory.filter((workout) => !workout.isRestDay);
 
-    workoutsHistory.forEach((workout) => {
+    sourceWorkouts.forEach((workout) => {
       workout.exercises?.forEach((exercise) => {
         if (exercise.exerciseName) {
           exerciseSet.add(exercise.exerciseName);
@@ -93,36 +123,25 @@ const Statistics = () => {
     const exercises = Array.from(exerciseSet).sort();
     setAvailableExercises(exercises);
 
-    if (exercises.length > 0 && !selectedExercise) {
+    if (exercises.length === 0) {
+      setSelectedExercise("");
+      setShowExerciseSelector(false);
+      return;
+    }
+
+    const selectedExerciseExists = exercises.some(
+      (exerciseName) =>
+        exerciseName.toLowerCase() === selectedExercise.toLowerCase()
+    );
+
+    if (!selectedExerciseExists) {
       setSelectedExercise(exercises[0]);
     }
   };
 
   const generateExerciseStats = () => {
     if (!selectedExercise) return;
-
-    const now = new Date();
-    let filteredWorkouts: WorkoutHistory[] = [];
-
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= weekAgo
-      );
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(now.getMonth() - 1);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= monthAgo
-      );
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(now.getFullYear() - 1);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= yearAgo
-      );
-    }
+    const filteredWorkouts = getFilteredWorkouts(selectedPeriod);
 
     filteredWorkouts.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -134,6 +153,7 @@ const Statistics = () => {
     let totalWeight = 0;
     let maxWeight = 0;
     let totalReps = 0;
+    let totalTopSetReps = 0;
     let workoutCount = 0;
 
     filteredWorkouts.forEach((workout) => {
@@ -146,7 +166,7 @@ const Statistics = () => {
         const workoutDate = new Date(workout.date);
 
         let maxWeightThisWorkout = 0;
-        let totalRepsThisWorkout = 0;
+        let repsAtMaxWeightThisWorkout = 0;
         let totalWeightThisWorkout = 0;
 
         exercise.sets.forEach((set) => {
@@ -155,17 +175,23 @@ const Statistics = () => {
 
           if (weight > maxWeightThisWorkout) {
             maxWeightThisWorkout = weight;
+            repsAtMaxWeightThisWorkout = set.reps;
+          } else if (
+            weight === maxWeightThisWorkout &&
+            set.reps > repsAtMaxWeightThisWorkout
+          ) {
+            repsAtMaxWeightThisWorkout = set.reps;
           }
 
-          totalRepsThisWorkout += set.reps;
           totalWeightThisWorkout += weight * set.reps;
           totalReps += set.reps;
         });
 
         dates.push(workoutDate);
         weights.push(Math.round(maxWeightThisWorkout * 10) / 10);
-        reps.push(totalRepsThisWorkout);
+        reps.push(repsAtMaxWeightThisWorkout);
         totalWeight += totalWeightThisWorkout;
+        totalTopSetReps += repsAtMaxWeightThisWorkout;
 
         if (maxWeightThisWorkout > maxWeight) {
           maxWeight = maxWeightThisWorkout;
@@ -178,7 +204,8 @@ const Statistics = () => {
       totalWeight: Math.round(totalWeight),
       maxWeight: Math.round(maxWeight * 10) / 10,
       totalReps,
-      averageReps: workoutCount > 0 ? Math.round(totalReps / workoutCount) : 0,
+      averageTopSetReps:
+        workoutCount > 0 ? Math.round(totalTopSetReps / workoutCount) : 0,
       workoutCount,
       dates,
       weights,
@@ -225,42 +252,19 @@ const Statistics = () => {
   };
 
   const getTotalWorkouts = () => {
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return workoutsHistory.filter((w) => new Date(w.date) >= weekAgo).length;
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return workoutsHistory.filter((w) => new Date(w.date) >= monthAgo).length;
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      return workoutsHistory.filter((w) => new Date(w.date) >= yearAgo).length;
-    }
+    return getFilteredWorkouts(selectedPeriod).length;
   };
 
   const getTotalTime = () => {
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= weekAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= monthAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= yearAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    }
+    return getFilteredWorkouts(selectedPeriod).reduce(
+      (sum, workout) => sum + Math.floor(workout.duration / 60),
+      0,
+    );
   };
+
+  const hasAnyWorkoutHistory = workoutsHistory.some(
+    (workout) => !workout.isRestDay
+  );
 
   return (
     <SwipeableScreen>
@@ -517,7 +521,7 @@ const Statistics = () => {
                   </Typo>
                   <View style={styles.chartBadge}>
                     <Typo size={13} color={colors.white}>
-                      Avg: {exerciseStats.averageReps} reps
+                      Avg at max kg: {exerciseStats.averageTopSetReps} reps
                     </Typo>
                   </View>
                 </View>
@@ -579,7 +583,7 @@ const Statistics = () => {
               color={colors.neutral400}
               style={{ marginTop: spacingY._7, textAlign: "center" }}
             >
-              Train "{selectedExercise}" to see your progress
+              Train {selectedExercise} to see your progress
             </Typo>
           </View>
         )}
@@ -597,14 +601,18 @@ const Statistics = () => {
               color={colors.neutral200}
               style={{ marginTop: spacingY._15 }}
             >
-              No workouts yet
+              {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? "No workouts this week"
+                : "No workouts yet"}
             </Typo>
             <Typo
               size={14}
               color={colors.neutral400}
-              style={{ marginTop: spacingY._7 }}
+              style={{ marginTop: spacingY._7, textAlign: "center" }}
             >
-              Start training to see your statistics
+              {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? "Log workouts this week to see weekly statistics"
+                : "Start training to see your statistics"}
             </Typo>
           </View>
         )}

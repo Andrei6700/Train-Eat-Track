@@ -14,20 +14,26 @@ type QuickStatsGridProps = {
 
 const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) => {
   const stats = useMemo(() => {
-    if (!workouts || workouts.length === 0) {
+    const nonRestWorkouts = (workouts || []).filter((workout) => !workout.isRestDay);
+
+    if (nonRestWorkouts.length === 0) {
       return {
         totalWorkouts: 0,
-        totalMinutes: 0,
+        totalHoursDisplay: "0",
         currentStreak: 0,
       };
     }
 
-    const totalWorkouts = workouts.length;
-    const totalTime = workouts.reduce((sum, w) => sum + (w.duration || 0), 0);
-    const totalMinutes = Math.floor(totalTime / 60);
+    const totalWorkouts = nonRestWorkouts.length;
+    const totalTime = nonRestWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0);
+    const totalHours = totalTime / 3600;
+    const totalHoursDisplay =
+      totalHours >= 100
+        ? Math.round(totalHours).toString()
+        : Number(totalHours.toFixed(1)).toString();
 
     // Calculate current streak using the same logic as aiCoachService
-    const sortedWorkouts = [...workouts].sort(
+    const sortedWorkouts = [...nonRestWorkouts].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
@@ -57,7 +63,7 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
 
     return {
       totalWorkouts,
-      totalMinutes,
+      totalHoursDisplay,
       currentStreak: streak,
     };
   }, [workouts]);
@@ -76,10 +82,10 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
         <View style={[styles.statIcon, { backgroundColor: `${colors.primary}15` }]}>
           <Icons.Barbell size={24} color={colors.primary} weight="fill" />
         </View>
-        <Typo size={28} fontWeight="700" style={{ marginTop: spacingY._10 }}>
+        <Typo size={28} fontWeight="700" style={styles.statValue}>
           {stats.totalWorkouts}
         </Typo>
-        <Typo size={13} color={colors.neutral400}>
+        <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
           Total Workouts
         </Typo>
       </View>
@@ -88,10 +94,10 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
         <View style={[styles.statIcon, { backgroundColor: "#EF444415" }]}>
           <Icons.Fire size={24} color="#EF4444" weight="fill" />
         </View>
-        <Typo size={28} fontWeight="700" style={{ marginTop: spacingY._10 }}>
+        <Typo size={28} fontWeight="700" style={styles.statValue}>
           {stats.currentStreak}
         </Typo>
-        <Typo size={13} color={colors.neutral400}>
+        <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
           Day Streak
         </Typo>
       </View>
@@ -100,10 +106,10 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
         <View style={[styles.statIcon, { backgroundColor: "#3B82F615" }]}>
           <Icons.Timer size={24} color="#3B82F6" weight="fill" />
         </View>
-        <Typo size={28} fontWeight="700" style={{ marginTop: spacingY._10 }}>
-          {stats.totalMinutes}m
+        <Typo size={28} fontWeight="700" style={styles.statValue}>
+          {stats.totalHoursDisplay}h
         </Typo>
-        <Typo size={13} color={colors.neutral400}>
+        <Typo size={13} color={colors.neutral400} style={styles.statLabel}>
           Total Time
         </Typo>
       </View>
@@ -140,5 +146,12 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  statValue: {
+    marginTop: spacingY._10,
+    textAlign: "center",
+  },
+  statLabel: {
+    textAlign: "center",
   },
 });
