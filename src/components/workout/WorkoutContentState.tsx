@@ -10,6 +10,7 @@ import * as Icons from "phosphor-react-native";
 export type WorkoutContentStateProps = {
   selectedWorkout: WorkoutHistory | null;
   selectedPlanDay: DayWorkout | null;
+  isSelectedDayRestDay: boolean;
   workoutPlan: WorkoutPlan | null;
   workoutPlanName: string;
   isSelectedDayToday: boolean;
@@ -24,6 +25,7 @@ export type WorkoutContentStateProps = {
 const WorkoutContentState = ({
   selectedWorkout,
   selectedPlanDay,
+  isSelectedDayRestDay,
   workoutPlan,
   workoutPlanName,
   isSelectedDayToday,
@@ -106,7 +108,7 @@ const WorkoutContentState = ({
     );
   }
 
-  if (selectedPlanDay?.isRestDay) {
+  if (isSelectedDayRestDay) {
     return (
       <View style={styles.restDayContainer}>
         <View style={styles.restDayIcon}>
@@ -116,7 +118,7 @@ const WorkoutContentState = ({
           Rest Day
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.restDaySubtitle}>
-          Recovery is part of the process
+          Rest day planned
         </Typo>
       </View>
     );
@@ -251,9 +253,7 @@ const WorkoutContentState = ({
           No workout logged
         </Typo>
         <Typo size={15} color={colors.neutral400} style={styles.emptyBody}>
-          {selectedPlanDay?.isRestDay
-            ? "This was a rest day"
-            : "You can only log workouts from your first training day onwards"}
+          You can only log workouts from your first training day onwards
         </Typo>
       </View>
     );

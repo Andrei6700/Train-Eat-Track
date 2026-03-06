@@ -10,11 +10,13 @@ import { StyleSheet, View } from "react-native";
 export type HistoryContentStateProps = {
   selectedWorkout: WorkoutHistory | null;
   hasAnyWorkouts: boolean;
+  isSelectedDayRestDay: boolean;
 };
 
 const HistoryContentState = ({
   selectedWorkout,
   hasAnyWorkouts,
+  isSelectedDayRestDay,
 }: HistoryContentStateProps) => {
   if (selectedWorkout) {
     return (
@@ -28,6 +30,35 @@ const HistoryContentState = ({
           Workout Details
         </Typo>
         <WorkoutCard workout={selectedWorkout} />
+      </View>
+    );
+  }
+
+  if (isSelectedDayRestDay) {
+    return (
+      <View style={styles.emptyState}>
+        <View style={styles.emptyIconContainer}>
+          <Icons.Coffee
+            size={48}
+            color={colors.neutral500}
+            weight="fill"
+          />
+        </View>
+        <Typo
+          size={18}
+          fontWeight="600"
+          color={colors.neutral200}
+          style={styles.emptyTitle}
+        >
+          Rest Day
+        </Typo>
+        <Typo
+          size={15}
+          color={colors.neutral400}
+          style={styles.emptySubtitle}
+        >
+          Rest day planned
+        </Typo>
       </View>
     );
   }

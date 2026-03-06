@@ -2,16 +2,21 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
 import Typo from "@/src/components/ui/Typo";
+import { useAuth } from "@/src/contexts/authContext";
+import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import { exportWorkoutPlanToExcel } from "@/src/services/workoutPlanExportService";
+import { getUserWorkouts } from "@/src/services/workoutService";
 import { verticalScale } from "@/src/utils/styling";
-import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Switch,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type SettingItemProps = {
@@ -80,9 +85,11 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({ title }) => {
 };
 
 const Settings = () => {
-  const router = useRouter();
+  const { user } = useAuth();
+  const { workoutPlan } = useWorkoutPlan();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("Română");
 
   const handleLanguagePress = () => {
@@ -92,9 +99,56 @@ const Settings = () => {
     );
   };
 
-  const handleExportPlan = () => {
-    // UI only - show action was pressed
-    console.log("Export plan pressed");
+  const handleExportPlan = async () => {
+    if (isExporting) return;
+
+    if (!user?.uid) {
+      Alert.alert("Error", "You must be logged in to export your workout plan.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const workoutsResult = await getUserWorkouts(user.uid);
+      if (!workoutsResult.success) {
+        Alert.alert(
+          "Error",
+          workoutsResult.msg || "Could not load workout history for export.",
+        );
+        return;
+      }
+
+      const workoutsHistory = Array.isArray(workoutsResult.data)
+        ? workoutsResult.data
+        : [];
+
+      if (workoutsHistory.length === 0) {
+        Alert.alert(
+          "Error",
+          "No workouts found. Log at least one workout before exporting.",
+        );
+        return;
+      }
+
+      const exportResult = await exportWorkoutPlanToExcel({
+        workoutPlan,
+        workoutsHistory,
+        userName: user.name || undefined,
+        userEmail: user.email || undefined,
+      });
+
+      if (exportResult.success) {
+        Alert.alert("Success", "Workout plan exported successfully as Excel.");
+      } else {
+        Alert.alert("Error", exportResult.msg || "Could not export workout plan.");
+      }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Could not export workout plan.";
+      Alert.alert("Error", message);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleNotifications = () => {
@@ -173,9 +227,17 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title="Export Workout Plan"
-              subtitle="Download as Excel file"
-              onPress={handleExportPlan}
+              title={isExporting ? "Exporting..." : "Export Workout Plan"}
+              subtitle={
+                isExporting ? "Preparing Excel file..." : "Download as Excel file"
+              }
+              onPress={isExporting ? undefined : handleExportPlan}
+              showChevron={!isExporting}
+              rightComponent={
+                isExporting ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : undefined
+              }
             />
           </View>
 

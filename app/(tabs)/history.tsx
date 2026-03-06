@@ -14,8 +14,9 @@ import {
   setWorkoutHistoryMemoryCache,
 } from "@/src/services/workoutHistoryMemoryCache";
 import { getUserWorkouts } from "@/src/services/workoutService";
-import { WorkoutHistory } from "@/src/types/index";
+import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
 import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -36,7 +37,6 @@ const MONTHS = [
   "December",
 ];
 
-const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
 const CACHE_MAX_AGE_MS = 60_000;
 
 const normalizeWorkoutHistory = (data: unknown): WorkoutHistory[] => {
@@ -167,47 +167,58 @@ const History = () => {
     }, [isRefreshRequested, loadHistory, paramDate]),
   );
 
-  const { historyByDateKey, historyDateSet, earliestWorkoutDate, historySignature } =
-    useMemo(() => {
-      const byDateKey = new Map<string, WorkoutHistory>();
-      const dateSet = new Set<string>();
-      let earliestTimestamp: number | null = null;
+  const {
+    historyByDateKey,
+    historyDateSet,
+    loggedRestDayDateSet,
+    earliestWorkoutDate,
+    historySignature,
+  } = useMemo(() => {
+    const byDateKey = new Map<string, WorkoutHistory[]>();
+    const workoutDateSet = new Set<string>();
+    const restDateSet = new Set<string>();
+    let earliestTimestamp: number | null = null;
 
-      for (const workout of workoutsHistory) {
-        const parsedDate = toValidDate(workout.date);
-        if (!parsedDate) continue;
+    for (const workout of workoutsHistory) {
+      const parsedDate = toValidDate(workout.date);
+      if (!parsedDate) continue;
 
-        const normalizedDate = startOfDay(parsedDate);
-        const dayKey = toDateKey(normalizedDate);
-        const dayTimestamp = normalizedDate.getTime();
+      const normalizedDate = startOfDay(parsedDate);
+      const dayKey = toDateKey(normalizedDate);
+      const dayTimestamp = normalizedDate.getTime();
 
-        if (!byDateKey.has(dayKey)) {
-          byDateKey.set(dayKey, workout);
-        }
+      const workoutsForDay = byDateKey.get(dayKey) || [];
+      workoutsForDay.push(workout);
+      byDateKey.set(dayKey, workoutsForDay);
 
-        dateSet.add(dayKey);
-
-        if (earliestTimestamp === null || dayTimestamp < earliestTimestamp) {
-          earliestTimestamp = dayTimestamp;
-        }
+      if (workout.isRestDay) {
+        restDateSet.add(dayKey);
+      } else {
+        workoutDateSet.add(dayKey);
       }
 
-      let keyHash = 0;
-      const sortedKeys = [...dateSet].sort();
-      for (const key of sortedKeys) {
-        for (let idx = 0; idx < key.length; idx += 1) {
-          keyHash = (keyHash * 31 + key.charCodeAt(idx)) | 0;
-        }
+      if (earliestTimestamp === null || dayTimestamp < earliestTimestamp) {
+        earliestTimestamp = dayTimestamp;
       }
+    }
 
-      return {
-        historyByDateKey: byDateKey,
-        historyDateSet: dateSet,
-        earliestWorkoutDate:
-          earliestTimestamp !== null ? new Date(earliestTimestamp) : null,
-        historySignature: `${sortedKeys.length}-${keyHash}`,
-      };
-    }, [workoutsHistory]);
+    let keyHash = 0;
+    const sortedKeys = [...byDateKey.keys()].sort();
+    for (const key of sortedKeys) {
+      for (let idx = 0; idx < key.length; idx += 1) {
+        keyHash = (keyHash * 31 + key.charCodeAt(idx)) | 0;
+      }
+    }
+
+    return {
+      historyByDateKey: byDateKey,
+      historyDateSet: workoutDateSet,
+      loggedRestDayDateSet: restDateSet,
+      earliestWorkoutDate:
+        earliestTimestamp !== null ? new Date(earliestTimestamp) : null,
+      historySignature: `${sortedKeys.length}-${keyHash}`,
+    };
+  }, [workoutsHistory]);
 
   const calendarDays = useMemo(() => {
     const today = startOfDay(new Date());
@@ -242,28 +253,26 @@ const History = () => {
   );
 
   const workoutPlanByDayName = useMemo(() => {
-    const map = new Map<string, boolean>();
+    const map = new Map<string, DayWorkout>();
     for (const day of workoutPlan?.days || []) {
-      map.set(day.day, day.isRestDay);
+      map.set(day.day, day);
     }
     return map;
   }, [workoutPlan]);
 
   const restDayDateSet = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(loggedRestDayDateSet);
     if (!workoutPlan || calendarDays.length === 0) return set;
 
     for (const day of calendarDays) {
-      const dayOfWeek = day.getDay();
-      const adjustedDayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const dayName = DAYS_FULL[adjustedDayOfWeek];
-      if (workoutPlanByDayName.get(dayName)) {
+      const dayName = getCycleDayNameFromDate(day, workoutPlan);
+      if (workoutPlanByDayName.get(dayName)?.isRestDay) {
         set.add(toDateKey(day));
       }
     }
 
     return set;
-  }, [calendarDays, workoutPlan, workoutPlanByDayName]);
+  }, [calendarDays, loggedRestDayDateSet, workoutPlan, workoutPlanByDayName]);
 
   const onRefresh = useCallback(() => {
     const today = startOfDay(new Date());
@@ -276,7 +285,20 @@ const History = () => {
   }, [loadHistory]);
 
   const selectedDateKey = toDateKey(selectedDate);
-  const selectedWorkout = historyByDateKey.get(selectedDateKey) ?? null;
+  const selectedDayWorkouts = historyByDateKey.get(selectedDateKey) ?? [];
+  const selectedWorkout =
+    selectedDayWorkouts.find((workout) => !workout.isRestDay) ?? null;
+  const hasLoggedRestDay = selectedDayWorkouts.some(
+    (workout) => workout.isRestDay,
+  );
+
+  const selectedPlanDay = useMemo(() => {
+    if (!workoutPlan) return null;
+    const dayName = getCycleDayNameFromDate(selectedDate, workoutPlan);
+    return workoutPlanByDayName.get(dayName) ?? null;
+  }, [selectedDate, workoutPlan, workoutPlanByDayName]);
+
+  const isSelectedDayRestDay = hasLoggedRestDay || Boolean(selectedPlanDay?.isRestDay);
 
   const calendarIndexByDateKey = useMemo(() => {
     const map = new Map<string, number>();
@@ -388,6 +410,7 @@ const History = () => {
               <HistoryContentState
                 selectedWorkout={selectedWorkout}
                 hasAnyWorkouts={hasAnyWorkouts}
+                isSelectedDayRestDay={isSelectedDayRestDay}
               />
             </ScrollView>
           </View>

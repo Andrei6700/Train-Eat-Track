@@ -145,6 +145,7 @@ export type WorkoutHistory = {
   date: Date | string;
   duration: number;
   exercises: WorkoutExercise[];
+  isRestDay?: boolean;
 };
 
 export type WorkoutHistoryListProps = {

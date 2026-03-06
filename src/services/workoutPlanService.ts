@@ -15,6 +15,52 @@ import {
 const COLLECTION_NAME = "workoutPlans";
 const WORKOUTS_COLLECTION = "workoutsHistory";
 
+const toMillis = (value: any): number => {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "object" && typeof value.toDate === "function") {
+    const converted = value.toDate();
+    return converted instanceof Date ? converted.getTime() : 0;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const getPlannedExercisesCount = (plan: WorkoutPlan): number => {
+  if (!Array.isArray(plan.days)) return 0;
+
+  return plan.days.reduce((total, day) => {
+    if (day?.isRestDay) return total;
+    return total + (Array.isArray(day?.exercises) ? day.exercises.length : 0);
+  }, 0);
+};
+
+const pickBestWorkoutPlan = (plans: WorkoutPlan[]): WorkoutPlan | null => {
+  if (plans.length === 0) return null;
+
+  const sortedPlans = [...plans].sort((a, b) => {
+    const aHasExercises = getPlannedExercisesCount(a) > 0 ? 1 : 0;
+    const bHasExercises = getPlannedExercisesCount(b) > 0 ? 1 : 0;
+
+    if (bHasExercises !== aHasExercises) {
+      return bHasExercises - aHasExercises;
+    }
+
+    const aUpdatedAt = toMillis(a.updatedAt) || toMillis(a.createdAt);
+    const bUpdatedAt = toMillis(b.updatedAt) || toMillis(b.createdAt);
+    if (bUpdatedAt !== aUpdatedAt) {
+      return bUpdatedAt - aUpdatedAt;
+    }
+
+    const aCreatedAt = toMillis(a.createdAt);
+    const bCreatedAt = toMillis(b.createdAt);
+    return bCreatedAt - aCreatedAt;
+  });
+
+  return sortedPlans[0] || null;
+};
+
 // take user workout plan 
 export const getUserWorkoutPlan = async (
   userID: string
@@ -28,10 +74,14 @@ export const getUserWorkoutPlan = async (
     const querySnapshot = await getDocs(q);
     
     if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0];
+      const plans = querySnapshot.docs.map(
+        (docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as WorkoutPlan
+      );
+      const bestPlan = pickBestWorkoutPlan(plans);
+
       return {
         success: true,
-        data: { id: doc.id, ...doc.data() } as WorkoutPlan,
+        data: bestPlan,
       };
     }
     
