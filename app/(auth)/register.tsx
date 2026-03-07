@@ -5,7 +5,7 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
-import { useLanguage } from "@/src/contexts/languageContext";
+import { translateText } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -20,7 +20,7 @@ const Register = () => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const router = useRouter();
   const { register: registerUser } = useAuth();
-  const { t } = useLanguage();
+  const t = (key: string) => translateText("en", key);
 
   const handleSubmit = async () => {
     if (!emailRef.current || !passwordRef.current || !nameRef.current) {

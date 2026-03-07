@@ -2,7 +2,7 @@ import { colors, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import Button from "@/src/components/ui/Button";
 import Typo from "@/src/components/ui/Typo";
-import { useLanguage } from "@/src/contexts/languageContext";
+import { translateText } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -11,7 +11,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const Welcome = () => {
   const router = useRouter();
-  const { t } = useLanguage();
+  const t = (key: string) => translateText("en", key);
   return (
     <ScreenWrapper>
       <View style={styles.container}>

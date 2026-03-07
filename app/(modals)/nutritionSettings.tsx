@@ -14,7 +14,6 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +22,7 @@ const NutritionSettings = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { todayNutrition, updateGoals } = useNutrition();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
 
   const [goals, setGoals] = useState({
     calorieGoal: todayNutrition?.calorieGoal || 2500,
@@ -33,11 +32,6 @@ const NutritionSettings = () => {
   });
 
   const [saving, setSaving] = useState(false);
-
-  const handleLanguageChange = (nextLanguage: "en" | "ro") => {
-    if (nextLanguage === language) return;
-    void setLanguage(nextLanguage);
-  };
 
   const handleSave = async () => {
     if (goals.calorieGoal <= 0) {
@@ -73,46 +67,6 @@ const NutritionSettings = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.languageCard}>
-            <Typo size={16} fontWeight="600">
-              {t("settings_language_label")}
-            </Typo>
-            <View style={styles.languageOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.languageButton,
-                  language === "ro" && styles.languageButtonActive,
-                ]}
-                onPress={() => handleLanguageChange("ro")}
-                activeOpacity={0.8}
-              >
-                <Typo
-                  size={13}
-                  fontWeight="600"
-                  color={language === "ro" ? colors.black : colors.white}
-                >
-                  {t("settings_language_romanian")}
-                </Typo>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.languageButton,
-                  language === "en" && styles.languageButtonActive,
-                ]}
-                onPress={() => handleLanguageChange("en")}
-                activeOpacity={0.8}
-              >
-                <Typo
-                  size={13}
-                  fontWeight="600"
-                  color={language === "en" ? colors.black : colors.white}
-                >
-                  {t("settings_language_english")}
-                </Typo>
-              </TouchableOpacity>
-            </View>
-          </View>
-
           <View style={styles.section}>
             <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
               {t("nutrition_settings_daily_goals")}
@@ -229,34 +183,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: verticalScale(100),
-  },
-  languageCard: {
-    backgroundColor: colors.neutral900,
-    borderRadius: radius._15,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-    paddingVertical: spacingY._12,
-    paddingHorizontal: spacingX._15,
-    marginBottom: spacingY._20,
-    gap: spacingY._10,
-  },
-  languageOptions: {
-    flexDirection: "row",
-    gap: spacingX._10,
-  },
-  languageButton: {
-    flex: 1,
-    borderRadius: radius._12,
-    borderWidth: 1,
-    borderColor: colors.neutral600,
-    paddingVertical: spacingY._10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.neutral800,
-  },
-  languageButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   section: {
     marginBottom: spacingY._25,
