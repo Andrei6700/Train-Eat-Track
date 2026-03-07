@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function CustomTabs({
   state,
@@ -17,6 +18,15 @@ export default function CustomTabs({
   navigation,
 }: BottomTabBarProps) {
   const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const isAndroid = Platform.OS === "android";
+  const androidBottomInset = isAndroid ? insets.bottom : 0;
+  const tabbarHeight =
+    Platform.OS === "ios" ? verticalScale(85) : verticalScale(70) + androidBottomInset;
+  const tabbarPaddingBottom =
+    Platform.OS === "ios"
+      ? spacingY._15
+      : Math.max(spacingY._10, androidBottomInset);
   const tabbarIcons: any = {
     index: (isFocused: boolean) => (
       <Icons.HouseIcon
@@ -72,7 +82,15 @@ export default function CustomTabs({
   };
 
   return (
-    <View style={styles.tabbar}>
+    <View
+      style={[
+        styles.tabbar,
+        {
+          height: tabbarHeight,
+          paddingBottom: tabbarPaddingBottom,
+        },
+      ]}
+    >
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
 
@@ -125,13 +143,11 @@ const styles = StyleSheet.create({
   tabbar: {
     flexDirection: "row",
     width: "100%",
-    height: Platform.OS === "ios" ? verticalScale(85) : verticalScale(70),
     backgroundColor: colors.black,
     justifyContent: "space-around",
     alignItems: "center",
     borderTopColor: colors.neutral700,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === "ios" ? spacingY._15 : spacingY._10,
   },
   tabbarItem: {
     justifyContent: "flex-end",
