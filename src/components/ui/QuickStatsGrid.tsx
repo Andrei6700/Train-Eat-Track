@@ -1,74 +1,20 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useLanguage } from "@/src/contexts/languageContext";
-import { WorkoutHistory } from "@/src/types/index";
+import { HomeQuickStats } from "@/src/features/home/homeSelectors";
 import { verticalScale } from "@/src/utils/styling";
-import * as Icons from "phosphor-react-native";
-import React, { useMemo } from "react";
+import { Barbell, Fire, Timer } from "phosphor-react-native";
+import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Typo from "./Typo";
 
 type QuickStatsGridProps = {
-  workouts: WorkoutHistory[];
+  stats: HomeQuickStats;
   loading?: boolean;
 };
 
-const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) => {
+const QuickStatsGrid = React.memo(({ stats, loading }: QuickStatsGridProps) => {
   const { t } = useLanguage();
-  const stats = useMemo(() => {
-    const nonRestWorkouts = (workouts || []).filter((workout) => !workout.isRestDay);
-
-    if (nonRestWorkouts.length === 0) {
-      return {
-        totalWorkouts: 0,
-        totalHoursDisplay: "0",
-        currentStreak: 0,
-      };
-    }
-
-    const totalWorkouts = nonRestWorkouts.length;
-    const totalTime = nonRestWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0);
-    const totalHours = totalTime / 3600;
-    const totalHoursDisplay =
-      totalHours >= 100
-        ? Math.round(totalHours).toString()
-        : Number(totalHours.toFixed(1)).toString();
-
-    // Calculate current streak using the same logic as aiCoachService
-    const sortedWorkouts = [...nonRestWorkouts].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-
-    let streak = 0;
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-
-    for (const workout of sortedWorkouts) {
-      const workoutDate = new Date(workout.date);
-      workoutDate.setHours(0, 0, 0, 0);
-
-      const diffDays = Math.floor(
-        (currentDate.getTime() - workoutDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (diffDays === streak) {
-        streak++;
-        currentDate = workoutDate;
-      } else if (diffDays === streak + 1) {
-        // Allow one day gap
-        streak++;
-        currentDate = workoutDate;
-      } else {
-        break;
-      }
-    }
-
-    return {
-      totalWorkouts,
-      totalHoursDisplay,
-      currentStreak: streak,
-    };
-  }, [workouts]);
 
   if (loading) {
     return (
@@ -81,8 +27,8 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(50)} style={styles.container}>
       <View style={styles.statCard}>
-        <View style={[styles.statIcon, { backgroundColor: `${colors.primary}15` }]}>
-          <Icons.Barbell size={24} color={colors.primary} weight="fill" />
+        <View style={[styles.statIcon, styles.primaryIconBackground]}>
+          <Barbell size={24} color={colors.primary} weight="fill" />
         </View>
         <Typo size={28} fontWeight="700" style={styles.statValue}>
           {stats.totalWorkouts}
@@ -93,8 +39,8 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
       </View>
 
       <View style={styles.statCard}>
-        <View style={[styles.statIcon, { backgroundColor: "#EF444415" }]}>
-          <Icons.Fire size={24} color="#EF4444" weight="fill" />
+        <View style={[styles.statIcon, styles.streakIconBackground]}>
+          <Fire size={24} color="#EF4444" weight="fill" />
         </View>
         <Typo size={28} fontWeight="700" style={styles.statValue}>
           {stats.currentStreak}
@@ -105,8 +51,8 @@ const QuickStatsGrid = React.memo(({ workouts, loading }: QuickStatsGridProps) =
       </View>
 
       <View style={styles.statCard}>
-        <View style={[styles.statIcon, { backgroundColor: "#3B82F615" }]}>
-          <Icons.Timer size={24} color="#3B82F6" weight="fill" />
+        <View style={[styles.statIcon, styles.durationIconBackground]}>
+          <Timer size={24} color="#3B82F6" weight="fill" />
         </View>
         <Typo size={28} fontWeight="700" style={styles.statValue}>
           {stats.totalHoursDisplay}h
@@ -148,6 +94,15 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  primaryIconBackground: {
+    backgroundColor: `${colors.primary}15`,
+  },
+  streakIconBackground: {
+    backgroundColor: "#EF444415",
+  },
+  durationIconBackground: {
+    backgroundColor: "#3B82F615",
   },
   statValue: {
     marginTop: spacingY._10,

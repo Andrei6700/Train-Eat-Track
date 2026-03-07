@@ -1,7 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
-import * as Icons from "phosphor-react-native";
+import { ArrowRight, Database, Flask } from "phosphor-react-native";
 import React from "react";
 import { Linking, StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -18,7 +18,7 @@ type LatestScienceCardProps = {
   articles?: Article[];
 };
 
-// articles hardcodate 
+// articles hardcodate
 const DEFAULT_ARTICLES: Article[] = [
   {
     title: "High-Protein Diets and Muscle Recovery",
@@ -36,6 +36,7 @@ const DEFAULT_ARTICLES: Article[] = [
 
 const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestScienceCardProps) => {
   const { t } = useLanguage();
+
   const handleArticlePress = (url: string) => {
     Linking.openURL(url);
   };
@@ -49,7 +50,7 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={styles.iconContainer}>
-            <Icons.Flask size={22} color={"#8B5CF6"} weight="fill" />
+            <Flask size={22} color="#8B5CF6" weight="fill" />
           </View>
           <Typo size={18} fontWeight="700" color={colors.white}>
             {t("home_latest_science")}
@@ -59,9 +60,9 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
 
       {/* Articles */}
       <View style={styles.articlesList}>
-        {articles.slice(0, 2).map((article, index) => (
+        {articles.slice(0, 2).map((article) => (
           <TouchableOpacity
-            key={index}
+            key={article.url}
             style={styles.articleItem}
             onPress={() => handleArticlePress(article.url)}
             activeOpacity={0.7}
@@ -70,18 +71,13 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
               <Typo size={15} fontWeight="600" color={colors.white} numberOfLines={2}>
                 {article.title}
               </Typo>
-              <Typo
-                size={13}
-                color={colors.neutral400}
-                numberOfLines={2}
-                style={{ marginTop: verticalScale(6), lineHeight: 18 }}
-              >
+              <Typo size={13} color={colors.neutral400} numberOfLines={2} style={styles.articleSummary}>
                 {article.summary}
               </Typo>
             </View>
 
             <View style={styles.arrowIcon}>
-              <Icons.ArrowRight size={18} color={colors.primary} weight="bold" />
+              <ArrowRight size={18} color={colors.primary} weight="bold" />
             </View>
           </TouchableOpacity>
         ))}
@@ -89,7 +85,7 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Icons.Database size={14} color={colors.neutral500} weight="fill" />
+        <Database size={14} color={colors.neutral500} weight="fill" />
         <Typo size={11} color={colors.neutral500}>
           PubMed • National Library of Medicine
         </Typo>
@@ -141,6 +137,10 @@ const styles = StyleSheet.create({
   },
   articleContent: {
     flex: 1,
+  },
+  articleSummary: {
+    marginTop: verticalScale(6),
+    lineHeight: 18,
   },
   arrowIcon: {
     width: verticalScale(32),

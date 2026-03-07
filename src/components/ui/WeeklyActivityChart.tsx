@@ -1,63 +1,26 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useLanguage } from "@/src/contexts/languageContext";
+import { HomeWeekData } from "@/src/features/home/homeSelectors";
 import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
-import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import * as Icons from "phosphor-react-native";
-import React, { useMemo } from "react";
+import { TrendUp } from "phosphor-react-native";
+import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Typo from "./Typo";
 
 type WeeklyActivityChartProps = {
-  workouts: WorkoutHistory[];
+  weekData: HomeWeekData;
 };
 
-const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) => {
+const WeeklyActivityChart = React.memo(({ weekData }: WeeklyActivityChartProps) => {
   const { language, t } = useLanguage();
-  const weekData = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-    const weekWorkoutCounts: number[] = [0, 0, 0, 0, 0, 0, 0];
-    const weekRestDays: boolean[] = [false, false, false, false, false, false, false];
-
-    workouts.forEach((workout) => {
-      const workoutDate = new Date(workout.date);
-      workoutDate.setHours(0, 0, 0, 0);
-
-      const diffDays = Math.floor(
-        (workoutDate.getTime() - monday.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (diffDays >= 0 && diffDays < 7) {
-        if (workout.isRestDay) {
-          weekRestDays[diffDays] = true;
-          return;
-        }
-
-        weekWorkoutCounts[diffDays]++;
-      }
-    });
-
-    const workoutDaysCount = weekWorkoutCounts.filter((count) => count > 0).length;
-
-    return {
-      days: weekWorkoutCounts,
-      restDays: weekRestDays,
-      workoutDaysCount,
-    };
-  }, [workouts]);
 
   return (
     <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.container}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Icons.TrendUp size={22} color={colors.primary} weight="fill" />
+          <TrendUp size={22} color={colors.primary} weight="fill" />
           <Typo size={18} fontWeight="700">
             {t("home_this_week")}
           </Typo>
@@ -82,11 +45,11 @@ const WeeklyActivityChart = React.memo(({ workouts }: WeeklyActivityChartProps) 
                   styles.bar,
                   weekData.days[index] > 0 && styles.barActive,
                   weekData.days[index] === 0 && weekData.restDays[index] && styles.barRestDay,
-                  weekData.days[index] > 1 && { height: verticalScale(75) },
+                  weekData.days[index] > 1 && styles.barHigh,
                 ]}
               />
             </View>
-            <Typo size={11} color={colors.neutral500} style={{ marginTop: spacingY._7 }}>
+            <Typo size={11} color={colors.neutral500} style={styles.dayLabel}>
               {day}
             </Typo>
           </View>
@@ -149,11 +112,17 @@ const styles = StyleSheet.create({
     height: verticalScale(60),
     backgroundColor: colors.primary,
   },
+  barHigh: {
+    height: verticalScale(75),
+  },
   barRestDay: {
     height: verticalScale(60),
     backgroundColor: "transparent",
     borderWidth: 2,
     borderStyle: "dashed",
     borderColor: colors.neutral500,
+  },
+  dayLabel: {
+    marginTop: spacingY._7,
   },
 });

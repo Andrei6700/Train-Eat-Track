@@ -8,46 +8,91 @@ import Typo from "@/src/components/ui/Typo";
 import WeeklyActivityChart from "@/src/components/ui/WeeklyActivityChart";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
+import { getHomeDerivedData } from "@/src/features/home/homeSelectors";
 import { invalidateCache } from "@/src/services/workoutCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 const Home = React.memo(() => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const userId = user?.uid;
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const latestRequestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    if (user?.uid) {
-      loadWorkouts();
-    }
-  }, [user?.uid]);
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  const loadWorkouts = useCallback(async () => {
-    if (!user?.uid) return;
+  const loadWorkouts = useCallback(
+    async ({ isRefresh = false, shouldInvalidateCache = false } = {}) => {
+      if (!userId) return;
 
-    setLoading(true);
-    const result = await getUserWorkouts(user.uid);
+      const requestId = ++latestRequestIdRef.current;
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-    if (result.success && result.data) {
-      setWorkoutsHistory(result.data);
-    } else {
+      try {
+        if (shouldInvalidateCache) {
+          invalidateCache();
+        }
+        const result = await getUserWorkouts(userId);
+
+        if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
+          return;
+        }
+
+        if (result.success && Array.isArray(result.data)) {
+          setWorkoutsHistory(result.data);
+          return;
+        }
+
+        setWorkoutsHistory([]);
+      } catch {
+        if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
+          return;
+        }
+        setWorkoutsHistory([]);
+      } finally {
+        if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
+          return;
+        }
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [userId],
+  );
+
+  useEffect(() => {
+    if (!userId) {
       setWorkoutsHistory([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
-    setLoading(false);
-  }, [user?.uid]);
+    void loadWorkouts();
+  }, [loadWorkouts, userId]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    invalidateCache();
-    await loadWorkouts();
-    setRefreshing(false);
+  const onRefresh = useCallback(() => {
+    return loadWorkouts({ isRefresh: true, shouldInvalidateCache: true });
   }, [loadWorkouts]);
+
+  const homeData = useMemo(
+    () => getHomeDerivedData(workoutsHistory),
+    [workoutsHistory],
+  );
 
   return (
     <SwipeableScreen>
@@ -75,11 +120,11 @@ const Home = React.memo(() => {
               </View>
             </View>
 
-            <QuickStatsGrid workouts={workoutsHistory} loading={loading} />
+            <QuickStatsGrid stats={homeData.quickStats} loading={loading} />
 
-            <WeeklyActivityChart workouts={workoutsHistory} />
+            <WeeklyActivityChart weekData={homeData.weekData} />
 
-            <RecentWorkouts workouts={workoutsHistory} loading={loading} />
+            <RecentWorkouts recentWorkouts={homeData.recentWorkouts} loading={loading} />
 
             <LatestScienceCard />
           </ScrollView>
@@ -89,7 +134,7 @@ const Home = React.memo(() => {
   );
 });
 
-Home.displayName = 'Home';
+Home.displayName = "Home";
 
 export default Home;
 
