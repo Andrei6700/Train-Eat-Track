@@ -1,5 +1,5 @@
 import { firestore } from "@/src/config/firebase";
-import { DailyNutrition, ResponseType } from '@/src/types/index';
+import { DailyNutrition, ResponseType } from "@/src/types/index";
 import {
   addDoc,
   collection,
@@ -10,163 +10,140 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
-  where
+  where,
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "nutrition";
 
-//  helper for normalizing date (set time to 00:00:00)
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 };
 
-//  helper for creating consistent document ID
-const getDateKey = (date: Date): string => {
+export const getDateKey = (date: Date): string => {
   const normalized = normalizeDate(date);
-  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}-${String(
+    normalized.getDate(),
+  ).padStart(2, "0")}`;
 };
 
-//  helper for fetching daily nutrition data for a specific date
+const parseFirestoreDate = (value: unknown, fallback: Date): Date => {
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  const parsed = new Date(value as any);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+};
+
+const parseNutritionDoc = (docId: string, payload: any, fallbackDate: Date): DailyNutrition => {
+  const nutritionDate = parseFirestoreDate(payload.date, fallbackDate);
+  const updatedAt = payload.updatedAt ? parseFirestoreDate(payload.updatedAt, nutritionDate) : undefined;
+
+  return {
+    id: docId,
+    ...payload,
+    date: nutritionDate,
+    updatedAt,
+  } as DailyNutrition;
+};
+
 export const getDailyNutrition = async (
   userID: string,
-  date: Date
+  date: Date,
 ): Promise<ResponseType> => {
   try {
     const dateKey = getDateKey(date);
 
-    console.log('[NutritionService] Searching for dateKey:', dateKey);
-
-    //  Searching by userID and dateKey (no longer comparing timestamps)
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      where("dateKey", "==", dateKey)
+      where("dateKey", "==", dateKey),
     );
 
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      const docData = querySnapshot.docs[0];
-      const data = docData.data() as any;
-
-      console.log('[NutritionService] Found existing document:', docData.id);
-
-      // Convert date field from Timestamp to Date
-      let nutritionDate = date;
-      if (data.date) {
-        nutritionDate = data.date instanceof Timestamp
-          ? data.date.toDate()
-          : new Date(data.date);
-      }
-
+      const firstDoc = querySnapshot.docs[0];
       return {
         success: true,
-        data: {
-          id: docData.id,
-          ...data,
-          date: nutritionDate,
-        } as DailyNutrition,
+        data: parseNutritionDoc(firstDoc.id, firstDoc.data(), date),
       };
     }
 
-    console.log('[NutritionService] No document found for dateKey:', dateKey);
-
-    //  NO LONGER CREATING DOCUMENT HERE - just return null
     return {
       success: true,
       data: null,
     };
   } catch (error: any) {
     console.error("[NutritionService] Error fetching daily nutrition:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Save or update daily nutrition data
 export const saveDailyNutrition = async (
-  nutrition: DailyNutrition
+  nutrition: DailyNutrition,
 ): Promise<ResponseType> => {
   try {
-    const dateKey = getDateKey(new Date(nutrition.date));
+    const date = new Date(nutrition.date);
+    const dateKey = getDateKey(date);
 
     if (nutrition.id) {
-      //  UPDATE - keep existing ID
-      console.log('[NutritionService] Updating document:', nutrition.id);
-
       const docRef = doc(firestore, COLLECTION_NAME, nutrition.id);
-      const { id, ...updateData } = nutrition;
+      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+        localUpdatedAt?: number;
+      };
 
       await updateDoc(docRef, {
         ...updateData,
-        dateKey, //  Salvăm și dateKey pentru căutare
-        date: Timestamp.fromDate(new Date(nutrition.date)),
+        dateKey,
+        date: Timestamp.fromDate(date),
         updatedAt: serverTimestamp(),
       });
 
-      return { success: true, msg: "Nutrition updated successfully" };
-    } else {
-      //  CREATE - new document
-      console.log('[NutritionService] Creating new document for dateKey:', dateKey);
-
-      const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
-        ...nutrition,
-        dateKey, //  Save dateKey for quick search
-        date: Timestamp.fromDate(new Date(nutrition.date)),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      console.log('[NutritionService] Document created with ID:', docRef.id);
-
-      return { success: true, data: { id: docRef.id } };
+      return { success: true, data: { id: nutrition.id } };
     }
+
+    const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
+      ...nutrition,
+      dateKey,
+      date: Timestamp.fromDate(date),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
     console.error("[NutritionService] Error saving daily nutrition:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-//  helper for fetching user's nutrition history
 export const getUserNutritionHistory = async (
-  userID: string
+  userID: string,
 ): Promise<ResponseType> => {
   try {
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      orderBy("dateKey", "desc")
+      orderBy("dateKey", "desc"),
     );
 
     const querySnapshot = await getDocs(q);
     const nutritionHistory: DailyNutrition[] = [];
 
     querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-
-      let date = new Date();
-      if (data.date instanceof Timestamp) {
-        date = data.date.toDate();
-      } else if (data.date) {
-        date = new Date(data.date);
-      }
-
-      nutritionHistory.push({
-        id: docSnap.id,
-        ...data,
-        date,
-      } as DailyNutrition);
+      nutritionHistory.push(parseNutritionDoc(docSnap.id, docSnap.data(), new Date()));
     });
 
     return { success: true, data: nutritionHistory };
   } catch (error: any) {
     console.error("[NutritionService] Error fetching nutrition history:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Update nutrition goals
 export const updateNutritionGoals = async (
   userID: string,
   goals: {
@@ -174,7 +151,7 @@ export const updateNutritionGoals = async (
     proteinGoal?: number;
     carbsGoal?: number;
     fatGoal?: number;
-  }
+  },
 ): Promise<ResponseType> => {
   try {
     const dateKey = getDateKey(new Date());
@@ -182,7 +159,7 @@ export const updateNutritionGoals = async (
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      where("dateKey", "==", dateKey)
+      where("dateKey", "==", dateKey),
     );
 
     const querySnapshot = await getDocs(q);
@@ -198,6 +175,6 @@ export const updateNutritionGoals = async (
     return { success: true, msg: "Goals updated successfully" };
   } catch (error: any) {
     console.error("[NutritionService] Error updating goals:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };

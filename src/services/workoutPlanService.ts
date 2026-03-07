@@ -1,5 +1,6 @@
 import { firestore } from "@/src/config/firebase";
-import { ResponseType, WorkoutPlan } from '@/src/types/index';
+import { ResponseType, WorkoutPlan } from "@/src/types/index";
+import NetInfo from "@react-native-community/netinfo";
 import {
   addDoc,
   collection,
@@ -9,11 +10,21 @@ import {
   getDocs,
   query,
   updateDoc,
-  where
+  where,
 } from "firebase/firestore";
+import { enqueueOrMergeAction } from "./syncQueueService";
 
 const COLLECTION_NAME = "workoutPlans";
 const WORKOUTS_COLLECTION = "workoutsHistory";
+
+const isOnline = async (): Promise<boolean> => {
+  try {
+    const state = await NetInfo.fetch();
+    return state.isConnected ?? false;
+  } catch {
+    return false;
+  }
+};
 
 const toMillis = (value: any): number => {
   if (!value) return 0;
@@ -25,6 +36,21 @@ const toMillis = (value: any): number => {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+const toDate = (value: any): Date => {
+  if (value instanceof Date) return value;
+  if (value && typeof value.toDate === "function") {
+    const converted = value.toDate();
+    if (converted instanceof Date) return converted;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date();
+  }
+
+  return parsed;
 };
 
 const getPlannedExercisesCount = (plan: WorkoutPlan): number => {
@@ -61,21 +87,27 @@ const pickBestWorkoutPlan = (plans: WorkoutPlan[]): WorkoutPlan | null => {
   return sortedPlans[0] || null;
 };
 
-// take user workout plan 
+const parseWorkoutPlanDoc = (docId: string, payload: any): WorkoutPlan => ({
+  id: docId,
+  ...payload,
+  createdAt: toDate(payload.createdAt),
+  updatedAt: toDate(payload.updatedAt),
+});
+
 export const getUserWorkoutPlan = async (
-  userID: string
+  userID: string,
 ): Promise<ResponseType> => {
   try {
     const q = query(
       collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID)
+      where("userID", "==", userID),
     );
 
     const querySnapshot = await getDocs(q);
-    
+
     if (!querySnapshot.empty) {
-      const plans = querySnapshot.docs.map(
-        (docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as WorkoutPlan
+      const plans = querySnapshot.docs.map((docSnap) =>
+        parseWorkoutPlanDoc(docSnap.id, docSnap.data()),
       );
       const bestPlan = pickBestWorkoutPlan(plans);
 
@@ -84,36 +116,34 @@ export const getUserWorkoutPlan = async (
         data: bestPlan,
       };
     }
-    
+
     return { success: true, data: null };
   } catch (error: any) {
     console.log("Error fetching workout plan:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// create a new workout plan
-export const createWorkoutPlan = async (
-  plan: WorkoutPlan
+export const createWorkoutPlanRemote = async (
+  plan: WorkoutPlan,
 ): Promise<ResponseType> => {
   try {
     const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
       ...plan,
-      createdAt: new Date(),
+      createdAt: plan.createdAt ? toDate(plan.createdAt) : new Date(),
       updatedAt: new Date(),
     });
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
     console.log("Error creating workout plan:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Update workout plan
-export const updateWorkoutPlan = async (
+export const updateWorkoutPlanRemote = async (
   planId: string,
-  updates: Partial<WorkoutPlan>
+  updates: Partial<WorkoutPlan>,
 ): Promise<ResponseType> => {
   try {
     const planRef = doc(firestore, COLLECTION_NAME, planId);
@@ -125,65 +155,184 @@ export const updateWorkoutPlan = async (
     return { success: true, msg: "Workout plan updated successfully" };
   } catch (error: any) {
     console.log("Error updating workout plan:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-//  DELETE: Delete workout plan and ALL workouts from history
+export const upsertWorkoutPlanRemote = async (
+  plan: WorkoutPlan,
+): Promise<ResponseType> => {
+  const existing = await getUserWorkoutPlan(plan.userID);
+  if (!existing.success) {
+    return existing;
+  }
+
+  if (existing.data?.id) {
+    return updateWorkoutPlanRemote(existing.data.id, {
+      ...plan,
+      id: existing.data.id,
+    });
+  }
+
+  return createWorkoutPlanRemote(plan);
+};
+
+export const createWorkoutPlan = async (
+  plan: WorkoutPlan,
+): Promise<ResponseType> => {
+  const online = await isOnline();
+  const baseUpdatedAt = toMillis(plan.updatedAt);
+
+  if (!online) {
+    await enqueueOrMergeAction({
+      type: "UPSERT_WORKOUT_PLAN",
+      data: { plan },
+      dedupeKey: `${plan.userID}:workout_plan`,
+      baseUpdatedAt,
+      mergeStrategy: "replace_latest",
+    });
+
+    return {
+      success: true,
+      code: "SYNC_QUEUED_OFFLINE",
+      msg: "Workout plan saved locally and queued for sync.",
+    };
+  }
+
+  const remote = await createWorkoutPlanRemote(plan);
+  if (remote.success) {
+    return remote;
+  }
+
+  await enqueueOrMergeAction({
+    type: "UPSERT_WORKOUT_PLAN",
+    data: { plan },
+    dedupeKey: `${plan.userID}:workout_plan`,
+    baseUpdatedAt,
+    mergeStrategy: "replace_latest",
+  });
+
+  return {
+    success: true,
+    code: "SYNC_RETRY_SCHEDULED",
+    msg: "Workout plan saved locally and queued for sync.",
+  };
+};
+
+export const updateWorkoutPlan = async (
+  planId: string,
+  updates: Partial<WorkoutPlan>,
+): Promise<ResponseType> => {
+  const userID = updates.userID;
+  const online = await isOnline();
+  const baseUpdatedAt = toMillis(updates.updatedAt);
+
+  if (!online) {
+    if (userID) {
+      await enqueueOrMergeAction({
+        type: "UPSERT_WORKOUT_PLAN",
+        data: {
+          plan: {
+            ...updates,
+            id: planId,
+          },
+        },
+        dedupeKey: `${userID}:workout_plan`,
+        baseUpdatedAt,
+        mergeStrategy: "replace_latest",
+      });
+
+      return {
+        success: true,
+        code: "SYNC_QUEUED_OFFLINE",
+        msg: "Workout plan updated locally and queued for sync.",
+      };
+    }
+
+    return {
+      success: false,
+      code: "NETWORK_OFFLINE",
+      msg: "Cannot queue workout plan update without user information.",
+    };
+  }
+
+  const remote = await updateWorkoutPlanRemote(planId, updates);
+  if (remote.success) {
+    return remote;
+  }
+
+  if (userID) {
+    await enqueueOrMergeAction({
+      type: "UPSERT_WORKOUT_PLAN",
+      data: {
+        plan: {
+          ...updates,
+          id: planId,
+        },
+      },
+      dedupeKey: `${userID}:workout_plan`,
+      baseUpdatedAt,
+      mergeStrategy: "replace_latest",
+    });
+
+    return {
+      success: true,
+      code: "SYNC_RETRY_SCHEDULED",
+      msg: "Workout plan queued for retry sync.",
+    };
+  }
+
+  return remote;
+};
+
 export const deleteWorkoutPlan = async (
   planId: string,
-  userID: string
+  userID: string,
 ): Promise<ResponseType> => {
   try {
-    // 1. Delete the plan
     const planRef = doc(firestore, COLLECTION_NAME, planId);
     await deleteDoc(planRef);
-    
-    // 2. Delete all workouts from history for this user
+
     const workoutsQuery = query(
       collection(firestore, WORKOUTS_COLLECTION),
-      where("userID", "==", userID)
+      where("userID", "==", userID),
     );
-    
+
     const workoutsSnapshot = await getDocs(workoutsQuery);
-    
-    // delete each workout individually
-    const deletePromises = workoutsSnapshot.docs.map(workoutDoc => 
-      deleteDoc(doc(firestore, WORKOUTS_COLLECTION, workoutDoc.id))
+
+    const deletePromises = workoutsSnapshot.docs.map((workoutDoc) =>
+      deleteDoc(doc(firestore, WORKOUTS_COLLECTION, workoutDoc.id)),
     );
-    
+
     await Promise.all(deletePromises);
-    
-    console.log(`Deleted workout plan and ${workoutsSnapshot.size} workouts from history`);
-    
-    return { 
-      success: true, 
-      msg: `Workout plan and ${workoutsSnapshot.size} workout(s) deleted successfully` 
+
+    return {
+      success: true,
+      msg: `Workout plan and ${workoutsSnapshot.size} workout(s) deleted successfully`,
     };
   } catch (error: any) {
     console.log("Error deleting workout plan:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// take a workout plan by ID
 export const getWorkoutPlan = async (
-  planId: string
+  planId: string,
 ): Promise<ResponseType> => {
   try {
     const docRef = doc(firestore, COLLECTION_NAME, planId);
     const docSnap = await getDoc(docRef);
 
-    if (docSnap.exists()) {
-      return {
-        success: true,
-        data: { id: docSnap.id, ...docSnap.data() } as WorkoutPlan,
-      };
-    } else {
-      return { success: false, msg: "Workout plan not found" };
+    if (!docSnap.exists()) {
+      return { success: false, msg: "Workout plan not found", code: "UNKNOWN_ERROR" };
     }
+
+    return {
+      success: true,
+      data: parseWorkoutPlanDoc(docSnap.id, docSnap.data()),
+    };
   } catch (error: any) {
     console.log("Error getting workout plan:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };

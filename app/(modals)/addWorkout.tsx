@@ -598,7 +598,14 @@ const AddWorkout = () => {
           ],
         );
       } else {
-        Alert.alert("Error", result.msg || "Could not save workout");
+        if (result.code === "SYNC_CONFLICT") {
+          Alert.alert(
+            "Sync Conflict",
+            "A workout already exists for this date. Please review your history before saving another entry.",
+          );
+        } else {
+          Alert.alert("Error", result.msg || "Could not save workout");
+        }
       }
     } catch (err: any) {
       setLoading(false);

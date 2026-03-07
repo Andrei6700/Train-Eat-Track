@@ -199,6 +199,15 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     nutrition_settings_error_invalid_calorie:
       "Please enter a valid calorie goal",
     nutrition_settings_success_goals_updated: "Goals updated successfully!",
+    sync_status_pending: "{count} change(s) waiting to sync",
+    sync_status_retrying: "{count} change(s) will retry automatically",
+    sync_status_failed: "{count} change(s) failed and need attention",
+    sync_status_conflict: "{count} sync conflict(s) require review",
+    sync_action_keep_server: "Keep Server",
+    sync_action_keep_local: "Keep Local",
+    sync_summary_title: "Sync Summary",
+    sync_summary_message:
+      "Synced: {success}\\nFailed: {failed}\\nConflicts: {conflicts}",
   },
   ro: {
     common_today: "Azi",
@@ -342,6 +351,18 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
       "Te rog introdu un obiectiv caloric valid",
     nutrition_settings_success_goals_updated:
       "Obiectivele au fost actualizate cu succes!",
+    sync_status_pending: "{count} modificare(i) asteapta sincronizarea",
+    sync_status_retrying:
+      "{count} modificare(i) vor fi reincercate automat",
+    sync_status_failed:
+      "{count} modificare(i) au esuat si necesita atentie",
+    sync_status_conflict:
+      "{count} conflict(e) de sincronizare necesita revizuire",
+    sync_action_keep_server: "Pastreaza server",
+    sync_action_keep_local: "Pastreaza local",
+    sync_summary_title: "Rezumat sincronizare",
+    sync_summary_message:
+      "Sincronizate: {success}\\nEsuate: {failed}\\nConflicte: {conflicts}",
   },
 };
 

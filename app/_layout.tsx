@@ -1,20 +1,19 @@
 import { colors } from "@/constants/theme";
 import OfflineBanner from "@/src/components/ui/OfflineBanner";
+import SyncStatusBanner from "@/src/components/ui/SyncStatusBanner";
 import { AuthProvider } from "@/src/contexts/authContext";
-import { LanguageProvider } from "@/src/contexts/languageContext";
+import { LanguageProvider, useLanguage } from "@/src/contexts/languageContext";
 import { NetworkProvider, useNetwork } from "@/src/contexts/networkContext";
 import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
-import { addRecentFood } from "@/src/services/recentFoodsService";
+import { buildSyncHandlers } from "@/src/services/syncEngineService";
 import {
-  clearOfflineRecentFoods,
-  getOfflineWorkouts,
-  processSyncQueue,
-  removeOfflineWorkout,
+  processSyncQueueV2,
+  subscribeToSyncQueue,
+  SyncQueueSummary,
 } from "@/src/services/syncQueueService";
-import { addWorkout } from "@/src/services/workoutService";
 import { Stack } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Alert, StatusBar, View } from "react-native";
 import "react-native-reanimated";
 
@@ -31,86 +30,131 @@ if (__DEV__) {
   };
 }
 
-// SYNC MANAGER
+const EMPTY_SUMMARY: SyncQueueSummary = {
+  total: 0,
+  pending: 0,
+  processing: 0,
+  retryScheduled: 0,
+  failed: 0,
+  conflicts: 0,
+  nextRetryAt: null,
+};
+
 const SyncManager = () => {
   const { isConnected } = useNetwork();
-  const wasOffline = useRef(false);
+  const { t } = useLanguage();
+  const lastConnectionState = useRef<boolean>(true);
+  const isSyncingRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRetryTimer = useCallback(() => {
+    if (!retryTimerRef.current) return;
+    clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
+  }, []);
+
+  const runSync = useCallback(
+    async (reason: "startup" | "reconnected" | "background" | "manual") => {
+      if (!isConnected || isSyncingRef.current) {
+        return;
+      }
+
+      isSyncingRef.current = true;
+      try {
+        const result = await processSyncQueueV2(buildSyncHandlers());
+
+        const shouldShowSummary =
+          reason !== "background" &&
+          result.processed > 0 &&
+          (result.success > 0 || result.failed > 0 || result.conflicts > 0);
+
+        if (shouldShowSummary) {
+          Alert.alert(
+            t("sync_summary_title"),
+            t("sync_summary_message", {
+              success: result.success,
+              failed: result.failed,
+              conflicts: result.conflicts,
+            }),
+          );
+        }
+      } catch (error) {
+        console.error("[SyncManager] Sync run failed:", error);
+      } finally {
+        isSyncingRef.current = false;
+      }
+    },
+    [isConnected, t],
+  );
+
+  const scheduleRetrySync = useCallback(
+    (summary: SyncQueueSummary) => {
+      clearRetryTimer();
+
+      if (!isConnected || summary.retryScheduled === 0 || !summary.nextRetryAt) {
+        return;
+      }
+
+      const delay = Math.max(0, summary.nextRetryAt - Date.now());
+      retryTimerRef.current = setTimeout(() => {
+        void runSync("background");
+      }, delay + 25);
+    },
+    [clearRetryTimer, isConnected, runSync],
+  );
 
   useEffect(() => {
+    const wasOnline = lastConnectionState.current;
+    lastConnectionState.current = isConnected;
+
     if (!isConnected) {
-      wasOffline.current = true;
+      clearRetryTimer();
       return;
     }
 
-    if (wasOffline.current && isConnected) {
-      wasOffline.current = false;
-      handleSync();
+    if (!wasOnline && isConnected) {
+      void runSync("reconnected");
+      return;
     }
-  }, [isConnected]);
 
-  const handleSync = async () => {
-    console.log(" [SyncManager] Connection restored, syncing...");
+    void runSync("startup");
+  }, [clearRetryTimer, isConnected, runSync]);
 
-    try {
-      const offlineWorkouts = await getOfflineWorkouts();
-      let syncedWorkouts = 0;
+  useEffect(() => {
+    const unsubscribe = subscribeToSyncQueue((summary) => {
+      if (!isConnected) return;
 
-      for (const workout of offlineWorkouts) {
-        try {
-          const { isOffline, savedAt, ...cleanWorkout } = workout;
-          cleanWorkout.id = undefined;
+      scheduleRetrySync(summary);
 
-          const result = await addWorkout(cleanWorkout);
-          if (result.success && !result.data?.offline) {
-            await removeOfflineWorkout(workout.id);
-            syncedWorkouts++;
-          }
-        } catch (error) {
-          console.error("[SyncManager] Error syncing workout:", error);
+      const shouldRunImmediately =
+        summary.pending > 0 ||
+        summary.processing > 0 ||
+        (summary.retryScheduled > 0 &&
+          summary.nextRetryAt !== null &&
+          summary.nextRetryAt <= Date.now());
+
+      if (shouldRunImmediately) {
+        void runSync("background");
+      }
+    });
+
+    scheduleRetrySync(EMPTY_SUMMARY);
+
+    return () => {
+      unsubscribe();
+      clearRetryTimer();
+    };
+  }, [clearRetryTimer, isConnected, runSync, scheduleRetrySync]);
+
+  return (
+    <SyncStatusBanner
+      onConflictResolved={async () => {
+        if (isConnected) {
+          await runSync("manual");
         }
-      }
-
-      const queueResult = await processSyncQueue({
-        ADD_WORKOUT: async (data) => {
-          try {
-            const result = await addWorkout(data);
-            return result.success && !result.data?.offline;
-          } catch {
-            return false;
-          }
-        },
-        ADD_RECENT_FOOD: async (data) => {
-          try {
-            const result = await addRecentFood(
-              data.userID,
-              data.mealName,
-              data.food
-            );
-            return result.success;
-          } catch {
-            return false;
-          }
-        },
-      });
-
-      if (queueResult.success > 0) {
-        await clearOfflineRecentFoods();
-      }
-
-      const total = syncedWorkouts + queueResult.success;
-      if (total > 0) {
-        console.log(` [SyncManager] Synced ${total} items`);
-        Alert.alert(
-          "Sync Complete",
-          `${total} items have been successfully synced!`
-        );
-      }
-    } catch (error) {
-      console.error("[SyncManager] Sync error:", error);
-    }
-  };
-
-  return null;
+      }}
+    />
+  );
 };
 
 const StackLayout = () => {
@@ -120,25 +164,17 @@ const StackLayout = () => {
       <OfflineBanner />
       <SyncManager />
       <Stack
-        screenOptions={{ 
-          headerShown: false, 
+        screenOptions={{
+          headerShown: false,
           animation: "none",
           contentStyle: {
             backgroundColor: colors.neutral900,
           },
         }}
       >
-        {/* Main application routes  */}
-        <Stack.Screen 
-          name="(tabs)" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="(auth)" 
-          options={{ headerShown: false }} 
-        />
-        
-        {/* Modal screens */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+
         <Stack.Screen
           name="(modals)/profileModal"
           options={{ presentation: "modal" }}

@@ -132,13 +132,27 @@ const WorkoutPlanScreen = () => {
     setSaving(false);
 
     if (result.success) {
+      const queuedOffline =
+        result.code === "SYNC_QUEUED_OFFLINE" ||
+        result.code === "SYNC_RETRY_SCHEDULED";
+
       if (!existingPlanId && result.data?.id) {
         setExistingPlanId(result.data.id);
       }
-      await refreshPlan();
-      Alert.alert("Success", "Workout plan saved successfully!", [
+
+      if (!queuedOffline) {
+        await refreshPlan();
+      }
+
+      Alert.alert(
+        queuedOffline ? "Saved Offline" : "Success",
+        queuedOffline
+          ? "Workout plan saved locally and will sync automatically when connection is available."
+          : "Workout plan saved successfully!",
+        [
         { text: "OK", onPress: () => router.back() },
-      ]);
+        ],
+      );
     } else {
       Alert.alert("Error", result.msg || "Could not save workout plan");
     }

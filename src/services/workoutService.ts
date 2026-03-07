@@ -11,18 +11,19 @@ import {
   orderBy,
   query,
   Timestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { cacheLastWorkout, getCachedLastWorkout } from "./cacheService";
 import {
-  addToSyncQueue,
-  getOfflineWorkouts,
-  saveOfflineWorkout,
+  enqueueOrMergeAction,
+  getQueuedWorkoutDrafts,
+  removeFromSyncQueue,
+  toDateKey,
 } from "./syncQueueService";
 
 const COLLECTION_NAME = "workoutsHistory";
 
-// Check if we are online
 const isOnline = async (): Promise<boolean> => {
   try {
     const state = await NetInfo.fetch();
@@ -32,30 +33,193 @@ const isOnline = async (): Promise<boolean> => {
   }
 };
 
-// Get all workouts for a user
-export const getUserWorkouts = async (
+const normalizeWorkoutDate = (value: Date | string): Date => {
+  const workoutDate = new Date(value);
+  if (Number.isNaN(workoutDate.getTime())) {
+    const fallback = new Date();
+    fallback.setHours(12, 0, 0, 0);
+    return fallback;
+  }
+
+  workoutDate.setHours(12, 0, 0, 0);
+  return workoutDate;
+};
+
+const parseWorkoutDoc = (docId: string, payload: any): WorkoutHistory => {
+  const dateField = payload.date;
+  const date =
+    dateField && typeof dateField.toDate === "function"
+      ? dateField.toDate()
+      : dateField || null;
+
+  return {
+    id: docId,
+    ...payload,
+    date,
+  } as WorkoutHistory;
+};
+
+const mergeQueuedAndRemoteWorkouts = (
+  queued: WorkoutHistory[],
+  remote: WorkoutHistory[],
+): WorkoutHistory[] => {
+  const queuedByDateKey = new Map<string, WorkoutHistory>();
+  queued.forEach((item) => {
+    queuedByDateKey.set(toDateKey(item.date as Date | string), item);
+  });
+
+  const merged: WorkoutHistory[] = [];
+  const consumedKeys = new Set<string>();
+
+  remote.forEach((item) => {
+    const key = toDateKey(item.date as Date | string);
+    const queuedVersion = queuedByDateKey.get(key);
+    if (queuedVersion) {
+      merged.push(queuedVersion);
+      consumedKeys.add(key);
+      return;
+    }
+    merged.push(item);
+  });
+
+  queued.forEach((item) => {
+    const key = toDateKey(item.date as Date | string);
+    if (!consumedKeys.has(key)) {
+      merged.push(item);
+    }
+  });
+
+  return merged.sort(
+    (a, b) =>
+      new Date(b.date as Date | string).getTime() -
+      new Date(a.date as Date | string).getTime(),
+  );
+};
+
+export const getWorkoutByUserAndDate = async (
   userID: string,
+  date: Date | string,
 ): Promise<ResponseType> => {
   try {
-    console.log("[workoutService] getUserWorkouts userID:", userID);
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
 
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+      where("date", ">=", targetDate),
+      where("date", "<", nextDay),
+    );
+
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      return { success: true, data: null };
+    }
+
+    const firstDoc = querySnapshot.docs[0];
+    return {
+      success: true,
+      data: parseWorkoutDoc(firstDoc.id, firstDoc.data()),
+    };
+  } catch (error: any) {
+    console.error("[workoutService] Error getting workout by date:", error);
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
+export const addWorkoutRemote = async (
+  workout: WorkoutHistory,
+  options?: { forceOverwrite?: boolean },
+): Promise<ResponseType> => {
+  try {
+    const workoutDate = normalizeWorkoutDate(workout.date);
+
+    const existingResult = await getWorkoutByUserAndDate(workout.userID, workoutDate);
+    if (!existingResult.success) {
+      return existingResult;
+    }
+
+    if (existingResult.data) {
+      if (options?.forceOverwrite) {
+        const remoteWorkout = existingResult.data as WorkoutHistory;
+        if (!remoteWorkout.id) {
+          return {
+            success: false,
+            code: "UNKNOWN_ERROR",
+            msg: "Workout conflict exists but remote identifier is missing.",
+          };
+        }
+
+        const docRef = doc(firestore, COLLECTION_NAME, remoteWorkout.id);
+        await updateDoc(docRef, {
+          ...workout,
+          date: Timestamp.fromDate(workoutDate),
+        });
+
+        return {
+          success: true,
+          data: { id: remoteWorkout.id, overwritten: true },
+        };
+      }
+
+      return {
+        success: false,
+        code: "SYNC_CONFLICT",
+        msg: "A workout already exists for this day.",
+        data: {
+          localSnapshot: workout,
+          remoteSnapshot: existingResult.data,
+        },
+      };
+    }
+
+    const payload: any = {
+      ...workout,
+      date: Timestamp.fromDate(workoutDate),
+    };
+
+    const docRef = await addDoc(collection(firestore, COLLECTION_NAME), payload);
+
+    const persistedWorkout: WorkoutHistory = {
+      ...workout,
+      id: docRef.id,
+      date: workoutDate,
+      isOffline: false,
+      syncStatus: undefined,
+      queuedActionId: undefined,
+      savedAt: undefined,
+    };
+
+    await cacheLastWorkout(persistedWorkout);
+
+    return {
+      success: true,
+      data: { id: docRef.id },
+    };
+  } catch (error: any) {
+    console.error("[workoutService] addWorkoutRemote error:", error);
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
+export const getUserWorkouts = async (userID: string): Promise<ResponseType> => {
+  try {
     const online = await isOnline();
+    const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
 
     if (!online) {
-      // Offline - return from cache + offline workouts
-      console.log("[workoutService] Offline - using cached data");
       const cachedWorkout = await getCachedLastWorkout();
-      const offlineWorkouts = await getOfflineWorkouts();
-
-      const allWorkouts = [
-        ...offlineWorkouts,
+      const localCollection = [
+        ...queuedWorkouts,
         ...(cachedWorkout ? [cachedWorkout] : []),
       ];
 
-      return { success: true, data: allWorkouts };
+      return { success: true, data: localCollection };
     }
 
-    // Online - load from Firebase
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
@@ -63,72 +227,51 @@ export const getUserWorkouts = async (
     );
 
     const querySnapshot = await getDocs(q);
-    const workouts: WorkoutHistory[] = [];
+    const remoteWorkouts: WorkoutHistory[] = [];
 
     querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-      const dateField = data.date;
-      const date =
-        dateField && typeof (dateField as any).toDate === "function"
-          ? (dateField as any).toDate()
-          : dateField || null;
-
-      workouts.push({
-        id: docSnap.id,
-        ...data,
-        date,
-      } as WorkoutHistory);
+      remoteWorkouts.push(parseWorkoutDoc(docSnap.id, docSnap.data()));
     });
 
-    // Save last workout in cache
-    if (workouts.length > 0) {
-      await cacheLastWorkout(workouts[0]);
+    const mergedWorkouts = mergeQueuedAndRemoteWorkouts(queuedWorkouts, remoteWorkouts);
+
+    if (mergedWorkouts.length > 0) {
+      await cacheLastWorkout(mergedWorkouts[0]);
     }
 
-    // Add offline workouts
-    const offlineWorkouts = await getOfflineWorkouts();
-    const allWorkouts = [...offlineWorkouts, ...workouts];
-
-    console.log("[workoutService] getUserWorkouts found:", allWorkouts.length);
-    return { success: true, data: allWorkouts };
+    return { success: true, data: mergedWorkouts };
   } catch (error: any) {
-    console.log("Error fetching workouts:", error);
+    console.error("[workoutService] Error fetching workouts:", error);
 
-    // Fallback to cache + offline
+    const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
     const cachedWorkout = await getCachedLastWorkout();
-    const offlineWorkouts = await getOfflineWorkouts();
 
-    if (cachedWorkout || offlineWorkouts.length > 0) {
-      console.log("[workoutService] Using cached/offline data as fallback");
+    if (cachedWorkout || queuedWorkouts.length > 0) {
       return {
         success: true,
-        data: [...offlineWorkouts, ...(cachedWorkout ? [cachedWorkout] : [])],
+        data: [...queuedWorkouts, ...(cachedWorkout ? [cachedWorkout] : [])],
       };
     }
 
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Check if a workout already exists for the current day
 export const checkWorkoutExistsToday = async (
   userID: string,
 ): Promise<ResponseType> => {
   try {
-    const online = await isOnline();
-
-    // Check also in offline workouts
-    const offlineWorkouts = await getOfflineWorkouts();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const hasOfflineToday = offlineWorkouts.some((w) => {
-      const workoutDate = new Date(w.date || w.savedAt);
+    const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
+    const hasQueuedToday = queuedWorkouts.some((workout) => {
+      const workoutDate = new Date(workout.date);
       workoutDate.setHours(0, 0, 0, 0);
-      return workoutDate.getTime() === today.getTime() && w.userID === userID;
+      return workoutDate.getTime() === today.getTime();
     });
 
-    if (hasOfflineToday) {
+    if (hasQueuedToday) {
       return {
         success: false,
         msg: "You already have a workout logged for today.",
@@ -136,23 +279,17 @@ export const checkWorkoutExistsToday = async (
       };
     }
 
+    const online = await isOnline();
     if (!online) {
       return { success: true, data: { exists: false } };
     }
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const existingResult = await getWorkoutByUserAndDate(userID, today);
+    if (!existingResult.success) {
+      return { success: true, data: { exists: false } };
+    }
 
-    const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
-      where("date", ">=", today),
-      where("date", "<", tomorrow),
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
+    if (existingResult.data) {
       return {
         success: false,
         msg: "You already have a workout logged for today.",
@@ -162,28 +299,19 @@ export const checkWorkoutExistsToday = async (
 
     return { success: true, data: { exists: false } };
   } catch (error: any) {
-    console.log("Error checking existing workout:", error);
-    return { success: true, data: { exists: false } }; // Allow save in case of error
+    console.error("[workoutService] Error checking workout for today:", error);
+    return { success: true, data: { exists: false } };
   }
 };
 
-// Get last week's workout for the specified day
 export const getLastWeekWorkout = async (
   userID: string,
-  dayName: string,
+  _dayName: string,
 ): Promise<ResponseType> => {
   try {
-    console.log(
-      "[workoutService] getLastWeekWorkout userID:",
-      userID,
-      "dayName:",
-      dayName,
-    );
-
     const online = await isOnline();
 
     if (!online) {
-      // Offline - return from cache
       const cachedWorkout = await getCachedLastWorkout();
       if (cachedWorkout) {
         return { success: true, data: cachedWorkout };
@@ -212,121 +340,104 @@ export const getLastWeekWorkout = async (
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0];
-      const data = doc.data() as any;
-      const dateField = data.date;
-      const date =
-        dateField && typeof (dateField as any).toDate === "function"
-          ? (dateField as any).toDate()
-          : dateField || null;
-
-      const workout = {
-        id: doc.id,
-        ...data,
-        date,
-      } as WorkoutHistory;
-
-      return { success: true, data: workout };
+      const firstDoc = querySnapshot.docs[0];
+      return {
+        success: true,
+        data: parseWorkoutDoc(firstDoc.id, firstDoc.data()),
+      };
     }
 
     return { success: true, data: null };
   } catch (error: any) {
-    console.log("Error getting last week workout:", error);
-    // Fallback to cache
+    console.error("[workoutService] Error getting last week workout:", error);
     const cachedWorkout = await getCachedLastWorkout();
     if (cachedWorkout) {
       return { success: true, data: cachedWorkout };
     }
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// ADD WORKOUT WITH OFFLINE SUPPORT - CRITICAL FIX FOR HISTORICAL DATES
 export const addWorkout = async (
   workout: WorkoutHistory,
 ): Promise<ResponseType> => {
   try {
-    console.log(
-      "[workoutService] addWorkout payload:",
-      JSON.stringify(workout),
-    );
-
     const online = await isOnline();
+    const workoutDate = normalizeWorkoutDate(workout.date);
+    const dedupeKey = `${workout.userID}:${toDateKey(workoutDate)}`;
 
     if (!online) {
-      // OFFLINE - Save locally
-      console.log("[workoutService] Offline - saving locally");
-      await saveOfflineWorkout(workout);
-
-      // Add to sync queue
-      await addToSyncQueue({
+      const queuedAction = await enqueueOrMergeAction({
         type: "ADD_WORKOUT",
-        data: workout,
+        data: {
+          ...workout,
+          date: workoutDate,
+        },
+        dedupeKey,
+        mergeStrategy: "replace_latest",
       });
 
-      // Update cache
-      const offlineWorkout = {
+      await cacheLastWorkout({
         ...workout,
-        id: `offline_${Date.now()}`,
-        date: workout.date || new Date(),
+        id: `offline_${queuedAction.id}`,
+        date: workoutDate,
         isOffline: true,
-      };
-      await cacheLastWorkout(offlineWorkout);
+        syncStatus: "pending",
+        queuedActionId: queuedAction.id,
+        savedAt: queuedAction.timestamp,
+      });
 
       return {
         success: true,
-        data: { id: offlineWorkout.id, offline: true },
+        data: { id: `offline_${queuedAction.id}`, offline: true },
+        code: "SYNC_QUEUED_OFFLINE",
         msg: "Workout saved offline. Will sync when online.",
       };
     }
 
-    // ONLINE - Save to Firebase
-    // CRITICAL FIX: Use the exact date provided in workout object
-    // This ensures historical workouts are saved with the correct date
-    const workoutDate = new Date(workout.date);
-
-    // Normalize to avoid timezone issues - set to noon
-    workoutDate.setHours(12, 0, 0, 0);
-
-    const payload: any = {
+    const remoteResult = await addWorkoutRemote({
       ...workout,
-      date: Timestamp.fromDate(workoutDate), // Use Timestamp with the exact date
-    };
-
-    console.log(
-      "[workoutService] Saving with date:",
-      workoutDate.toISOString(),
-    );
-
-    const docRef = await addDoc(
-      collection(firestore, COLLECTION_NAME),
-      payload,
-    );
-    console.log("[workoutService] created doc id:", docRef.id);
-
-    // Update cache
-    const newWorkout = {
-      ...workout,
-      id: docRef.id,
       date: workoutDate,
-    };
-    await cacheLastWorkout(newWorkout);
+    });
 
-    return { success: true, data: { id: docRef.id } };
-  } catch (error: any) {
-    console.log("Error adding workout:", error);
+    if (remoteResult.success) {
+      return remoteResult;
+    }
 
-    // FALLBACK - Save offline in case of error
-    console.log("[workoutService] Error - saving offline as fallback");
-    await saveOfflineWorkout(workout);
-    await addToSyncQueue({
+    if (remoteResult.code === "SYNC_CONFLICT") {
+      return remoteResult;
+    }
+
+    const queuedAction = await enqueueOrMergeAction({
       type: "ADD_WORKOUT",
-      data: workout,
+      data: {
+        ...workout,
+        date: workoutDate,
+      },
+      dedupeKey,
+      mergeStrategy: "replace_latest",
     });
 
     return {
       success: true,
-      data: { id: `offline_${Date.now()}`, offline: true },
+      data: { id: `offline_${queuedAction.id}`, offline: true },
+      code: "SYNC_RETRY_SCHEDULED",
+      msg: "Workout saved locally due to a temporary sync issue.",
+    };
+  } catch (error: any) {
+    console.error("[workoutService] Error adding workout:", error);
+
+    const queuedAction = await enqueueOrMergeAction({
+      type: "ADD_WORKOUT",
+      data: workout,
+      dedupeKey: `${workout.userID}:${toDateKey(workout.date as Date | string)}`,
+      mergeStrategy: "replace_latest",
+    });
+
+    return {
+      success: true,
+      data: { id: `offline_${queuedAction.id}`, offline: true },
+      code: "SYNC_RETRY_SCHEDULED",
       msg: "Workout saved offline due to error. Will sync when possible.",
     };
   }
@@ -334,38 +445,29 @@ export const addWorkout = async (
 
 export const getWorkout = async (workoutId: string): Promise<ResponseType> => {
   try {
-    // Check if it's an offline workout
     if (workoutId.startsWith("offline_")) {
-      const offlineWorkouts = await getOfflineWorkouts();
-      const workout = offlineWorkouts.find((w) => w.id === workoutId);
+      const queuedWorkouts = (await getQueuedWorkoutDrafts()) as WorkoutHistory[];
+      const workout = queuedWorkouts.find((entry) => entry.id === workoutId);
       if (workout) {
         return { success: true, data: workout };
       }
-      return { success: false, msg: "Offline workout not found" };
+      return { success: false, msg: "Offline workout not found", code: "UNKNOWN_ERROR" };
     }
 
-    console.log("[workoutService] getWorkout id:", workoutId);
     const docRef = doc(firestore, COLLECTION_NAME, workoutId);
     const docSnap = await getDoc(docRef);
 
-    if (docSnap.exists()) {
-      const data = docSnap.data() as any;
-      const dateField = data.date;
-      const date =
-        dateField && typeof (dateField as any).toDate === "function"
-          ? (dateField as any).toDate()
-          : dateField || null;
-
-      return {
-        success: true,
-        data: { id: docSnap.id, ...data, date } as WorkoutHistory,
-      };
-    } else {
-      return { success: false, msg: "Workout not found" };
+    if (!docSnap.exists()) {
+      return { success: false, msg: "Workout not found", code: "UNKNOWN_ERROR" };
     }
+
+    return {
+      success: true,
+      data: parseWorkoutDoc(docSnap.id, docSnap.data()),
+    };
   } catch (error: any) {
-    console.log("Error getting workout:", error);
-    return { success: false, msg: error?.message };
+    console.error("[workoutService] Error getting workout:", error);
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
@@ -373,18 +475,16 @@ export const deleteWorkout = async (
   workoutId: string,
 ): Promise<ResponseType> => {
   try {
-    // Check if it's an offline workout
     if (workoutId.startsWith("offline_")) {
-      const { removeOfflineWorkout } = await import("./syncQueueService");
-      await removeOfflineWorkout(workoutId);
+      const actionId = workoutId.replace("offline_", "");
+      await removeFromSyncQueue(actionId);
       return { success: true, msg: "Offline workout deleted" };
     }
 
-    console.log("[workoutService] deleteWorkout id:", workoutId);
     await deleteDoc(doc(firestore, COLLECTION_NAME, workoutId));
     return { success: true, msg: "Workout deleted successfully" };
   } catch (error: any) {
-    console.log("Error deleting workout:", error);
-    return { success: false, msg: error?.message };
+    console.error("[workoutService] Error deleting workout:", error);
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
