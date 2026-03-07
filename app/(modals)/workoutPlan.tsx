@@ -7,6 +7,7 @@ import Input from "@/src/components/ui/Input";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   createWorkoutPlan,
@@ -35,6 +36,7 @@ const SPLIT_OPTIONS = [1, 2, 4, 7, 9, 14];
 const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const router = useRouter();
   const { workoutPlan, refreshPlan, deletePlan } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ const WorkoutPlanScreen = () => {
 
   const handleSave = async () => {
     if (!planName.trim()) {
-      Alert.alert("Error", "Please add a name for your workout plan");
+      Alert.alert(t("common_error"), t("workout_plan_modal_alert_missing_name"));
       return;
     }
     if (!user?.uid) return;
@@ -145,28 +147,28 @@ const WorkoutPlanScreen = () => {
       }
 
       Alert.alert(
-        queuedOffline ? "Saved Offline" : "Success",
+        queuedOffline ? t("common_saved_offline_title") : t("common_success"),
         queuedOffline
-          ? "Workout plan saved locally and will sync automatically when connection is available."
-          : "Workout plan saved successfully!",
+          ? t("workout_plan_modal_saved_offline_message")
+          : t("workout_plan_modal_saved_success_message"),
         [
-        { text: "OK", onPress: () => router.back() },
+        { text: t("common_ok"), onPress: () => router.back() },
         ],
       );
     } else {
-      Alert.alert("Error", result.msg || "Could not save workout plan");
+      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_save"));
     }
   };
 
   const handleDelete = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
-      "⚠️ Delete Everything?",
-      "This will permanently delete:\n\n• Your workout plan\n• ALL workout history\n• All logged exercises\n\nThis action cannot be undone!",
+      t("workout_plan_modal_delete_confirm_title"),
+      t("workout_plan_modal_delete_confirm_message"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common_cancel"), style: "cancel" },
         { 
-          text: "Delete All", 
+          text: t("workout_plan_modal_delete_confirm_action"),
           style: "destructive", 
           onPress: performDelete 
         },
@@ -182,17 +184,17 @@ const WorkoutPlanScreen = () => {
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        "✅ Deleted Successfully", 
-        result.msg || "All data has been removed",
+        t("workout_plan_modal_delete_success_title"),
+        result.msg || t("workout_plan_modal_delete_success_message"),
         [
           { 
-            text: "OK", 
+            text: t("common_ok"),
             onPress: () => router.back() 
           }
         ]
       );
     } else {
-      Alert.alert("Error", result.msg || "Could not delete workout plan");
+      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_delete"));
     }
   };
 
@@ -216,10 +218,16 @@ const WorkoutPlanScreen = () => {
     return days.filter(d => !d.isRestDay && d.exercises.length > 0).length;
   };
 
+  const getDisplayDayLabel = (dayValue: string) => {
+    const match = dayValue.match(/^Day\s+(\d+)$/i);
+    if (!match?.[1]) return dayValue;
+    return t("workout_plan_modal_day_label", { count: match[1] });
+  };
+
   if (loading) {
     return (
       <ModalWrapper>
-        <Header title="Workout Plan" leftIcon={<BackButton />} />
+        <Header title={t("workout_plan_modal_title")} leftIcon={<BackButton />} />
         <Loading />
       </ModalWrapper>
     );
@@ -229,7 +237,11 @@ const WorkoutPlanScreen = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title={existingPlanId ? "Edit Plan" : "Create Plan"}
+          title={
+            existingPlanId
+              ? t("workout_plan_modal_edit_title")
+              : t("workout_plan_modal_create_title")
+          }
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._15 }}
         />
@@ -243,10 +255,10 @@ const WorkoutPlanScreen = () => {
             style={styles.inputContainer}
           >
             <Typo size={16} fontWeight="600" style={styles.label}>
-              Plan Name
+              {t("workout_plan_modal_plan_name_label")}
             </Typo>
             <Input
-              placeholder="e.g., Push Pull Legs"
+              placeholder={t("workout_plan_modal_plan_name_placeholder")}
               value={planName}
               onChangeText={setPlanName}
               containerStyle={styles.input}
@@ -259,7 +271,7 @@ const WorkoutPlanScreen = () => {
           >
             <View style={styles.splitHeader}>
               <Typo size={16} fontWeight="600" style={styles.label}>
-                Split Days (Cycle Length)
+                {t("workout_plan_modal_split_days_label")}
               </Typo>
               <TouchableOpacity
                 onPress={() => setShowInfoModal(true)}
@@ -304,7 +316,7 @@ const WorkoutPlanScreen = () => {
                 {getWorkoutDaysCount()}
               </Typo>
               <Typo size={12} color={colors.neutral400}>
-                Workout Days
+                {t("workout_plan_modal_stat_workout_days")}
               </Typo>
             </View>
 
@@ -314,7 +326,7 @@ const WorkoutPlanScreen = () => {
                 {getRestDaysCount()}
               </Typo>
               <Typo size={12} color={colors.neutral400}>
-                Rest Days
+                {t("workout_plan_modal_stat_rest_days")}
               </Typo>
             </View>
 
@@ -324,7 +336,7 @@ const WorkoutPlanScreen = () => {
                 {getTotalExercises()}
               </Typo>
               <Typo size={12} color={colors.neutral400}>
-                Exercises
+                {t("workout_plan_modal_stat_exercises")}
               </Typo>
             </View>
           </Animated.View>
@@ -353,18 +365,23 @@ const WorkoutPlanScreen = () => {
                     <View style={styles.cardHeader}>
                       <View style={styles.dayTitleRow}>
                         <Typo size={18} fontWeight="700" color={isRest ? colors.neutral400 : colors.white}>
-                          {day}
+                          {getDisplayDayLabel(day)}
                         </Typo>
                         {isRest && (
                           <View style={styles.restBadge}>
                             <Icons.Coffee size={14} color={colors.neutral400} weight="fill" />
-                            <Typo size={12} color={colors.neutral400} fontWeight="600">Rest</Typo>
+                            <Typo size={12} color={colors.neutral400} fontWeight="600">
+                              {t("workout_plan_modal_rest_badge")}
+                            </Typo>
                           </View>
                         )}
                         {!isRest && hasExercises && (
                            <View style={styles.countBadge}>
                              <Typo size={12} color={colors.black} fontWeight="700">
-                               {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
+                               {exerciseCount}{" "}
+                               {exerciseCount === 1
+                                 ? t("workout_plan_modal_exercise_singular")
+                                 : t("workout_plan_modal_exercise_plural")}
                              </Typo>
                            </View>
                         )}
@@ -381,13 +398,17 @@ const WorkoutPlanScreen = () => {
                                {ex.exerciseName}
                              </Typo>
                              <Typo size={13} color={colors.neutral500}>
-                               ({ex.sets.length} sets)
+                               {t("workout_plan_modal_sets_count", {
+                                 count: ex.sets.length,
+                               })}
                              </Typo>
                           </View>
                         ))}
                         {exerciseCount > 3 && (
                           <Typo size={13} color={colors.primary} style={{ marginTop: 4, marginLeft: 14 }}>
-                            + {exerciseCount - 3} more...
+                            {t("workout_plan_modal_more_exercises", {
+                              count: exerciseCount - 3,
+                            })}
                           </Typo>
                         )}
                       </View>
@@ -395,7 +416,7 @@ const WorkoutPlanScreen = () => {
 
                     {!isRest && !hasExercises && (
                       <Typo size={14} color={colors.neutral500} style={{ marginTop: spacingY._5 }}>
-                        Tap to add exercises...
+                        {t("workout_plan_modal_tap_add_exercises")}
                       </Typo>
                     )}
                   </TouchableOpacity>
@@ -414,10 +435,12 @@ const WorkoutPlanScreen = () => {
                 <Icons.Trash size={20} color={colors.rose} weight="fill" />
                 <View style={{ flex: 1 }}>
                   <Typo size={16} fontWeight="600" color={colors.rose}>
-                    {deleting ? "Deleting..." : "Delete Plan & All Workouts"}
+                    {deleting
+                      ? t("workout_plan_modal_delete_button_loading")
+                      : t("workout_plan_modal_delete_button")}
                   </Typo>
                   <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
-                    This will permanently remove all your workout data
+                    {t("workout_plan_modal_delete_caption")}
                   </Typo>
                 </View>
               </TouchableOpacity>
@@ -428,7 +451,7 @@ const WorkoutPlanScreen = () => {
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button onPress={handleSave} loading={saving} style={styles.saveButton}>
             <Typo color={colors.black} fontWeight="700" size={18}>
-              Save Changes
+              {t("workout_plan_modal_save_changes")}
             </Typo>
           </Button>
         </View>
@@ -448,7 +471,7 @@ const WorkoutPlanScreen = () => {
               <View style={styles.infoHeader}>
                 <Icons.Info size={24} color={colors.primary} weight="fill" />
                 <Typo size={18} fontWeight="700" style={{ flex: 1, marginLeft: 10 }}>
-                  What is Split Days?
+                  {t("workout_plan_modal_info_title")}
                 </Typo>
                 <TouchableOpacity onPress={() => setShowInfoModal(false)}>
                   <Icons.X size={24} color={colors.white} />
@@ -457,33 +480,49 @@ const WorkoutPlanScreen = () => {
 
               <View style={styles.infoContent}>
                 <Typo size={15} color={colors.neutral200} style={{ lineHeight: 22 }}>
-                  Split days represent the length of your workout cycle before it repeats.
+                  {t("workout_plan_modal_info_desc")}
                 </Typo>
 
                 <View style={styles.infoExamples}>
                   <View style={styles.exampleItem}>
-                    <Typo size={14} fontWeight="600" color={colors.primary}>1-Day Split</Typo>
-                    <Typo size={13} color={colors.neutral400}>Full Body Workout</Typo>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_1_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_1_desc")}
+                    </Typo>
                   </View>
 
                   <View style={styles.exampleItem}>
-                    <Typo size={14} fontWeight="600" color={colors.primary}>2-Day Split</Typo>
-                    <Typo size={13} color={colors.neutral400}>Upper/Lower Body</Typo>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_2_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_2_desc")}
+                    </Typo>
                   </View>
 
                   <View style={styles.exampleItem}>
-                    <Typo size={14} fontWeight="600" color={colors.primary}>4-Day Split</Typo>
-                    <Typo size={13} color={colors.neutral400}>Classic bodybuilding split</Typo>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_3_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_3_desc")}
+                    </Typo>
                   </View>
 
                   <View style={styles.exampleItem}>
-                    <Typo size={14} fontWeight="600" color={colors.primary}>7-Day Split</Typo>
-                    <Typo size={13} color={colors.neutral400}>Weekly routine</Typo>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_4_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_4_desc")}
+                    </Typo>
                   </View>
                 </View>
 
                 <Typo size={13} color={colors.neutral500} style={{ marginTop: 15, fontStyle: 'italic' }}>
-                  Choose based on your training schedule and recovery needs.
+                  {t("workout_plan_modal_info_footer")}
                 </Typo>
               </View>
             </View>

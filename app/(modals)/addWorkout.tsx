@@ -6,7 +6,9 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { addWorkout, getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutExercise, WorkoutHistory, WorkoutSet } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
@@ -30,6 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const AddWorkout = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const router = useRouter();
   const { workoutPlan } = useWorkoutPlan();
   const { selectedDate, isHistorical } = useLocalSearchParams();
@@ -449,7 +452,7 @@ const AddWorkout = () => {
       month: "long",
       day: "numeric",
     };
-    return targetDate.toLocaleDateString("en-US", options);
+    return targetDate.toLocaleDateString(LOCALE_BY_LANGUAGE[language], options);
   };
 
   const handleLap = () => {
@@ -471,7 +474,10 @@ const AddWorkout = () => {
   const removeExercise = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (exercises.length === 1) {
-      Alert.alert("Error", "You need at least one exercise");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_need_one_exercise"),
+      );
       return;
     }
     const newExercises = exercises.filter((_, i) => i !== index);
@@ -502,7 +508,7 @@ const AddWorkout = () => {
   const removeSet = (exerciseIndex: number, setIndex: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (exercises[exerciseIndex].sets.length === 1) {
-      Alert.alert("Error", "Each exercise needs at least one set");
+      Alert.alert(t("common_error"), t("common_validation_need_one_set"));
       return;
     }
     const newExercises = [...exercises];
@@ -535,7 +541,10 @@ const AddWorkout = () => {
       (ex) => !ex.exerciseName.trim(),
     );
     if (hasEmptyExerciseName) {
-      Alert.alert("Error", "Please fill in all exercise names");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_fill_exercise_names"),
+      );
       return;
     }
 
@@ -543,12 +552,15 @@ const AddWorkout = () => {
       ex.sets.some((set) => set.reps <= 0 || set.weight < 0),
     );
     if (hasInvalidSets) {
-      Alert.alert("Error", "Please fill in valid reps and weight for all sets");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_fill_reps_weight"),
+      );
       return;
     }
 
     if (!user?.uid) {
-      Alert.alert("Error", "User not authenticated");
+      Alert.alert(t("common_error"), t("common_error_not_authenticated"));
       return;
     }
 
@@ -579,15 +591,17 @@ const AddWorkout = () => {
         const isOffline = result.data?.offline;
 
         Alert.alert(
-          isOffline ? "Saved Offline" : "Success",
+          isOffline ? t("common_saved_offline_title") : t("common_success"),
           isOffline
-            ? "Workout saved locally and will sync when online."
+            ? t("add_workout_modal_saved_offline_message")
             : isHistoricalWorkout
-              ? `Workout logged successfully for ${formatTargetDate()}!`
-              : "Workout saved successfully!",
+              ? t("add_workout_modal_logged_success_for_date", {
+                  date: formatTargetDate(),
+                })
+              : t("add_workout_modal_saved_success_message"),
           [
             {
-              text: "OK",
+              text: t("common_ok"),
               onPress: () => {
                 router.push({
                   pathname: "/(tabs)/history",
@@ -600,16 +614,19 @@ const AddWorkout = () => {
       } else {
         if (result.code === "SYNC_CONFLICT") {
           Alert.alert(
-            "Sync Conflict",
-            "A workout already exists for this date. Please review your history before saving another entry.",
+            t("add_workout_modal_sync_conflict_title"),
+            t("add_workout_modal_sync_conflict_message"),
           );
         } else {
-          Alert.alert("Error", result.msg || "Could not save workout");
+          Alert.alert(
+            t("common_error"),
+            result.msg || t("add_workout_modal_error_save"),
+          );
         }
       }
     } catch (err: any) {
       setLoading(false);
-      Alert.alert("Error", err?.message || "Could not save workout");
+      Alert.alert(t("common_error"), err?.message || t("add_workout_modal_error_save"));
     }
   };
 
@@ -637,7 +654,11 @@ const AddWorkout = () => {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.container}>
             <Header
-              title={isHistoricalWorkout ? "Log Past Workout" : "Log Workout"}
+              title={
+                isHistoricalWorkout
+                  ? t("add_workout_modal_title_log_past")
+                  : t("add_workout_modal_title_log")
+              }
               leftIcon={<BackButton />}
               style={{ marginBottom: spacingY._12 }}
             />
@@ -652,7 +673,7 @@ const AddWorkout = () => {
                 />
                 <View style={{ flex: 1 }}>
                   <Typo size={13} fontWeight="600" color={colors.primary}>
-                    Logging workout for:
+                    {t("add_workout_modal_logging_for")}
                   </Typo>
                   <Typo size={14} color={colors.white}>
                     {formatTargetDate()}
@@ -679,7 +700,7 @@ const AddWorkout = () => {
                   fontWeight="700"
                   color={activePage === 0 ? colors.black : colors.neutral300}
                 >
-                  Timer
+                  {t("add_workout_modal_tab_timer")}
                 </Typo>
               </TouchableOpacity>
               <TouchableOpacity
@@ -699,7 +720,7 @@ const AddWorkout = () => {
                   fontWeight="700"
                   color={activePage === 1 ? colors.black : colors.neutral300}
                 >
-                  Workout Log
+                  {t("add_workout_modal_tab_workout_log")}
                 </Typo>
               </TouchableOpacity>
             </View>
@@ -715,7 +736,7 @@ const AddWorkout = () => {
                         color={colors.neutral400}
                         style={{ marginBottom: spacingY._5 }}
                       >
-                        REST TIMER
+                        {t("add_workout_modal_rest_timer")}
                       </Typo>
                       <Typo size={44} fontWeight="700" color={colors.primary}>
                         {formatTime(currentTime)}
@@ -724,7 +745,7 @@ const AddWorkout = () => {
                     <View style={styles.timerStatsRow}>
                       <View style={styles.timerStatCard}>
                         <Typo size={11} color={colors.neutral400}>
-                          TOTAL TIME
+                          {t("add_workout_modal_total_time")}
                         </Typo>
                         <Typo size={16} fontWeight="600" color={colors.white}>
                           {formatTime(totalTime)}
@@ -732,13 +753,16 @@ const AddWorkout = () => {
                       </View>
                       <View style={styles.timerStatCard}>
                         <Typo size={11} color={colors.neutral400}>
-                          TARGET DATE
+                          {t("add_workout_modal_target_date")}
                         </Typo>
                         <Typo size={14} fontWeight="600" color={colors.white}>
-                          {targetDate.toLocaleDateString("en-US", {
+                          {targetDate.toLocaleDateString(
+                            LOCALE_BY_LANGUAGE[language],
+                            {
                             month: "short",
                             day: "numeric",
-                          })}
+                            },
+                          )}
                         </Typo>
                       </View>
                     </View>
@@ -749,7 +773,7 @@ const AddWorkout = () => {
                         weight="bold"
                       />
                       <Typo size={14} fontWeight="700" color={colors.black}>
-                        RESET REST
+                        {t("add_workout_modal_reset_rest")}
                       </Typo>
                     </TouchableOpacity>
                   </View>
@@ -761,7 +785,7 @@ const AddWorkout = () => {
                       weight="bold"
                     />
                     <Typo size={13} color={colors.neutral300} style={{ flex: 1 }}>
-                      Swipe left to log exercises, sets, reps and weight.
+                      {t("add_workout_modal_swipe_hint")}
                     </Typo>
                   </View>
 
@@ -771,7 +795,7 @@ const AddWorkout = () => {
                   >
                     <Icons.CaretRight size={16} color={colors.black} weight="bold" />
                     <Typo size={14} fontWeight="700" color={colors.black}>
-                      Go to Workout Log
+                      {t("add_workout_modal_go_to_workout_log")}
                     </Typo>
                   </TouchableOpacity>
                 </View>
@@ -779,7 +803,7 @@ const AddWorkout = () => {
                 <View style={styles.page}>
                   <View style={styles.workoutTopRow}>
                     <Typo size={16} fontWeight="700">
-                      Exercises
+                      {t("add_workout_modal_exercises")}
                     </Typo>
                     <TouchableOpacity
                       onPress={() => goToPage(0)}
@@ -812,10 +836,12 @@ const AddWorkout = () => {
                               color={colors.neutral300}
                               style={{ marginBottom: 4 }}
                             >
-                              Exercise {exerciseIndex + 1}
+                              {t("add_workout_modal_exercise_label", {
+                                index: exerciseIndex + 1,
+                              })}
                             </Typo>
                             <Input
-                              placeholder="Exercise Name"
+                              placeholder={t("add_workout_modal_exercise_name_placeholder")}
                               value={exercise.exerciseName}
                               onChangeText={(text) =>
                                 updateExerciseName(exerciseIndex, text)
@@ -841,21 +867,21 @@ const AddWorkout = () => {
                             color={colors.neutral400}
                             style={{ width: 30, textAlign: "center" }}
                           >
-                            Set
+                            {t("add_workout_modal_set_label")}
                           </Typo>
                           <Typo
                             size={12}
                             color={colors.neutral400}
                             style={{ flex: 1, textAlign: "center" }}
                           >
-                            Reps
+                            {t("add_workout_modal_reps_label")}
                           </Typo>
                           <Typo
                             size={12}
                             color={colors.neutral400}
                             style={{ flex: 1, textAlign: "center" }}
                           >
-                            Weight
+                            {t("add_workout_modal_weight_label")}
                           </Typo>
                           <View style={{ width: 30 }} />
                         </View>
@@ -931,7 +957,7 @@ const AddWorkout = () => {
                         >
                           <Icons.Plus size={16} color={colors.primary} weight="bold" />
                           <Typo size={14} fontWeight="600" color={colors.primary}>
-                            Add Set
+                            {t("add_workout_modal_add_set")}
                           </Typo>
                         </TouchableOpacity>
                       </View>
@@ -943,7 +969,7 @@ const AddWorkout = () => {
                     >
                       <Icons.PlusCircle size={24} color={colors.primary} weight="fill" />
                       <Typo size={16} fontWeight="600" color={colors.primary}>
-                        Add Exercise
+                        {t("add_workout_modal_add_exercise")}
                       </Typo>
                     </TouchableOpacity>
                   </ScrollView>
@@ -970,7 +996,9 @@ const AddWorkout = () => {
               >
                 <Button onPress={handleSave} loading={loading}>
                   <Typo size={18} fontWeight="700" color={colors.black}>
-                    {isHistoricalWorkout ? "Log Workout" : "Save Workout"}
+                    {isHistoricalWorkout
+                      ? t("add_workout_modal_log_workout")
+                      : t("add_workout_modal_save_workout")}
                   </Typo>
                 </Button>
               </View>

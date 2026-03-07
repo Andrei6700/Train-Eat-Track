@@ -5,8 +5,13 @@ import BackButton from "@/src/components/navigation/BackButton";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import { WorkoutExercise, WorkoutSet } from "@/src/types/index";
+import {
+  DayWorkout as DayWorkoutPayload,
+  WorkoutExercise,
+  WorkoutSet,
+} from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -24,7 +29,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const DayWorkout = () => {
   const { day } = useLocalSearchParams();
   const router = useRouter();
-  const { workoutPlan, updateDay, loading: contextLoading } = useWorkoutPlan();
+  const { t } = useLanguage();
+  const { workoutPlan, updateDay } = useWorkoutPlan();
   const [saving, setSaving] = useState(false);
   const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
@@ -57,7 +63,10 @@ const DayWorkout = () => {
 
   const removeExercise = (index: number) => {
     if (exercises.length === 1) {
-      Alert.alert("Error", "You need at least one exercise");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_need_one_exercise"),
+      );
       return;
     }
     const newExercises = exercises.filter((_, i) => i !== index);
@@ -86,7 +95,7 @@ const DayWorkout = () => {
 
   const removeSet = (exerciseIndex: number, setIndex: number) => {
     if (exercises[exerciseIndex].sets.length === 1) {
-      Alert.alert("Error", "Each exercise needs at least one set");
+      Alert.alert(t("common_error"), t("common_validation_need_one_set"));
       return;
     }
     const newExercises = [...exercises];
@@ -117,7 +126,7 @@ const DayWorkout = () => {
 
   const handleMarkRestDay = async () => {
     setSaving(true);
-    const payload: DayWorkout = {
+    const payload: DayWorkoutPayload = {
       day: day as string,
       isRestDay: true,
       exercises: [],
@@ -136,7 +145,10 @@ const DayWorkout = () => {
       (ex) => !ex.exerciseName.trim()
     );
     if (hasEmptyExerciseName) {
-      Alert.alert("Error", "Please fill in all exercise names");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_fill_exercise_names"),
+      );
       return;
     }
 
@@ -144,12 +156,15 @@ const DayWorkout = () => {
       ex.sets.some((set) => set.reps <= 0 || set.weight < 0)
     );
     if (hasInvalidSets) {
-      Alert.alert("Error", "Please fill in valid reps and weight for all sets");
+      Alert.alert(
+        t("common_error"),
+        t("common_validation_fill_reps_weight"),
+      );
       return;
     }
 
     setSaving(true);
-    const payload: DayWorkout = {
+    const payload: DayWorkoutPayload = {
       day: day as string,
       isRestDay: false,
       exercises,
@@ -168,11 +183,20 @@ const DayWorkout = () => {
     router.back();
   };
 
+  const displayDayLabel = (() => {
+    const rawDay = day as string;
+    const match = rawDay?.match(/^Day\s+(\d+)$/i);
+    if (match?.[1]) {
+      return t("workout_plan_modal_day_label", { count: match[1] });
+    }
+    return rawDay;
+  })();
+
   return (
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title={day as string}
+          title={displayDayLabel}
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._15 }}
         />
@@ -187,7 +211,7 @@ const DayWorkout = () => {
             disabled={saving}
           >
             <Typo size={16} fontWeight="600" color={colors.white}>
-              Mark as Rest Day
+              {t("day_workout_modal_mark_rest_day")}
             </Typo>
           </TouchableOpacity>
 
@@ -198,7 +222,7 @@ const DayWorkout = () => {
               color={colors.neutral400}
               style={{ paddingHorizontal: spacingX._10 }}
             >
-              or
+              {t("common_or")}
             </Typo>
             <View style={styles.dividerLine} />
           </View>
@@ -209,14 +233,16 @@ const DayWorkout = () => {
               fontWeight="600"
               style={{ marginBottom: spacingY._15 }}
             >
-              Exercises
+              {t("day_workout_modal_exercises_title")}
             </Typo>
 
             {exercises.map((exercise, exerciseIndex) => (
               <View key={exerciseIndex} style={styles.exerciseCard}>
                 <View style={styles.exerciseHeader}>
                   <Typo size={16} fontWeight="600">
-                    Exercise {exerciseIndex + 1}
+                    {t("day_workout_modal_exercise_label", {
+                      index: exerciseIndex + 1,
+                    })}
                   </Typo>
                   {exercises.length > 1 && (
                     <TouchableOpacity
@@ -229,7 +255,7 @@ const DayWorkout = () => {
                 </View>
 
                 <Input
-                  placeholder="Exercise name (e.g., Bench Press)"
+                  placeholder={t("day_workout_modal_exercise_placeholder")}
                   value={exercise.exerciseName}
                   onChangeText={(text) =>
                     updateExerciseName(exerciseIndex, text)
@@ -242,7 +268,7 @@ const DayWorkout = () => {
                   fontWeight="500"
                   style={{ marginBottom: spacingY._10 }}
                 >
-                  Sets
+                  {t("common_sets")}
                 </Typo>
 
                 {exercise.sets.map((set, setIndex) => (
@@ -255,7 +281,7 @@ const DayWorkout = () => {
 
                     <View style={styles.setInput}>
                       <Input
-                        placeholder="Reps"
+                        placeholder={t("day_workout_modal_reps_placeholder")}
                         keyboardType="numeric"
                         value={set.reps > 0 ? set.reps.toString() : ""}
                         onChangeText={(text) =>
@@ -272,7 +298,7 @@ const DayWorkout = () => {
 
                     <View style={styles.setInput}>
                       <Input
-                        placeholder="Weight"
+                        placeholder={t("day_workout_modal_weight_placeholder")}
                         keyboardType="numeric"
                         value={set.weight > 0 ? set.weight.toString() : ""}
                         onChangeText={(text) =>
@@ -313,7 +339,7 @@ const DayWorkout = () => {
                 >
                   <Icons.Plus size={16} color={colors.primary} />
                   <Typo size={14} color={colors.primary}>
-                    Add Set
+                    {t("day_workout_modal_add_set")}
                   </Typo>
                 </TouchableOpacity>
               </View>
@@ -325,7 +351,7 @@ const DayWorkout = () => {
             >
               <Icons.Plus size={20} color={colors.primary} />
               <Typo size={16} fontWeight="600" color={colors.primary}>
-                Add Exercise
+                {t("day_workout_modal_add_exercise")}
               </Typo>
             </TouchableOpacity>
           </>
@@ -338,7 +364,7 @@ const DayWorkout = () => {
             style={{ flex: 1 }}
           >
             <Typo color={colors.black} fontWeight="700" size={16}>
-              Save Exercises
+              {t("day_workout_modal_save_exercises")}
             </Typo>
           </Button>
         </View>

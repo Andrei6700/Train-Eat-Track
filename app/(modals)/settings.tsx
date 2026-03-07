@@ -106,7 +106,10 @@ const Settings = () => {
     if (isExporting) return;
 
     if (!user?.uid) {
-      Alert.alert("Error", "You must be logged in to export your workout plan.");
+      Alert.alert(
+        t("common_error"),
+        t("settings_modal_error_logged_in_required"),
+      );
       return;
     }
 
@@ -115,8 +118,8 @@ const Settings = () => {
       const workoutsResult = await getUserWorkouts(user.uid);
       if (!workoutsResult.success) {
         Alert.alert(
-          "Error",
-          workoutsResult.msg || "Could not load workout history for export.",
+          t("common_error"),
+          workoutsResult.msg || t("settings_modal_error_load_history"),
         );
         return;
       }
@@ -127,8 +130,8 @@ const Settings = () => {
 
       if (workoutsHistory.length === 0) {
         Alert.alert(
-          "Error",
-          "No workouts found. Log at least one workout before exporting.",
+          t("common_error"),
+          t("settings_modal_error_no_workouts"),
         );
         return;
       }
@@ -141,14 +144,17 @@ const Settings = () => {
       });
 
       if (exportResult.success) {
-        Alert.alert("Success", "Workout plan exported successfully as Excel.");
+        Alert.alert(t("common_success"), t("settings_modal_success_export"));
       } else {
-        Alert.alert("Error", exportResult.msg || "Could not export workout plan.");
+        Alert.alert(
+          t("common_error"),
+          exportResult.msg || t("settings_modal_error_export"),
+        );
       }
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : "Could not export workout plan.";
-      Alert.alert("Error", message);
+        error instanceof Error ? error.message : t("settings_modal_error_export");
+      Alert.alert(t("common_error"), message);
     } finally {
       setIsExporting(false);
     }
@@ -166,7 +172,7 @@ const Settings = () => {
         <View style={styles.header}>
           <BackButton iconSize={28} />
           <Typo size={24} fontWeight="800" style={styles.headerTitle}>
-            Settings
+            {t("settings_modal_title")}
           </Typo>
         </View>
 
@@ -175,7 +181,7 @@ const Settings = () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Appearance Section */}
-          <SectionHeader title="Appearance" />
+          <SectionHeader title={t("settings_modal_section_appearance")} />
           <View style={styles.section}>
             <SettingItem
               icon={
@@ -185,8 +191,8 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title="Dark Mode"
-              subtitle="Toggle dark/light theme"
+              title={t("settings_modal_dark_mode_title")}
+              subtitle={t("settings_modal_dark_mode_subtitle")}
               showChevron={false}
               rightComponent={
                 <Switch
@@ -203,7 +209,7 @@ const Settings = () => {
           </View>
 
           {/* Language & Region Section */}
-          <SectionHeader title="Language & Region" />
+          <SectionHeader title={t("settings_modal_section_language_region")} />
           <View style={styles.section}>
             <SettingItem
               icon={
@@ -213,14 +219,14 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title="Language"
+              title={t("settings_modal_language_title")}
               subtitle={selectedLanguage}
               onPress={handleLanguagePress}
             />
           </View>
 
           {/* Data & Export Section */}
-          <SectionHeader title="Data & Export" />
+          <SectionHeader title={t("settings_modal_section_data_export")} />
           <View style={styles.section}>
             <SettingItem
               icon={
@@ -230,9 +236,15 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title={isExporting ? "Exporting..." : "Export Workout Plan"}
+              title={
+                isExporting
+                  ? t("settings_modal_exporting_title")
+                  : t("settings_modal_export_title")
+              }
               subtitle={
-                isExporting ? "Preparing Excel file..." : "Download as Excel file"
+                isExporting
+                  ? t("settings_modal_exporting_subtitle")
+                  : t("settings_modal_export_subtitle")
               }
               onPress={isExporting ? undefined : handleExportPlan}
               showChevron={!isExporting}
@@ -245,7 +257,7 @@ const Settings = () => {
           </View>
 
           {/* Notifications Section */}
-          <SectionHeader title="Notifications" />
+          <SectionHeader title={t("settings_modal_section_notifications")} />
           <View style={styles.section}>
             <SettingItem
               icon={
@@ -255,8 +267,8 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title="Push Notifications"
-              subtitle="Workout reminders & updates"
+              title={t("settings_modal_push_notifications_title")}
+              subtitle={t("settings_modal_push_notifications_subtitle")}
               showChevron={false}
               rightComponent={
                 <Switch
@@ -278,8 +290,8 @@ const Settings = () => {
                   weight="fill"
                 />
               }
-              title="Notification Settings"
-              subtitle="Customize alerts & reminders"
+              title={t("settings_modal_notification_settings_title")}
+              subtitle={t("settings_modal_notification_settings_subtitle")}
               onPress={handleNotifications}
             />
           </View>
@@ -287,7 +299,7 @@ const Settings = () => {
           {/* App Version */}
           <View style={styles.versionContainer}>
             <Typo size={13} color={colors.neutral500}>
-              App Version 1.0.0
+              {t("settings_modal_app_version")}
             </Typo>
           </View>
         </ScrollView>

@@ -5,7 +5,9 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import { searchFood, SimplifiedFood } from "@/src/services/foodApiService";
 import { getRecentFoodsByMeal } from "@/src/services/recentFoodsService";
 import { Food } from "@/src/types/index";
@@ -43,6 +45,7 @@ const MealDetail = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMeal, setSelectedMeal] = useState(
@@ -127,6 +130,7 @@ const MealDetail = () => {
     MEALS.find((meal) => meal.name === selectedMeal) ||
     MEALS.find((meal) => meal.name === mealName) ||
     MEALS[0];
+  const currentMealLabel = getMealLabel(language, currentMeal.name);
 
   // Load recent foods when meal changes
   useEffect(() => {
@@ -229,12 +233,17 @@ const MealDetail = () => {
     async (food: Food) => {
       try {
         await addFoodToMeal(currentMeal.name, food);
-        showSuccessToastMessage(`${food.name} added successfully`);
+        showSuccessToastMessage(
+          t("meal_detail_modal_food_added_to_meal", {
+            name: food.name,
+            meal: currentMealLabel,
+          }),
+        );
       } catch (error: any) {
-        Alert.alert("Error", error?.message || "Failed to add the food");
+        Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
       }
     },
-    [currentMeal.name, addFoodToMeal],
+    [addFoodToMeal, currentMeal.name, currentMealLabel, t],
   );
 
   // Show quantity modal for recent food when clicking on food body
@@ -255,7 +264,7 @@ const MealDetail = () => {
       !recentFoodQuantity ||
       parseFloat(recentFoodQuantity) <= 0
     ) {
-      Alert.alert("Error", "Please enter a valid quantity.");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
@@ -286,16 +295,21 @@ const MealDetail = () => {
       setShowQuantityModal(false);
       setSelectedRecentFood(null);
 
-      showSuccessToastMessage(`${adjustedFood.name} added successfully`);
+      showSuccessToastMessage(
+        t("meal_detail_modal_food_added_to_meal", {
+          name: adjustedFood.name,
+          meal: currentMealLabel,
+        }),
+      );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Error", error?.message || "Failed to add the food");
+      Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
     }
   };
 
   const handleAddWithQuantity = async () => {
     if (!selectedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Error", "Please enter a valid quantity.");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
@@ -322,10 +336,15 @@ const MealDetail = () => {
       setSearchQuery("");
       setSearchResults([]);
 
-      showSuccessToastMessage(`${adjustedFood.name} added successfully`);
+      showSuccessToastMessage(
+        t("meal_detail_modal_food_added_to_meal", {
+          name: adjustedFood.name,
+          meal: currentMealLabel,
+        }),
+      );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Error", error?.message || "Failed to add the food");
+      Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
     }
   };
 
@@ -369,25 +388,25 @@ const MealDetail = () => {
               •
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              P: {food.protein}g
+              {t("nutrition_short_protein")}: {food.protein}g
             </Typo>
             <Typo size={13} color={colors.neutral400}>
               •
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              C: {food.carbs}g
+              {t("nutrition_short_carbs")}: {food.carbs}g
             </Typo>
             <Typo size={13} color={colors.neutral400}>
               •
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              F: {food.fat}g
+              {t("nutrition_short_fat")}: {food.fat}g
             </Typo>
           </View>
         </View>
       </TouchableOpacity>
     ),
-    [handleFoodPress],
+    [handleFoodPress, t],
   );
 
   const renderRecentFoodItem = useCallback(
@@ -410,19 +429,19 @@ const MealDetail = () => {
                 •
               </Typo>
               <Typo size={13} color={colors.neutral400}>
-                P: {food.protein}g
+                {t("nutrition_short_protein")}: {food.protein}g
               </Typo>
               <Typo size={13} color={colors.neutral400}>
                 •
               </Typo>
               <Typo size={13} color={colors.neutral400}>
-                C: {food.carbs}g
+                {t("nutrition_short_carbs")}: {food.carbs}g
               </Typo>
               <Typo size={13} color={colors.neutral400}>
                 •
               </Typo>
               <Typo size={13} color={colors.neutral400}>
-                F: {food.fat}g
+                {t("nutrition_short_fat")}: {food.fat}g
               </Typo>
             </View>
             <Typo size={12} color={colors.neutral500}>
@@ -440,7 +459,7 @@ const MealDetail = () => {
         </TouchableOpacity>
       </View>
     ),
-    [handleRecentFoodBodyPress, handleQuickAddRecentFood],
+    [handleQuickAddRecentFood, handleRecentFoodBodyPress, t],
   );
 
   const RecentFoodsEmptyState = useCallback(
@@ -452,11 +471,11 @@ const MealDetail = () => {
           color={colors.neutral500}
           style={{ marginTop: spacingY._15, textAlign: "center" }}
         >
-          You have no recent foods for {currentMeal.name}
+          {t("meal_detail_modal_recent_empty", { meal: currentMealLabel })}
         </Typo>
       </View>
     ),
-    [currentMeal.name],
+    [currentMealLabel, t],
   );
 
   return (
@@ -472,7 +491,7 @@ const MealDetail = () => {
             onPress={measureDropdown}
           >
             <Typo size={24} fontWeight="700" style={styles.mealTitle}>
-              {currentMeal.name}
+              {currentMealLabel}
             </Typo>
             <Icons.CaretDown
               size={verticalScale(20)}
@@ -520,7 +539,7 @@ const MealDetail = () => {
                     size={16}
                     fontWeight={meal.name === currentMeal.name ? "600" : "500"}
                   >
-                    {meal.name}
+                    {getMealLabel(language, meal.name)}
                   </Typo>
                   {meal.name === currentMeal.name && (
                     <Icons.Check
@@ -546,7 +565,7 @@ const MealDetail = () => {
               />
             </View>
             <Input
-              placeholder="Search for food..."
+              placeholder={t("meal_detail_modal_search_placeholder")}
               value={searchQuery}
               onChangeText={handleSearch}
               containerStyle={styles.searchInput}
@@ -574,7 +593,7 @@ const MealDetail = () => {
                 !isSearching ? (
                   <View style={styles.emptyState}>
                     <Typo size={16} color={colors.neutral500}>
-                      No results found
+                      {t("meal_detail_modal_no_results")}
                     </Typo>
                   </View>
                 ) : null
@@ -600,10 +619,10 @@ const MealDetail = () => {
                   />
                   <View style={styles.actionTextContainer}>
                     <Typo size={13} style={styles.actionButtonText}>
-                      Manual
+                      {t("meal_detail_modal_manual_button_line1")}
                     </Typo>
                     <Typo size={13} style={styles.actionButtonText}>
-                      Calories
+                      {t("meal_detail_modal_manual_button_line2")}
                     </Typo>
                   </View>
                 </View>
@@ -621,10 +640,10 @@ const MealDetail = () => {
                   />
                   <View style={styles.actionTextContainer}>
                     <Typo size={13} style={styles.actionButtonText}>
-                      Barcode
+                      {t("meal_detail_modal_barcode_button_line1")}
                     </Typo>
                     <Typo size={13} style={styles.actionButtonText}>
-                      Scanner
+                      {t("meal_detail_modal_barcode_button_line2")}
                     </Typo>
                   </View>
                 </View>
@@ -634,7 +653,7 @@ const MealDetail = () => {
             {/* Recent Foods Section */}
             <View style={styles.recentFoodsSection}>
               <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
-                Recent Foods
+                {t("meal_detail_modal_recent_title")}
               </Typo>
 
               {loadingRecent ? (
@@ -702,7 +721,7 @@ const MealDetail = () => {
                   {/* Modal Header */}
                   <View style={styles.modalHeader}>
                     <Typo size={20} fontWeight="700">
-                      Adjust Quantity
+                      {t("nutrition_edit_quantity")}
                     </Typo>
                     <TouchableOpacity
                       onPress={() => {
@@ -755,7 +774,7 @@ const MealDetail = () => {
                           fontWeight="600"
                           style={{ marginBottom: spacingY._10 }}
                         >
-                          Quantity (grams)
+                          {t("nutrition_quantity_grams")}
                         </Typo>
                         <Input
                           value={quantity}
@@ -772,7 +791,7 @@ const MealDetail = () => {
                           fontWeight="600"
                           style={{ marginBottom: spacingY._15 }}
                         >
-                          Nutritional Values
+                          {t("meal_detail_modal_nutrition_values")}
                         </Typo>
                         <View style={styles.nutritionPreview}>
                           <View style={styles.nutritionItem}>
@@ -803,7 +822,7 @@ const MealDetail = () => {
                               g
                             </Typo>
                             <Typo size={12} color={colors.neutral400}>
-                              Protein
+                              {t("nutrition_protein")}
                             </Typo>
                           </View>
 
@@ -818,7 +837,7 @@ const MealDetail = () => {
                               g
                             </Typo>
                             <Typo size={12} color={colors.neutral400}>
-                              Carbohydrates
+                              {t("nutrition_carbs")}
                             </Typo>
                           </View>
 
@@ -833,7 +852,7 @@ const MealDetail = () => {
                               g
                             </Typo>
                             <Typo size={12} color={colors.neutral400}>
-                              Fats
+                              {t("nutrition_fat")}
                             </Typo>
                           </View>
                         </View>
@@ -845,7 +864,9 @@ const MealDetail = () => {
                         style={{ marginTop: spacingY._20 }}
                       >
                         <Typo size={18} fontWeight="700" color={colors.black}>
-                          Add to {currentMeal.name}
+                          {t("meal_detail_modal_add_to_meal", {
+                            meal: currentMealLabel,
+                          })}
                         </Typo>
                       </Button>
                     </View>
@@ -871,7 +892,9 @@ const MealDetail = () => {
                           color={colors.neutral400}
                           style={{ marginTop: spacingY._5 }}
                         >
-                          Current: {selectedRecentFood.servingSize}
+                          {t("meal_detail_modal_current_serving", {
+                            serving: selectedRecentFood.servingSize,
+                          })}
                         </Typo>
                       </View>
 
@@ -882,7 +905,7 @@ const MealDetail = () => {
                           fontWeight="600"
                           style={{ marginBottom: spacingY._10 }}
                         >
-                          Quantity (grams)
+                          {t("nutrition_quantity_grams")}
                         </Typo>
                         <Input
                           value={recentFoodQuantity}
@@ -899,7 +922,7 @@ const MealDetail = () => {
                           fontWeight="600"
                           style={{ marginBottom: spacingY._15 }}
                         >
-                          Nutritional Values
+                          {t("meal_detail_modal_nutrition_values")}
                         </Typo>
                         <View style={styles.nutritionPreview}>
                           {(() => {
@@ -939,7 +962,7 @@ const MealDetail = () => {
                                     g
                                   </Typo>
                                   <Typo size={12} color={colors.neutral400}>
-                                    Protein
+                                    {t("nutrition_protein")}
                                   </Typo>
                                 </View>
 
@@ -953,7 +976,7 @@ const MealDetail = () => {
                                     g
                                   </Typo>
                                   <Typo size={12} color={colors.neutral400}>
-                                    Carbohydrates
+                                    {t("nutrition_carbs")}
                                   </Typo>
                                 </View>
 
@@ -965,7 +988,7 @@ const MealDetail = () => {
                                     g
                                   </Typo>
                                   <Typo size={12} color={colors.neutral400}>
-                                    Fats
+                                    {t("nutrition_fat")}
                                   </Typo>
                                 </View>
                               </>
@@ -980,7 +1003,9 @@ const MealDetail = () => {
                         style={{ marginTop: spacingY._20 }}
                       >
                         <Typo size={18} fontWeight="700" color={colors.black}>
-                          Add to {currentMeal.name}
+                          {t("meal_detail_modal_add_to_meal", {
+                            meal: currentMealLabel,
+                          })}
                         </Typo>
                       </Button>
                     </View>
@@ -1032,7 +1057,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flex: 1,
-    paddingVertical: spacingY._8,
+    paddingVertical: spacingY._7,
   },
   mealTitle: {
     marginRight: spacingX._5,

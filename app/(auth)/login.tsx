@@ -5,6 +5,7 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -18,17 +19,18 @@ const Login = () => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const router = useRouter();
   const { login: loginUser } = useAuth();
+  const { t } = useLanguage();
 
   const handleSubmit = async () => {
     if (!emailRef.current || !passwordRef.current) {
-      Alert.alert("Login", "Please fill all the fields");
+      Alert.alert(t("auth_login_alert_title"), t("common_validation_fill_all_fields"));
       return;
     }
     setIsLoading(true);
     const res = await loginUser(emailRef.current, passwordRef.current);
     setIsLoading(false);
     if (!res.success) {
-      Alert.alert("Login", res.msg);
+      Alert.alert(t("auth_login_alert_title"), res.msg);
     }
   };
 
@@ -43,19 +45,19 @@ const Login = () => {
 
         <View style={{ gap: 5, marginTop: spacingY._20 }}>
           <Typo size={30} fontWeight={"800"}>
-            Hey
+            {t("auth_login_heading_line1")}
           </Typo>
           <Typo size={30} fontWeight={"800"}>
-            Welcome Back
+            {t("auth_login_heading_line2")}
           </Typo>
         </View>
 
         <View style={styles.form}>
           <Typo size={16} color={colors.textLighter}>
-            login now to track your expenses
+            {t("auth_login_subtitle")}
           </Typo>
           <Input
-            placeholder="Enter your email"
+            placeholder={t("auth_placeholder_email")}
             onChangeText={(value) => (emailRef.current = value)}
             icon={
               <Icons.At
@@ -67,7 +69,7 @@ const Login = () => {
           />
           <View style={styles.passwordContainer}>
             <Input
-              placeholder="Enter your password"
+              placeholder={t("auth_placeholder_password")}
               onChangeText={(value) => (passwordRef.current = value)}
               secureTextEntry={!isPasswordVisible}
               icon={
@@ -98,19 +100,19 @@ const Login = () => {
             </Pressable>
           </View>
           <Typo size={14} color={colors.text} style={{ alignSelf: "flex-end" }}>
-            Forgot Password?
+            {t("auth_login_forgot_password")}
           </Typo>
           <Button loading={isLoading} onPress={handleSubmit}>
             <Typo fontWeight={"700"} color={colors.black} size={21}>
-              Login
+              {t("auth_login_button")}
             </Typo>
           </Button>
         </View>
         <View style={styles.footer}>
-          <Typo size={15}>Don't have an account?</Typo>
+          <Typo size={15}>{t("auth_login_no_account")}</Typo>
           <Pressable onPress={() => router.navigate("/(auth)/register")}>
             <Typo size={15} fontWeight={"700"} color={colors.primary}>
-              Sign Up
+              {t("auth_login_sign_up")}
             </Typo>
           </Pressable>
         </View>

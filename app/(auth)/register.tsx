@@ -5,6 +5,7 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -19,10 +20,11 @@ const Register = () => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const router = useRouter();
   const { register: registerUser } = useAuth();
+  const { t } = useLanguage();
 
   const handleSubmit = async () => {
     if (!emailRef.current || !passwordRef.current || !nameRef.current) {
-      Alert.alert("Sign Up", "Please fill all the fields");
+      Alert.alert(t("auth_register_alert_title"), t("common_validation_fill_all_fields"));
       return;
     }
     setIsLoading(true);
@@ -34,7 +36,7 @@ const Register = () => {
     setIsLoading(false);
     console.log('register result', res);
     if (!res.success) {
-      Alert.alert("Sign Up",res.msg);
+      Alert.alert(t("auth_register_alert_title"), res.msg);
     }
   };
 
@@ -49,19 +51,19 @@ const Register = () => {
 
         <View style={{ gap: 5, marginTop: spacingY._20 }}>
           <Typo size={30} fontWeight={"800"}>
-            Let's
+            {t("auth_register_heading_line1")}
           </Typo>
           <Typo size={30} fontWeight={"800"}>
-            Get Started
+            {t("auth_register_heading_line2")}
           </Typo>
         </View>
 
         <View style={styles.form}>
           <Typo size={16} color={colors.textLighter}>
-            create an account to track your expenses
+            {t("auth_register_subtitle")}
           </Typo>
           <Input
-            placeholder="Enter your name"
+            placeholder={t("auth_placeholder_name")}
             onChangeText={(value) => (nameRef.current = value)}
             icon={
               <Icons.User
@@ -72,7 +74,7 @@ const Register = () => {
             }
           />
           <Input
-            placeholder="Enter your email"
+            placeholder={t("auth_placeholder_email")}
             onChangeText={(value) => (emailRef.current = value)}
             icon={
               <Icons.At
@@ -84,7 +86,7 @@ const Register = () => {
           />
           <View style={styles.passwordContainer}>
             <Input
-              placeholder="Enter your password"
+              placeholder={t("auth_placeholder_password")}
               onChangeText={(value) => (passwordRef.current = value)}
               secureTextEntry={!isPasswordVisible}
               icon={
@@ -117,15 +119,15 @@ const Register = () => {
 
           <Button loading={isLoading} onPress={handleSubmit}>
             <Typo fontWeight={"700"} color={colors.black} size={21}>
-              Sign Up
+              {t("auth_register_button")}
             </Typo>
           </Button>
         </View>
         <View style={styles.footer}>
-          <Typo size={15}>Already have an account?</Typo>
+          <Typo size={15}>{t("auth_register_have_account")}</Typo>
           <Pressable onPress={() => router.push("/(auth)/login")}>
             <Typo size={15} fontWeight={"700"} color={colors.primary}>
-              Login
+              {t("auth_register_login")}
             </Typo>
           </Pressable>
         </View>

@@ -2,7 +2,9 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import {
   getFoodByBarcode,
   SimplifiedFood,
@@ -33,6 +35,8 @@ const BarcodeScanner = () => {
   const { mealName } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
+  const mealLabel = getMealLabel(language, mealName as string);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
@@ -77,19 +81,19 @@ const BarcodeScanner = () => {
       setShowQuantityModal(true);
     } else {
       Alert.alert(
-        "Not Found",
-        "The food was not found in the database. Would you like to try again?",
+        t("barcode_scanner_modal_not_found_title"),
+        t("barcode_scanner_modal_not_found_message"),
         [
-          { text: "Cancel", onPress: () => router.back() },
-          { text: "Try Again", onPress: () => setScanned(false) },
-        ]
+          { text: t("common_cancel"), onPress: () => router.back() },
+          { text: t("barcode_scanner_modal_try_again"), onPress: () => setScanned(false) },
+        ],
       );
     }
   };
 
   const handleAddWithQuantity = async () => {
     if (!scannedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Error", "Please enter a valid quantity.");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
@@ -116,18 +120,21 @@ const BarcodeScanner = () => {
       setScannedFood(null);
 
       Alert.alert(
-        "Success",
-        `${adjustedFood.name} was added to ${mealName}! `,
+        t("common_success"),
+        t("barcode_scanner_modal_success_added_to_meal", {
+          name: adjustedFood.name,
+          meal: mealLabel,
+        }),
         [
           {
-            text: "OK",
+            text: t("common_ok"),
             onPress: () => router.back(),
           },
-        ]
+        ],
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Error", error?.message || "Failed to add the food");
+      Alert.alert(t("common_error"), error?.message || t("barcode_scanner_modal_error_add"));
     }
   };
 
@@ -147,7 +154,7 @@ const BarcodeScanner = () => {
             color={colors.neutral400}
             style={{ marginTop: spacingY._15 }}
           >
-            Se verifică permisiunile camerei...
+            {t("barcode_scanner_modal_checking_permissions")}
           </Typo>
         </View>
       </View>
@@ -167,21 +174,21 @@ const BarcodeScanner = () => {
             fontWeight="700"
             style={{ marginTop: spacingY._20, textAlign: "center" }}
           >
-            Acces Cameră Refuzat
+            {t("barcode_scanner_modal_camera_access_denied_title")}
           </Typo>
           <Typo
             size={15}
             color={colors.neutral400}
             style={{ marginTop: spacingY._10, textAlign: "center" }}
           >
-            The app needs camera access to scan barcodes.
+            {t("barcode_scanner_modal_camera_access_denied_message")}
           </Typo>
           <Button
             onPress={() => Linking.openSettings()}
             style={{ marginTop: spacingY._30, width: "80%" }}
           >
             <Typo size={16} fontWeight="700" color={colors.black}>
-              Open Settings
+              {t("barcode_scanner_modal_open_settings")}
             </Typo>
           </Button>
           <TouchableOpacity
@@ -189,7 +196,7 @@ const BarcodeScanner = () => {
             style={{ marginTop: spacingY._15 }}
           >
             <Typo size={15} color={colors.primary}>
-              Back
+              {t("barcode_scanner_modal_back")}
             </Typo>
           </TouchableOpacity>
         </Animated.View>
@@ -229,7 +236,7 @@ const BarcodeScanner = () => {
           </TouchableOpacity>
 
           <Typo size={18} fontWeight="700" color={colors.white}>
-            Scan Barcode
+            {t("barcode_scanner_modal_title")}
           </Typo>
 
           <TouchableOpacity
@@ -272,7 +279,7 @@ const BarcodeScanner = () => {
               color={colors.white}
               style={styles.scannerText}
             >
-              Position the barcode within the frame
+              {t("barcode_scanner_modal_position_hint")}
             </Typo>
           </Animated.View>
         )}
@@ -291,7 +298,7 @@ const BarcodeScanner = () => {
                 fontWeight="600"
                 style={{ marginTop: spacingY._15 }}
               >
-                Searching for food...
+                {t("barcode_scanner_modal_searching_food")}
               </Typo>
             </View>
           </Animated.View>
@@ -334,7 +341,7 @@ const BarcodeScanner = () => {
                 />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
-                Adaugă aliment
+                {t("barcode_scanner_modal_add_food_title")}
               </Typo>
               <TouchableOpacity onPress={() => setShowQuantityModal(false)}>
                 <Icons.XIcon size={24} color={colors.white} weight="bold" />
@@ -378,7 +385,7 @@ const BarcodeScanner = () => {
                       fontWeight="600"
                       style={{ marginBottom: spacingY._12 }}
                     >
-                      Cantitate (grame)
+                      {t("nutrition_quantity_grams")}
                     </Typo>
                     <Input
                       placeholder="100"
@@ -390,9 +397,9 @@ const BarcodeScanner = () => {
                     <Typo
                       size={13}
                       color={colors.neutral400}
-                      style={{ marginTop: spacingY._8 }}
+                      style={{ marginTop: spacingY._7 }}
                     >
-                      Valorile nutriționale sunt calculate pentru 100g
+                      {t("barcode_scanner_modal_values_per_100g")}
                     </Typo>
                   </View>
 
@@ -403,7 +410,7 @@ const BarcodeScanner = () => {
                       fontWeight="600"
                       style={{ marginBottom: spacingY._12 }}
                     >
-                      Valori calculate pentru {quantity || "0"}g:
+                      {t("nutrition_calculated_values_for", { value: quantity || "0" })}
                     </Typo>
 
                     <View style={styles.nutritionGrid}>
@@ -431,7 +438,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Proteine
+                          {t("nutrition_protein")}
                         </Typo>
                       </View>
 
@@ -445,7 +452,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Carbohidrați
+                          {t("nutrition_carbs")}
                         </Typo>
                       </View>
 
@@ -459,7 +466,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Grăsimi
+                          {t("nutrition_fat")}
                         </Typo>
                       </View>
                     </View>
@@ -472,7 +479,7 @@ const BarcodeScanner = () => {
                     style={{ marginTop: spacingY._20 }}
                   >
                     <Typo size={18} fontWeight="700" color={colors.black}>
-                      Adaugă la {mealName}
+                      {t("barcode_scanner_modal_add_to_meal", { meal: mealLabel || t("barcode_scanner_modal_meal_fallback") })}
                     </Typo>
                   </Button>
                 </View>
@@ -653,3 +660,4 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
   },
 });
+

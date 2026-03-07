@@ -2,7 +2,9 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -25,17 +27,19 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type MeasurementUnit = "Grame" | "Mililitri";
+type MeasurementUnit = "grams" | "milliliters";
 
 const CreateFood = () => {
   const router = useRouter();
   const { mealName } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
+  const mealLabel = getMealLabel(language, mealName as string);
 
   const [foodName, setFoodName] = useState("");
   const [measurementUnit, setMeasurementUnit] =
-    useState<MeasurementUnit>("Grame");
+    useState<MeasurementUnit>("grams");
 
   // Nutritional values per 100g/ml
   const [energyValue, setEnergyValue] = useState("");
@@ -49,31 +53,34 @@ const CreateFood = () => {
   const [salt, setSalt] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const measurementUnitLabel =
+    measurementUnit === "grams"
+      ? t("create_food_modal_unit_grams")
+      : t("create_food_modal_unit_milliliters");
 
   const handleSave = async () => {
-    // Validation
     if (!foodName.trim()) {
-      Alert.alert("Eroare", "Te rog introdu numele alimentului");
+      Alert.alert(t("common_error"), t("create_food_modal_error_food_name"));
       return;
     }
 
     if (!energyValue || parseFloat(energyValue) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu valoarea energetică");
+      Alert.alert(t("common_error"), t("create_food_modal_error_energy"));
       return;
     }
 
     if (!totalFat || parseFloat(totalFat) < 0) {
-      Alert.alert("Eroare", "Te rog introdu valoarea grăsimilor");
+      Alert.alert(t("common_error"), t("create_food_modal_error_total_fat"));
       return;
     }
 
     if (!totalCarbs || parseFloat(totalCarbs) < 0) {
-      Alert.alert("Eroare", "Te rog introdu valoarea carbohidraților");
+      Alert.alert(t("common_error"), t("create_food_modal_error_total_carbs"));
       return;
     }
 
     if (!protein || parseFloat(protein) < 0) {
-      Alert.alert("Eroare", "Te rog introdu valoarea proteinelor");
+      Alert.alert(t("common_error"), t("create_food_modal_error_protein"));
       return;
     }
 
@@ -85,8 +92,7 @@ const CreateFood = () => {
       protein: Math.round(parseFloat(protein) * 10) / 10,
       carbs: Math.round(parseFloat(totalCarbs) * 10) / 10,
       fat: Math.round(parseFloat(totalFat) * 10) / 10,
-      servingSize: `100${measurementUnit === "Grame" ? "g" : "ml"}`,
-      // Additional info stored as metadata
+      servingSize: `100${measurementUnit === "grams" ? "g" : "ml"}`,
       metadata: {
         saturatedFat: parseFloat(saturatedFat) || 0,
         unsaturatedFat: parseFloat(unsaturatedFat) || 0,
@@ -100,18 +106,24 @@ const CreateFood = () => {
       await addFoodToMeal(mealName as string, foodData);
       setSaving(false);
       Alert.alert(
-        "Success",
-        `${foodName} a fost creat și adăugat la ${mealName}!`,
+        t("common_success"),
+        t("create_food_modal_success_message", {
+          food: foodName,
+          meal: mealLabel,
+        }),
         [
           {
-            text: "OK",
+            text: t("common_ok"),
             onPress: () => router.back(),
           },
-        ]
+        ],
       );
     } catch (error: any) {
       setSaving(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut crea alimentul");
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("create_food_modal_error_save"),
+      );
     }
   };
 
@@ -136,7 +148,7 @@ const CreateFood = () => {
                 <Icons.XIcon size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
-                Adaugă aliment
+                {t("create_food_modal_title")}
               </Typo>
               <View style={{ width: 24 }} />
             </View>
@@ -156,7 +168,7 @@ const CreateFood = () => {
                   weight="fill"
                 />
                 <Typo size={15} fontWeight="600">
-                  {mealName || "Masă"}
+                  {mealLabel || t("create_food_modal_meal_fallback")}
                 </Typo>
               </Animated.View>
 
@@ -166,10 +178,10 @@ const CreateFood = () => {
                 style={styles.inputGroup}
               >
                 <Typo size={15} fontWeight="600" style={styles.label}>
-                  Numele alimentului*
+                  {t("create_food_modal_food_name_label")}
                 </Typo>
                 <Input
-                  placeholder="ex. Piept de pui gătit"
+                  placeholder={t("create_food_modal_food_name_placeholder")}
                   value={foodName}
                   onChangeText={setFoodName}
                   containerStyle={styles.input}
@@ -182,46 +194,46 @@ const CreateFood = () => {
                 style={styles.inputGroup}
               >
                 <Typo size={15} fontWeight="600" style={styles.label}>
-                  Unitatea de măsură
+                  {t("create_food_modal_measurement_unit_label")}
                 </Typo>
                 <View style={styles.unitToggle}>
                   <TouchableOpacity
                     style={[
                       styles.unitButton,
-                      measurementUnit === "Grame" && styles.unitButtonActive,
+                      measurementUnit === "grams" && styles.unitButtonActive,
                     ]}
-                    onPress={() => setMeasurementUnit("Grame")}
+                    onPress={() => setMeasurementUnit("grams")}
                   >
                     <Typo
                       size={14}
                       fontWeight="600"
                       color={
-                        measurementUnit === "Grame"
+                        measurementUnit === "grams"
                           ? colors.black
                           : colors.white
                       }
                     >
-                      Grame
+                      {t("create_food_modal_unit_grams")}
                     </Typo>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
                       styles.unitButton,
-                      measurementUnit === "Mililitri" &&
+                      measurementUnit === "milliliters" &&
                         styles.unitButtonActive,
                     ]}
-                    onPress={() => setMeasurementUnit("Mililitri")}
+                    onPress={() => setMeasurementUnit("milliliters")}
                   >
                     <Typo
                       size={14}
                       fontWeight="600"
                       color={
-                        measurementUnit === "Mililitri"
+                        measurementUnit === "milliliters"
                           ? colors.black
                           : colors.white
                       }
                     >
-                      Mililitri
+                      {t("create_food_modal_unit_milliliters")}
                     </Typo>
                   </TouchableOpacity>
                 </View>
@@ -230,7 +242,7 @@ const CreateFood = () => {
               {/* Nutritional Information Title */}
               <Animated.View entering={FadeInDown.delay(350).duration(400)}>
                 <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
-                  Informații nutriționale pentru 100 de {measurementUnit}
+                  {t("create_food_modal_nutrition_title", { unit: measurementUnitLabel })}
                 </Typo>
               </Animated.View>
 
@@ -241,7 +253,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Valoare energetică *
+                    {t("create_food_modal_energy_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -265,7 +277,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Grăsimi/Lipide *
+                    {t("create_food_modal_total_fat_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -289,7 +301,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={14} color={colors.neutral400}>
-                    Grăsimi Saturate
+                    {t("create_food_modal_saturated_fat_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -313,7 +325,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={14} color={colors.neutral400}>
-                    Grăsimi Ne-Saturate
+                    {t("create_food_modal_unsaturated_fat_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -337,7 +349,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Carbohidrați/Glucide *
+                    {t("create_food_modal_total_carbs_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -361,7 +373,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={14} color={colors.neutral400}>
-                    Zaharuri
+                    {t("create_food_modal_sugar_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -385,7 +397,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Fibre
+                    {t("create_food_modal_fiber_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -409,7 +421,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Proteine *
+                    {t("create_food_modal_protein_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -433,7 +445,7 @@ const CreateFood = () => {
               >
                 <View style={styles.nutritionLabel}>
                   <Typo size={15} fontWeight="500">
-                    Sare
+                    {t("create_food_modal_salt_label")}
                   </Typo>
                 </View>
                 <View style={styles.nutritionInputContainer}>
@@ -461,8 +473,7 @@ const CreateFood = () => {
                   weight="fill"
                 />
                 <Typo size={13} color={colors.neutral400} style={{ flex: 1 }}>
-                  Câmpurile marcate cu * sunt obligatorii. Alimentul va fi
-                  salvat pentru utilizări viitoare.
+                  {t("create_food_modal_note")}
                 </Typo>
               </Animated.View>
             </ScrollView>
@@ -474,7 +485,7 @@ const CreateFood = () => {
             >
               <Button onPress={handleSave} loading={saving}>
                 <Typo size={18} fontWeight="700" color={colors.black}>
-                  Creează și adaugă la {mealName}
+                  {t("create_food_modal_create_and_add", { meal: mealLabel || t("create_food_modal_meal_fallback") })}
                 </Typo>
               </Button>
             </Animated.View>
