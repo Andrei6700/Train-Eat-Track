@@ -217,13 +217,14 @@ const WorkoutDetail = () => {
             ))}
           </View>
 
-          {/* Delete Button */}
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-            <Icons.TrashIcon size={20} color={colors.rose} />
-            <Typo size={16} fontWeight="600" color={colors.rose}>
-              {t("workout_detail_modal_delete_title")}
-            </Typo>
-          </TouchableOpacity>
+          <View style={styles.deleteActionWrap}>
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+              <Icons.TrashIcon size={20} color={colors.rose} />
+              <Typo size={16} fontWeight="600" color={colors.rose}>
+                {t("workout_detail_modal_delete_title")}
+              </Typo>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
     </ModalWrapper>
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   scrollContent: {
-    paddingBottom: verticalScale(40),
+    paddingBottom: verticalScale(72),
     gap: spacingY._20,
   },
   infoCard: {
@@ -303,6 +304,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  deleteActionWrap: {
+    alignItems: "center",
+    marginTop: spacingY._15,
+    marginBottom: spacingY._15,
+  },
   deleteButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -313,6 +319,6 @@ const styles = StyleSheet.create({
     padding: spacingY._15,
     borderWidth: 1,
     borderColor: colors.rose,
-    marginTop: spacingY._10,
+    width: "92%",
   },
 });

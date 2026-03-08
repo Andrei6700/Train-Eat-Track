@@ -2,29 +2,27 @@ import { colors, radius } from '@/constants/theme';
 import { CustomButtonProps } from '@/src/types/index';
 import { verticalScale, scale } from '@/src/utils/styling';
 import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
-import Loading from "./Loading";
+import { ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 
 const Button = ({
     style,
     onPress,
     loading = false,
-    children
+    children,
+    disabled,
+    activeOpacity,
+    ...touchableProps
 }: CustomButtonProps) => {
-    if (loading){
-        return(
-            <View style={[styles.button, style, 
-                { backgroundColor:"transparent"}
-            ]}>
-                <Loading />
-            </View>
-        );
-    }
+    const isDisabled = Boolean(disabled || loading);
+
     return(
         <TouchableOpacity 
+        {...touchableProps}
         onPress={onPress}
-        style={[styles.button, style]}>
-            {children}
+        disabled={isDisabled}
+        activeOpacity={activeOpacity ?? 0.85}
+        style={[styles.button, style, isDisabled && styles.buttonDisabled]}>
+            {loading ? <ActivityIndicator size="small" color={colors.black} /> : children}
         </TouchableOpacity>
     );
 };
@@ -42,5 +40,8 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         width: '100%',
+    },
+    buttonDisabled: {
+        opacity: 0.9,
     },
 });

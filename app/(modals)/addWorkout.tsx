@@ -977,21 +977,11 @@ const AddWorkout = () => {
               )}
             </View>
 
-            {/* Save Button - Fixed at bottom */}
-            <View
-              style={[
-                styles.saveButtonContainer,
-                { paddingBottom: Math.max(insets.bottom, spacingY._10) },
-              ]}
-            >
+            {!isKeyboardVisible && activePage === 1 && (
               <View
-                pointerEvents={
-                  !isKeyboardVisible && activePage === 1 ? "auto" : "none"
-                }
                 style={[
-                  styles.saveButtonSlot,
-                  (isKeyboardVisible || activePage !== 1) &&
-                    styles.saveButtonSlotHidden,
+                  styles.saveButtonContainer,
+                  { paddingBottom: Math.max(insets.bottom, spacingY._10) },
                 ]}
               >
                 <Button onPress={handleSave} loading={loading}>
@@ -1002,7 +992,7 @@ const AddWorkout = () => {
                   </Typo>
                 </Button>
               </View>
-            </View>
+            )}
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -1252,12 +1242,5 @@ const styles = StyleSheet.create({
   saveButtonContainer: {
     paddingTop: spacingY._10,
     backgroundColor: colors.neutral800,
-    minHeight: verticalScale(76),
-  },
-  saveButtonSlot: {
-    opacity: 1,
-  },
-  saveButtonSlotHidden: {
-    opacity: 0,
   },
 });

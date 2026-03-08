@@ -141,9 +141,6 @@ const WorkoutContentState = ({
           <Typo size={20} fontWeight="600">
             {t("workout_today_plan")}
           </Typo>
-          <TouchableOpacity onPress={onEditPlan}>
-            <Icons.PencilSimple size={20} color={colors.primary} />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.planCard}>

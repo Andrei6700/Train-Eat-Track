@@ -8,11 +8,12 @@ import { StyleSheet, TouchableOpacity } from 'react-native';
 
 const BackButton = ({
     style,
-    iconSize = 26
+    iconSize = 26,
+    onPress,
 }:BackButtonProps) => {
     const router = useRouter();
   return (
-   <TouchableOpacity onPress={()=>router.back()} style={[styles.button, style]}>
+   <TouchableOpacity onPress={onPress || (() => router.back())} style={[styles.button, style]}>
      <CaretLeftIcon size={verticalScale(iconSize)} 
      color={colors.white}
      weight='bold'/>

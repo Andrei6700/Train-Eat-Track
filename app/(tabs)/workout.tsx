@@ -1,4 +1,4 @@
-import { colors, spacingX, spacingY } from "@/constants/theme";
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import WorkoutCalendarStrip from "@/src/components/workout/WorkoutCalendarStrip";
@@ -24,8 +24,9 @@ import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
 import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import * as Icons from "phosphor-react-native";
 
 const CACHE_MAX_AGE_MS = 60_000;
 
@@ -385,6 +386,17 @@ const Workout = () => {
               <Typo size={28} fontWeight="700">
                 {t("tab_workout")}
               </Typo>
+              {workoutPlan && (
+                <TouchableOpacity
+                  onPress={handleEditPlan}
+                  style={styles.headerEditButton}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("workout_plan_modal_edit_title")}
+                >
+                  <Icons.PencilSimple size={18} color={colors.black} weight="bold" />
+                </TouchableOpacity>
+              )}
             </Animated.View>
           </View>
           <Loading />
@@ -401,6 +413,17 @@ const Workout = () => {
             <Typo size={28} fontWeight="700">
               {t("tab_workout")}
             </Typo>
+            {workoutPlan && (
+              <TouchableOpacity
+                onPress={handleEditPlan}
+                style={styles.headerEditButton}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={t("workout_plan_modal_edit_title")}
+              >
+                <Icons.PencilSimple size={18} color={colors.black} weight="bold" />
+              </TouchableOpacity>
+            )}
           </Animated.View>
 
           <Animated.View
@@ -480,7 +503,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: spacingY._15,
+  },
+  headerEditButton: {
+    width: verticalScale(36),
+    height: verticalScale(36),
+    borderRadius: radius._10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
   },
   monthHeader: {
     flexDirection: "row",

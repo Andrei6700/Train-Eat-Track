@@ -14,6 +14,7 @@ import {
   getUserWorkoutPlan,
   updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
+import { importWorkoutPlanFromExcel } from "@/src/services/workoutPlanImportService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import * as Haptics from 'expo-haptics';
@@ -32,45 +33,64 @@ import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SPLIT_OPTIONS = [1, 2, 4, 7, 9, 14];
+const MIN_CUSTOM_SPLIT_DAYS = 1;
+const MAX_CUSTOM_SPLIT_DAYS = 60;
+const FOOTER_BUTTON_HEIGHT = verticalScale(52);
 
 const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
-  const { workoutPlan, refreshPlan, deletePlan } = useWorkoutPlan();
+  const {
+    workoutPlan,
+    refreshPlan,
+    deletePlan,
+    setPlanDraft,
+    clearPlanDraft,
+  } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [planName, setPlanName] = useState("");
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const [splitDays, setSplitDays] = useState(1);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showCustomSplitModal, setShowCustomSplitModal] = useState(false);
+  const [customSplitInput, setCustomSplitInput] = useState("");
   const [days, setDays] = useState<DayWorkout[]>([]);
+  const footerBottomOffset = insets.bottom + spacingY._12;
+  const footerReserve = footerBottomOffset + FOOTER_BUTTON_HEIGHT + spacingY._15;
 
   const daysOfWeek = useMemo(() => {
     return Array.from({ length: splitDays }, (_, i) => `Day ${i + 1}`);
   }, [splitDays]);
 
+  const availableSplitOptions = useMemo(() => {
+    return Array.from(new Set([...SPLIT_OPTIONS, splitDays])).sort((a, b) => a - b);
+  }, [splitDays]);
+
   useEffect(() => {
-    const newDays = daysOfWeek.map((day) => {
-      const existingDay = days.find((d) => d.day === day);
-      if (existingDay) {
-        return existingDay;
-      }
-      return {
-        day,
-        isRestDay: false,
-        exercises: [],
-      };
+    setDays((previousDays) => {
+      return daysOfWeek.map((day) => {
+        const existingDay = previousDays.find((d) => d.day === day);
+        if (existingDay) {
+          return existingDay;
+        }
+        return {
+          day,
+          isRestDay: false,
+          exercises: [],
+        };
+      });
     });
-    setDays(newDays);
   }, [daysOfWeek]);
 
   useFocusEffect(
     useCallback(() => {
       loadWorkoutPlan();
-    }, [user?.uid, workoutPlan])
+    }, [user?.uid, workoutPlan?.id])
   );
 
   useEffect(() => {
@@ -81,6 +101,16 @@ const WorkoutPlanScreen = () => {
 
   const loadWorkoutPlan = async () => {
     if (!user?.uid) return;
+
+    if (workoutPlan && !workoutPlan.id) {
+      setExistingPlanId(null);
+      setPlanName(workoutPlan.planName || "");
+      setSplitDays(workoutPlan.splitDays || 1);
+      setDays(workoutPlan.days || []);
+      setLoading(false);
+      return;
+    }
+
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
       setExistingPlanId(result.data.id || null);
@@ -97,8 +127,35 @@ const WorkoutPlanScreen = () => {
     setLoading(false);
   };
 
+  const buildCurrentDraftPlan = (): WorkoutPlan | null => {
+    if (!user?.uid) return null;
+    return {
+      userID: user.uid,
+      planName: planName.trim(),
+      splitDays,
+      days,
+      createdAt: workoutPlan?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+  };
+
+  const handleClose = () => {
+    if (!existingPlanId) {
+      clearPlanDraft();
+    }
+    router.back();
+  };
+
   const handleDayPress = (day: string) => {
     Haptics.selectionAsync();
+
+    if (!existingPlanId) {
+      const currentDraft = buildCurrentDraftPlan();
+      if (currentDraft) {
+        setPlanDraft(currentDraft);
+      }
+    }
+
     router.push({
       pathname: "/(modals)/dayWorkout",
       params: { day, planId: existingPlanId || "new" },
@@ -146,6 +203,8 @@ const WorkoutPlanScreen = () => {
         await refreshPlan();
       }
 
+      clearPlanDraft();
+
       Alert.alert(
         queuedOffline ? t("common_saved_offline_title") : t("common_success"),
         queuedOffline
@@ -158,6 +217,69 @@ const WorkoutPlanScreen = () => {
     } else {
       Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_save"));
     }
+  };
+
+  const handleImportWorkoutPlan = async () => {
+    if (existingPlanId || importing) return;
+
+    Haptics.selectionAsync();
+    setImporting(true);
+    const result = await importWorkoutPlanFromExcel();
+    setImporting(false);
+
+    if (!result.success) {
+      if (result.code === "PICKER_CANCELLED") {
+        return;
+      }
+
+      const fallbackMsg =
+        result.code === "INVALID_FILE_TYPE"
+          ? t("workout_plan_modal_import_error_invalid_file")
+          : result.code === "UNSUPPORTED_FORMAT"
+            ? t("workout_plan_modal_import_error_unsupported")
+            : t("workout_plan_modal_import_error_generic");
+
+      const details = result.errors?.length
+        ? `\n\n${result.errors.slice(0, 6).join("\n")}`
+        : "";
+      Alert.alert(
+        t("common_error"),
+        `${result.msg || fallbackMsg}${details}`,
+      );
+      return;
+    }
+
+    if (!result.data) {
+      Alert.alert(t("common_error"), t("workout_plan_modal_import_error_generic"));
+      return;
+    }
+
+    const importedPlan = result.data;
+    setPlanName(importedPlan.planName);
+    setSplitDays(importedPlan.splitDays);
+    setDays(importedPlan.days);
+    if (user?.uid) {
+      setPlanDraft({
+        userID: user.uid,
+        planName: importedPlan.planName,
+        splitDays: importedPlan.splitDays,
+        days: importedPlan.days,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    const importedExerciseCount = importedPlan.days.reduce((total, day) => {
+      return total + (day.exercises?.length || 0);
+    }, 0);
+
+    Alert.alert(
+      t("common_success"),
+      t("workout_plan_modal_import_success", {
+        splitDays: importedPlan.splitDays,
+        exercises: importedExerciseCount,
+      }),
+    );
   };
 
   const handleDelete = () => {
@@ -183,6 +305,7 @@ const WorkoutPlanScreen = () => {
     
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      clearPlanDraft();
       Alert.alert(
         t("workout_plan_modal_delete_success_title"),
         result.msg || t("workout_plan_modal_delete_success_message"),
@@ -224,6 +347,31 @@ const WorkoutPlanScreen = () => {
     return t("workout_plan_modal_day_label", { count: match[1] });
   };
 
+  const openCustomSplitModal = () => {
+    setCustomSplitInput(String(splitDays));
+    setShowCustomSplitModal(true);
+  };
+
+  const applyCustomSplitDays = () => {
+    const trimmedValue = customSplitInput.trim();
+    const parsedValue = Number(trimmedValue);
+    const isValidInteger = /^\d+$/.test(trimmedValue);
+
+    if (
+      !isValidInteger ||
+      !Number.isInteger(parsedValue) ||
+      parsedValue < MIN_CUSTOM_SPLIT_DAYS ||
+      parsedValue > MAX_CUSTOM_SPLIT_DAYS
+    ) {
+      Alert.alert(t("common_error"), t("workout_plan_modal_custom_split_invalid"));
+      return;
+    }
+
+    Haptics.selectionAsync();
+    setSplitDays(parsedValue);
+    setShowCustomSplitModal(false);
+  };
+
   if (loading) {
     return (
       <ModalWrapper>
@@ -242,12 +390,12 @@ const WorkoutPlanScreen = () => {
               ? t("workout_plan_modal_edit_title")
               : t("workout_plan_modal_create_title")
           }
-          leftIcon={<BackButton />}
+          leftIcon={<BackButton onPress={handleClose} />}
           style={{ marginBottom: spacingY._15 }}
         />
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: footerReserve }]}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View 
@@ -264,6 +412,32 @@ const WorkoutPlanScreen = () => {
               containerStyle={styles.input}
             />
           </Animated.View>
+
+          {!existingPlanId && (
+            <Animated.View
+              entering={FadeInDown.duration(400).delay(40)}
+              style={styles.importContainer}
+            >
+              <TouchableOpacity
+                style={[styles.importButton, importing && styles.importButtonDisabled]}
+                onPress={handleImportWorkoutPlan}
+                disabled={importing}
+                activeOpacity={0.85}
+              >
+                <Icons.FileXls size={20} color={colors.primary} weight="fill" />
+                <View style={{ flex: 1 }}>
+                  <Typo size={15} fontWeight="700" color={colors.white}>
+                    {importing
+                      ? t("workout_plan_modal_import_loading")
+                      : t("workout_plan_modal_import_button")}
+                  </Typo>
+                  <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                    {t("workout_plan_modal_import_caption")}
+                  </Typo>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
           <Animated.View 
             entering={FadeInDown.duration(400).delay(50)}
@@ -282,7 +456,7 @@ const WorkoutPlanScreen = () => {
             </View>
 
             <View style={styles.splitOptions}>
-              {SPLIT_OPTIONS.map((option) => (
+              {availableSplitOptions.map((option) => (
                 <TouchableOpacity
                   key={option}
                   style={[
@@ -303,6 +477,16 @@ const WorkoutPlanScreen = () => {
                   </Typo>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={styles.splitOptionCustom}
+                onPress={openCustomSplitModal}
+                activeOpacity={0.85}
+              >
+                <Icons.Plus size={14} color={colors.primary} weight="bold" />
+                <Typo size={14} fontWeight="600" color={colors.primary}>
+                  {t("workout_plan_modal_custom_split_button")}
+                </Typo>
+              </TouchableOpacity>
             </View>
           </Animated.View>
 
@@ -394,7 +578,7 @@ const WorkoutPlanScreen = () => {
                         {dayData.exercises.slice(0, 3).map((ex, idx) => (
                           <View key={idx} style={styles.exerciseRow}>
                              <View style={styles.dot} />
-                             <Typo size={14} color={colors.neutral300} numberOfLines={1}>
+                             <Typo size={14} color={colors.neutral300} textProps={{ numberOfLines: 1 }}>
                                {ex.exerciseName}
                              </Typo>
                              <Typo size={13} color={colors.neutral500}>
@@ -448,8 +632,8 @@ const WorkoutPlanScreen = () => {
           )}
         </ScrollView>
 
-        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button onPress={handleSave} loading={saving} style={styles.saveButton}>
+        <View style={[styles.footerSticky, { bottom: footerBottomOffset }]}>
+          <Button onPress={handleSave} loading={saving}>
             <Typo color={colors.black} fontWeight="700" size={18}>
               {t("workout_plan_modal_save_changes")}
             </Typo>
@@ -528,6 +712,58 @@ const WorkoutPlanScreen = () => {
             </View>
           </TouchableOpacity>
         </Modal>
+
+        <Modal
+          visible={showCustomSplitModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCustomSplitModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCustomSplitModal(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {}}
+              style={styles.customSplitModal}
+            >
+              <Typo size={18} fontWeight="700" style={styles.customSplitTitle}>
+                {t("workout_plan_modal_custom_split_title")}
+              </Typo>
+              <Typo size={14} color={colors.neutral400}>
+                {t("workout_plan_modal_custom_split_hint")}
+              </Typo>
+
+              <Input
+                value={customSplitInput}
+                onChangeText={setCustomSplitInput}
+                placeholder={t("workout_plan_modal_custom_split_placeholder")}
+                keyboardType="number-pad"
+                containerStyle={styles.customSplitInput}
+                autoFocus
+              />
+
+              <View style={styles.customSplitActions}>
+                <TouchableOpacity
+                  style={styles.customSplitCancelButton}
+                  onPress={() => setShowCustomSplitModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Typo size={15} fontWeight="600" color={colors.neutral300}>
+                    {t("common_cancel")}
+                  </Typo>
+                </TouchableOpacity>
+                <Button onPress={applyCustomSplitDays} style={styles.customSplitApplyButton}>
+                  <Typo size={15} fontWeight="700" color={colors.black}>
+                    {t("workout_plan_modal_custom_split_apply")}
+                  </Typo>
+                </Button>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </View>
     </ModalWrapper>
   );
@@ -554,6 +790,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderColor: colors.neutral700,
   },
+  importContainer: {
+    marginBottom: spacingY._20,
+  },
+  importButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._12,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    paddingVertical: spacingY._12,
+    paddingHorizontal: spacingX._15,
+  },
+  importButtonDisabled: {
+    opacity: 0.6,
+  },
   splitContainer: {
     marginBottom: spacingY._25,
   },
@@ -568,10 +821,12 @@ const styles = StyleSheet.create({
   },
   splitOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacingX._10,
   },
   splitOption: {
-    flex: 1,
+    minWidth: verticalScale(52),
+    paddingHorizontal: spacingX._15,
     paddingVertical: spacingY._12,
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
@@ -582,6 +837,19 @@ const styles = StyleSheet.create({
   splitOptionActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  splitOptionCustom: {
+    minWidth: verticalScale(98),
+    paddingHorizontal: spacingX._15,
+    paddingVertical: spacingY._12,
+    backgroundColor: colors.neutral900,
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacingX._7,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -666,7 +934,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderRadius: radius._17,
     padding: spacingX._20,
-    marginTop: spacingY._30,
+    marginTop: spacingY._15,
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
   },
@@ -675,13 +943,6 @@ const styles = StyleSheet.create({
     left: spacingX._20,
     right: spacingX._20,
     zIndex: 30,
-  },
-  saveButton: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
   },
   modalOverlay: {
     flex: 1,
@@ -718,5 +979,42 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     borderLeftWidth: 3,
     borderLeftColor: colors.primary,
+  },
+  customSplitModal: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._20,
+    width: "100%",
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    padding: spacingX._20,
+    gap: spacingY._12,
+  },
+  customSplitTitle: {
+    marginBottom: spacingY._5,
+  },
+  customSplitInput: {
+    marginTop: spacingY._10,
+    backgroundColor: colors.neutral900,
+    borderColor: colors.neutral700,
+  },
+  customSplitActions: {
+    marginTop: spacingY._7,
+    flexDirection: "row",
+    gap: spacingX._10,
+    alignItems: "center",
+  },
+  customSplitCancelButton: {
+    flex: 1,
+    height: verticalScale(52),
+    borderRadius: radius._17,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    backgroundColor: colors.neutral900,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  customSplitApplyButton: {
+    flex: 1,
   },
 });

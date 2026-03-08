@@ -348,6 +348,26 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_plan_modal_plan_name_label: "Plan Name",
     workout_plan_modal_plan_name_placeholder: "e.g., Push Pull Legs",
     workout_plan_modal_split_days_label: "Split Days (Cycle Length)",
+    workout_plan_modal_custom_split_button: "Custom",
+    workout_plan_modal_custom_split_title: "Custom Split Days",
+    workout_plan_modal_custom_split_hint:
+      "Set any cycle length between 1 and 60 days.",
+    workout_plan_modal_custom_split_placeholder: "Enter split days (1-60)",
+    workout_plan_modal_custom_split_apply: "Apply",
+    workout_plan_modal_custom_split_invalid:
+      "Split days must be a whole number between 1 and 60.",
+    workout_plan_modal_import_button: "Import workout plan",
+    workout_plan_modal_import_loading: "Importing workout plan...",
+    workout_plan_modal_import_caption:
+      "Load plan structure, days, and exercises from an Excel (.xlsx) file.",
+    workout_plan_modal_import_success:
+      "Workout plan imported: {splitDays} split days and {exercises} exercises. Review and tap Save Changes.",
+    workout_plan_modal_import_error_generic:
+      "Could not import this workout plan from Excel.",
+    workout_plan_modal_import_error_invalid_file:
+      "Only .xlsx files are supported for import.",
+    workout_plan_modal_import_error_unsupported:
+      "This Excel format is not supported for import yet.",
     workout_plan_modal_stat_workout_days: "Workout Days",
     workout_plan_modal_stat_rest_days: "Rest Days",
     workout_plan_modal_stat_exercises: "Exercises",
@@ -778,6 +798,27 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_plan_modal_plan_name_label: "Nume plan",
     workout_plan_modal_plan_name_placeholder: "ex. Push Pull Legs",
     workout_plan_modal_split_days_label: "Zile split (lungimea ciclului)",
+    workout_plan_modal_custom_split_button: "Custom",
+    workout_plan_modal_custom_split_title: "Zile split personalizate",
+    workout_plan_modal_custom_split_hint:
+      "Seteaza orice lungime de ciclu intre 1 si 60 de zile.",
+    workout_plan_modal_custom_split_placeholder:
+      "Introdu zilele split (1-60)",
+    workout_plan_modal_custom_split_apply: "Aplica",
+    workout_plan_modal_custom_split_invalid:
+      "Zilele split trebuie sa fie un numar intreg intre 1 si 60.",
+    workout_plan_modal_import_button: "Importa plan de antrenament",
+    workout_plan_modal_import_loading: "Se importa planul...",
+    workout_plan_modal_import_caption:
+      "Incarca structura planului, zilele si exercitiile dintr-un fisier Excel (.xlsx).",
+    workout_plan_modal_import_success:
+      "Plan importat: {splitDays} zile split si {exercises} exercitii. Revizuieste si apasa Salveaza modificarile.",
+    workout_plan_modal_import_error_generic:
+      "Nu s-a putut importa planul de antrenament din Excel.",
+    workout_plan_modal_import_error_invalid_file:
+      "Pentru import sunt acceptate doar fisiere .xlsx.",
+    workout_plan_modal_import_error_unsupported:
+      "Formatul acestui fisier Excel nu este suportat pentru import.",
     workout_plan_modal_stat_workout_days: "Zile antrenament",
     workout_plan_modal_stat_rest_days: "Zile pauza",
     workout_plan_modal_stat_exercises: "Exercitii",
