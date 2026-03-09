@@ -8,7 +8,11 @@ import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel } from "@/src/i18n/translations";
-import { searchFood, SimplifiedFood } from "@/src/services/foodApiService";
+import { getCachedFoods } from "@/src/services/cacheService";
+import {
+  searchFoodHybrid,
+  SimplifiedFood,
+} from "@/src/services/foodApiService";
 import { getRecentFoodsByMeal } from "@/src/services/recentFoodsService";
 import { Food } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
@@ -16,7 +20,7 @@ import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,6 +43,15 @@ const MEALS = [
   { id: "snacks", name: "Gustari" },
 ];
 
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_PAGE_SIZE = 12;
+const SEARCH_TIMEOUT_MS = 6000;
+const SEARCH_RETRIES = 0;
+const SEARCH_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError";
+
 const MealDetail = () => {
   const { mealName } = useLocalSearchParams();
   const { user } = useAuth();
@@ -53,6 +66,7 @@ const MealDetail = () => {
   );
   const [showMealDropdown, setShowMealDropdown] = useState(false);
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
+  const [cachedFoods, setCachedFoods] = useState<Food[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [dropdownPosition, setDropdownPosition] = useState({
     x: 0,
@@ -63,6 +77,8 @@ const MealDetail = () => {
   const [searchResults, setSearchResults] = useState<SimplifiedFood[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const activeSearchControllerRef = useRef<AbortController | null>(null);
+  const latestSearchTokenRef = useRef(0);
 
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [selectedFood, setSelectedFood] = useState<SimplifiedFood | null>(null);
@@ -132,10 +148,43 @@ const MealDetail = () => {
     MEALS[0];
   const currentMealLabel = getMealLabel(language, currentMeal.name);
 
+  const localSearchFoods = useMemo(
+    () => [...recentFoods, ...cachedFoods],
+    [cachedFoods, recentFoods],
+  );
+
   // Load recent foods when meal changes
   useEffect(() => {
     loadRecentFoods();
   }, [currentMeal.name, user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const localCachedFoods = await getCachedFoods();
+        if (!cancelled) {
+          setCachedFoods(localCachedFoods);
+        }
+      } catch (error) {
+        console.error("[MealDetail] Error loading cached foods:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      activeSearchControllerRef.current?.abort();
+    };
+  }, []);
 
   const loadRecentFoods = async () => {
     if (!user?.uid) {
@@ -178,25 +227,140 @@ const MealDetail = () => {
     setShowMealDropdown(false);
   };
 
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
+  const handleSearch = useCallback(
+    (text: string) => {
+      setSearchQuery(text);
+      const normalizedQuery = text.trim();
 
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
 
-    if (text.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
+      if (activeSearchControllerRef.current) {
+        activeSearchControllerRef.current.abort();
+        activeSearchControllerRef.current = null;
+      }
 
-    setIsSearching(true);
-    searchTimeoutRef.current = setTimeout(async () => {
-      const results = await searchFood(text.trim(), 1, 20);
-      setSearchResults(results);
-      setIsSearching(false);
-    }, 500);
-  };
+      if (normalizedQuery.length < 2) {
+        latestSearchTokenRef.current += 1;
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      const searchToken = ++latestSearchTokenRef.current;
+      const totalStartedAt = Date.now();
+
+      void (async () => {
+        const localStartedAt = Date.now();
+        const localResult = await searchFoodHybrid(normalizedQuery, {
+          localFoods: localSearchFoods,
+          includeRemote: false,
+          maxResults: SEARCH_PAGE_SIZE,
+        });
+
+        if (searchToken !== latestSearchTokenRef.current) return;
+
+        setSearchResults(localResult.foods);
+
+        if (__DEV__) {
+          console.log("food_search_local_ms", {
+            latencyMs: Date.now() - localStartedAt,
+            queryLength: normalizedQuery.length,
+            source: "local",
+            cancelled: false,
+            resultCount: localResult.foods.length,
+            success: true,
+          });
+        }
+
+        setIsSearching(true);
+      })();
+
+      searchTimeoutRef.current = setTimeout(() => {
+        const controller = new AbortController();
+        activeSearchControllerRef.current = controller;
+        const remoteStartedAt = Date.now();
+
+        void (async () => {
+          try {
+            const remoteResult = await searchFoodHybrid(normalizedQuery, {
+              localFoods: localSearchFoods,
+              includeRemote: true,
+              signal: controller.signal,
+              queryCacheTtlMs: SEARCH_QUERY_CACHE_TTL_MS,
+              maxResults: 20,
+              remoteOptions: {
+                page: 1,
+                pageSize: SEARCH_PAGE_SIZE,
+                timeoutMs: SEARCH_TIMEOUT_MS,
+                retries: SEARCH_RETRIES,
+                signal: controller.signal,
+              },
+            });
+
+            if (searchToken !== latestSearchTokenRef.current) return;
+
+            setSearchResults(remoteResult.foods);
+            setIsSearching(false);
+
+            if (__DEV__) {
+              console.log("food_search_remote_ms", {
+                latencyMs: Date.now() - remoteStartedAt,
+                queryLength: normalizedQuery.length,
+                source: remoteResult.fromQueryCache ? "cache" : "remote",
+                cancelled: false,
+                resultCount: remoteResult.foods.length,
+                success: true,
+              });
+              console.log("food_search_total_ms", {
+                latencyMs: Date.now() - totalStartedAt,
+                queryLength: normalizedQuery.length,
+                source: remoteResult.source,
+                cancelled: false,
+                resultCount: remoteResult.foods.length,
+                success: true,
+              });
+            }
+          } catch (error) {
+            const cancelled = isAbortError(error);
+
+            if (searchToken !== latestSearchTokenRef.current) return;
+
+            if (!cancelled) {
+              console.error("[MealDetail] Food search failed:", error);
+            }
+
+            setIsSearching(false);
+
+            if (__DEV__) {
+              console.log("food_search_remote_ms", {
+                latencyMs: Date.now() - remoteStartedAt,
+                queryLength: normalizedQuery.length,
+                source: "remote",
+                cancelled,
+                resultCount: 0,
+                success: false,
+              });
+              console.log("food_search_total_ms", {
+                latencyMs: Date.now() - totalStartedAt,
+                queryLength: normalizedQuery.length,
+                source: "local",
+                cancelled,
+                resultCount: 0,
+                success: false,
+              });
+            }
+          } finally {
+            if (activeSearchControllerRef.current === controller) {
+              activeSearchControllerRef.current = null;
+            }
+          }
+        })();
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [localSearchFoods],
+  );
 
   const handleFoodPress = useCallback((food: SimplifiedFood) => {
     modalTranslateY.setValue(0);

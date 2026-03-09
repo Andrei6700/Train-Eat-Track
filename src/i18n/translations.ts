@@ -62,6 +62,11 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
   en: {
     common_today: "Today",
     common_yesterday: "Yesterday",
+    data_freshness_syncing: "Syncing...",
+    data_freshness_updated_now: "Updated just now",
+    data_freshness_updated_minutes_ago: "Updated {count}m ago",
+    data_freshness_updated_hours_ago: "Updated {count}h ago",
+    data_freshness_updated_days_ago: "Updated {count}d ago",
     common_cancel: "Cancel",
     common_ok: "OK",
     common_success: "Success",
@@ -505,6 +510,11 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
   ro: {
     common_today: "Azi",
     common_yesterday: "Ieri",
+    data_freshness_syncing: "Se sincronizeaza...",
+    data_freshness_updated_now: "Actualizat chiar acum",
+    data_freshness_updated_minutes_ago: "Actualizat acum {count} min",
+    data_freshness_updated_hours_ago: "Actualizat acum {count} h",
+    data_freshness_updated_days_ago: "Actualizat acum {count} zile",
     common_cancel: "Anuleaza",
     common_ok: "OK",
     common_success: "Succes",

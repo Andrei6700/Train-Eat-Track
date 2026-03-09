@@ -1,10 +1,16 @@
 import { firestore } from "@/src/config/firebase";
+import {
+  getCachedNutritionCalendarSummary,
+  setCachedNutritionCalendarSummary,
+} from "@/src/services/nutritionCalendarCacheService";
 import { DailyNutrition, ResponseType } from "@/src/types/index";
 import {
   addDoc,
   collection,
   doc,
   getDocs,
+  limit,
+  orderBy,
   query,
   serverTimestamp,
   Timestamp,
@@ -71,6 +77,64 @@ const parseNutritionDoc = (docId: string, payload: any, fallbackDate: Date): Dai
   } as DailyNutrition;
 };
 
+const getDocUpdatedAtMillis = (payload: any, fallbackDate: Date): number => {
+  const candidate =
+    payload.updatedAt ?? payload.createdAt ?? payload.date ?? fallbackDate;
+  return parseFirestoreDate(candidate, fallbackDate).getTime();
+};
+
+const parseDateFromDateKey = (value: unknown): Date | null => {
+  if (typeof value !== "string") return null;
+
+  const [yearRaw, monthRaw, dayRaw] = value.split("-");
+  const year = Number.parseInt(yearRaw ?? "", 10);
+  const month = Number.parseInt(monthRaw ?? "", 10);
+  const day = Number.parseInt(dayRaw ?? "", 10);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parseDateFromUnknown = (value: unknown): Date | null => {
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+};
+
+const pickLatestNutritionDoc = (
+  docs: { id: string; data: () => any }[],
+  fallbackDate: Date,
+): { id: string; data: () => any } => {
+  let best = docs[0];
+  let bestUpdatedAt = getDocUpdatedAtMillis(best.data(), fallbackDate);
+
+  for (let index = 1; index < docs.length; index += 1) {
+    const current = docs[index];
+    const currentUpdatedAt = getDocUpdatedAtMillis(current.data(), fallbackDate);
+    if (currentUpdatedAt > bestUpdatedAt) {
+      best = current;
+      bestUpdatedAt = currentUpdatedAt;
+    }
+  }
+
+  return best;
+};
+
 export const getDailyNutrition = async (
   userID: string,
   date: Date,
@@ -90,10 +154,10 @@ export const getDailyNutrition = async (
     );
 
     if (!querySnapshot.empty) {
-      const firstDoc = querySnapshot.docs[0];
+      const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
       return {
         success: true,
-        data: parseNutritionDoc(firstDoc.id, firstDoc.data(), date),
+        data: parseNutritionDoc(latestDoc.id, latestDoc.data(), date),
       };
     }
 
@@ -131,6 +195,36 @@ export const saveDailyNutrition = async (
       );
 
       return { success: true, data: { id: nutrition.id } };
+    }
+
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", nutrition.userID),
+      where("dateKey", "==", dateKey),
+    );
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "saveDailyNutrition.getDocs",
+    );
+
+    if (!querySnapshot.empty) {
+      const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
+      const docRef = doc(firestore, COLLECTION_NAME, latestDoc.id);
+      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+        localUpdatedAt?: number;
+      };
+
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyNutrition.updateDoc",
+      );
+
+      return { success: true, data: { id: latestDoc.id } };
     }
 
     const docRef = await withTimeout(
@@ -171,15 +265,128 @@ export const getUserNutritionHistory = async (
     });
 
     nutritionHistory.sort((left, right) => {
-      const leftTime = parseFirestoreDate(left.date, new Date(0)).getTime();
-      const rightTime = parseFirestoreDate(right.date, new Date(0)).getTime();
-      return rightTime - leftTime;
+      const leftDate = parseFirestoreDate(left.date, new Date(0));
+      const rightDate = parseFirestoreDate(right.date, new Date(0));
+      const leftDay = new Date(
+        leftDate.getFullYear(),
+        leftDate.getMonth(),
+        leftDate.getDate(),
+      ).getTime();
+      const rightDay = new Date(
+        rightDate.getFullYear(),
+        rightDate.getMonth(),
+        rightDate.getDate(),
+      ).getTime();
+
+      if (rightDay !== leftDay) {
+        return rightDay - leftDay;
+      }
+
+      const leftUpdated = parseFirestoreDate(
+        (left as any).updatedAt ?? (left as any).createdAt ?? left.date,
+        new Date(0),
+      ).getTime();
+      const rightUpdated = parseFirestoreDate(
+        (right as any).updatedAt ?? (right as any).createdAt ?? right.date,
+        new Date(0),
+      ).getTime();
+
+      return rightUpdated - leftUpdated;
     });
 
     return { success: true, data: nutritionHistory };
   } catch (error: any) {
     console.error("[NutritionService] Error fetching nutrition history:", error);
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
+export const getUserNutritionEarliestDate = async (
+  userID: string,
+): Promise<Date | null> => {
+  const getEarliestFromUserOnlyQuery = async (): Promise<Date | null> => {
+    const fallbackQuery = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(fallbackQuery),
+      "getUserNutritionEarliestDate.fallbackGetDocs",
+    );
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    let earliestTimestamp = Number.POSITIVE_INFINITY;
+
+    querySnapshot.forEach((docSnap) => {
+      const payload = docSnap.data();
+      const fromDateKey = parseDateFromDateKey(payload?.dateKey);
+      const fromDate = parseDateFromUnknown(payload?.date);
+      const candidate = fromDateKey ?? fromDate;
+
+      if (!candidate) return;
+      const normalized = normalizeDate(candidate);
+      const timestamp = normalized.getTime();
+      if (timestamp < earliestTimestamp) {
+        earliestTimestamp = timestamp;
+      }
+    });
+
+    if (!Number.isFinite(earliestTimestamp)) {
+      return null;
+    }
+
+    return new Date(earliestTimestamp);
+  };
+
+  try {
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+      orderBy("dateKey", "asc"),
+      limit(1),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getUserNutritionEarliestDate.getDocs",
+    );
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const docSnap = querySnapshot.docs[0];
+    const parsed = parseNutritionDoc(docSnap.id, docSnap.data(), new Date(0));
+    return parsed?.date ? normalizeDate(new Date(parsed.date)) : null;
+  } catch (error: any) {
+    const isMissingIndex =
+      error?.code === "failed-precondition" ||
+      String(error?.message || "").includes("requires an index");
+
+    if (!isMissingIndex) {
+      console.error("[NutritionService] Error fetching earliest nutrition date:", error);
+      return null;
+    }
+
+    try {
+      const fallbackEarliestDate = await getEarliestFromUserOnlyQuery();
+      if (__DEV__) {
+        console.log(
+          "[NutritionService] Earliest nutrition date loaded via fallback query",
+        );
+      }
+      return fallbackEarliestDate;
+    } catch (fallbackError) {
+      console.error(
+        "[NutritionService] Error fetching earliest nutrition date via fallback:",
+        fallbackError,
+      );
+      return null;
+    }
   }
 };
 
@@ -221,5 +428,31 @@ export const updateNutritionGoals = async (
   } catch (error: any) {
     console.error("[NutritionService] Error updating goals:", error);
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
+export const prefetchNutritionCalendarSummary = async (
+  userID: string,
+): Promise<void> => {
+  try {
+    const cachedSummary = await getCachedNutritionCalendarSummary(userID, {
+      allowStale: true,
+    });
+    const existingEarliest = cachedSummary.data?.earliestDate ?? null;
+    const existingDays = cachedSummary.data?.days ?? [];
+
+    if (existingEarliest) {
+      return;
+    }
+
+    const earliestDate = await getUserNutritionEarliestDate(userID);
+    const earliestIso = earliestDate ? earliestDate.toISOString() : existingEarliest;
+
+    await setCachedNutritionCalendarSummary(userID, {
+      earliestDate: earliestIso,
+      days: existingDays,
+    });
+  } catch (error) {
+    console.error("[NutritionService] Error prefetching calendar summary:", error);
   }
 };

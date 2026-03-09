@@ -1,13 +1,15 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
-import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import NutritionCalendarLogModal from "@/src/components/nutrition/NutritionCalendarLogModal";
 import NutritionDateHeader from "@/src/components/nutrition/NutritionDateHeader";
 import NutritionEditQuantityModal, {
   EditableFoodState,
 } from "@/src/components/nutrition/NutritionEditQuantityModal";
 import NutritionFoodActionsModal from "@/src/components/nutrition/NutritionFoodActionsModal";
-import NutritionMealCard, { MealSummary } from "@/src/components/nutrition/NutritionMealCard";
+import NutritionMealCard, {
+  MealSummary,
+} from "@/src/components/nutrition/NutritionMealCard";
 import NutritionObjectiveCard, {
   NutritionStats,
 } from "@/src/components/nutrition/NutritionObjectiveCard";
@@ -15,16 +17,42 @@ import NutritionWaterCard from "@/src/components/nutrition/NutritionWaterCard";
 import NutritionCalendar, {
   NutritionCalendarDayData,
 } from "@/src/components/ui/NutritionCalendar";
+import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
-import { getUserNutritionHistory } from "@/src/services/nutritionService";
+import {
+  cacheNutritionDay,
+  getCachedNutritionForDate,
+} from "@/src/services/cacheService";
+import {
+  getCachedNutritionCalendarSummary,
+  NutritionCalendarSummary,
+  setCachedNutritionCalendarSummary,
+  upsertNutritionCalendarSummaryDay,
+} from "@/src/services/nutritionCalendarCacheService";
+import {
+  getDailyNutrition,
+  getUserNutritionEarliestDate,
+} from "@/src/services/nutritionService";
 import { DailyNutrition, Food } from "@/src/types/index";
-import { startOfDay, toValidDate } from "@/src/utils/dateKey";
+import {
+  DAY_IN_MS,
+  startOfDay,
+  toDateKey,
+  toValidDate,
+} from "@/src/utils/dateKey";
+import { measureAsync } from "@/src/utils/perf";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, InteractionManager, RefreshControl, ScrollView, StyleSheet } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Alert, RefreshControl, ScrollView, StyleSheet } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -32,6 +60,11 @@ const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"] as const;
 
 type FoodWithOptionalBrand = Food & { brand?: string };
 type DayData = NutritionCalendarDayData;
+type CalendarScrollRequest = {
+  date: Date;
+  animated: boolean;
+  reason?: "selection";
+};
 
 const DEFAULT_GOALS = {
   calorie: 2500,
@@ -39,11 +72,18 @@ const DEFAULT_GOALS = {
   carbs: 250,
   fat: 70,
 };
+const CALENDAR_FUTURE_DAYS = 7;
+const CALENDAR_INITIAL_BACK_DAYS = 35;
+const CALENDAR_LOAD_CHUNK_DAYS = 7;
+const CALENDAR_PRELOAD_WEEKS_BEFORE = 1;
+const CALENDAR_PRELOAD_WEEKS_AFTER = 1;
 
 const CIRCUMFERENCE = 2 * Math.PI * 40;
 
-const toDayLookupKey = (date: Date): string =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+const toDayLookupKey = (date: Date): string => toDateKey(startOfDay(date));
+
+const toMonthLookupKey = (date: Date): string =>
+  `${date.getFullYear()}-${date.getMonth()}`;
 
 const normalizeDate = (date: Date | string): Date => {
   const normalized = new Date(date);
@@ -51,39 +91,186 @@ const normalizeDate = (date: Date | string): Date => {
   return normalized;
 };
 
-const buildCalendarDays = (earliestDate: Date | null): Date[] => {
+const startOfCalendarWeek = (date: Date): Date => {
+  const normalized = startOfDay(date);
+  const day = normalized.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  normalized.setDate(normalized.getDate() + mondayOffset);
+  return normalized;
+};
+
+const endOfCalendarWeek = (date: Date): Date => {
+  const start = startOfCalendarWeek(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(0, 0, 0, 0);
+  return end;
+};
+
+const buildCalendarWindowDates = (
+  anchorDate: Date,
+  options?: {
+    weeksBefore?: number;
+    weeksAfter?: number;
+    maxDate?: Date;
+  },
+): Date[] => {
+  const normalizedAnchor = startOfDay(anchorDate);
+  const weekStart = startOfCalendarWeek(normalizedAnchor);
+  const weeksBefore = options?.weeksBefore ?? 0;
+  const weeksAfter = options?.weeksAfter ?? 0;
+  const maxDate =
+    options?.maxDate && options.maxDate instanceof Date
+      ? startOfDay(options.maxDate)
+      : null;
+
+  const windowStart = new Date(weekStart);
+  windowStart.setDate(weekStart.getDate() - weeksBefore * 7);
+  windowStart.setHours(0, 0, 0, 0);
+
+  const windowEnd = new Date(weekStart);
+  windowEnd.setDate(weekStart.getDate() + weeksAfter * 7 + 6);
+  windowEnd.setHours(0, 0, 0, 0);
+
+  const result: Date[] = [];
+  for (
+    let day = new Date(windowStart);
+    day <= windowEnd;
+    day.setDate(day.getDate() + 1)
+  ) {
+    const normalizedDay = startOfDay(day);
+    if (maxDate && normalizedDay > maxDate) {
+      continue;
+    }
+    result.push(new Date(normalizedDay));
+  }
+
+  return result;
+};
+
+const formatHeaderDateLabel = (date: Date, language: "en" | "ro"): string => {
+  const normalizedDate = startOfDay(date);
+  const monthName = MONTH_NAMES[language][normalizedDate.getMonth()] || "";
+  const shortMonth = monthName.slice(0, 3);
+  const normalizedMonth = shortMonth
+    ? shortMonth.charAt(0).toUpperCase() + shortMonth.slice(1)
+    : "";
+  return `${normalizedDate.getDate()} ${normalizedMonth}, ${normalizedDate.getFullYear()}`;
+};
+
+const formatMonthYearLabel = (date: Date, language: "en" | "ro"): string => {
+  const normalizedDate = startOfDay(date);
+  const monthName = MONTH_NAMES[language][normalizedDate.getMonth()] || "";
+  const normalizedMonthName = monthName
+    ? monthName.charAt(0).toUpperCase() + monthName.slice(1)
+    : "";
+  return `${normalizedMonthName} ${normalizedDate.getFullYear()}`;
+};
+
+const buildCalendarDays = (
+  earliestDate: Date | null,
+  options?: { windowDays?: number },
+): Date[] => {
   const today = startOfDay(new Date());
-  const startDate = earliestDate
+  const endAnchor = new Date(today);
+  endAnchor.setDate(endAnchor.getDate() + CALENDAR_FUTURE_DAYS);
+  const endDate = endOfCalendarWeek(endAnchor);
+
+  const windowDays = options?.windowDays;
+  let startAnchor = earliestDate
     ? new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1)
-    : new Date(today.getFullYear(), today.getMonth(), 1);
+    : new Date(today);
+
+  if (!earliestDate) {
+    startAnchor.setDate(startAnchor.getDate() - CALENDAR_INITIAL_BACK_DAYS);
+    startAnchor.setHours(0, 0, 0, 0);
+  }
+
+  if (typeof windowDays === "number" && windowDays > 0) {
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - windowDays);
+    windowStart.setHours(0, 0, 0, 0);
+    startAnchor = windowStart;
+  }
+
+  const startDate = startOfCalendarWeek(startAnchor);
 
   const days: Date[] = [];
-  for (let day = new Date(startDate); day <= today; day.setDate(day.getDate() + 1)) {
+  for (
+    let day = new Date(startDate);
+    day <= endDate;
+    day.setDate(day.getDate() + 1)
+  ) {
     days.push(new Date(day));
   }
 
   return days;
 };
 
-const getCaloriesFromNutrition = (nutritionDay: DailyNutrition): number => {
-  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
-  return meals.reduce((totalCalories, meal) => {
-    const mealFoods = Array.isArray(meal.foods) ? meal.foods : [];
-    const mealCalories = mealFoods.reduce((sum, food) => sum + (Number(food.calories) || 0), 0);
-    return totalCalories + mealCalories;
-  }, 0);
+const buildCalendarChunkBeforeDate = (
+  firstLoadedDate: Date,
+  count: number,
+  absoluteStartDate: Date | null,
+): Date[] => {
+  if (count <= 0) return [];
+
+  const normalizedFirstLoadedDate = startOfDay(firstLoadedDate);
+  const minTimestamp = absoluteStartDate
+    ? startOfDay(absoluteStartDate).getTime()
+    : null;
+
+  const days: Date[] = [];
+  for (let offset = count; offset >= 1; offset -= 1) {
+    const day = new Date(normalizedFirstLoadedDate);
+    day.setDate(normalizedFirstLoadedDate.getDate() - offset);
+    day.setHours(0, 0, 0, 0);
+
+    if (minTimestamp !== null && day.getTime() < minTimestamp) {
+      continue;
+    }
+
+    days.push(day);
+  }
+
+  return days;
+};
+
+const areCalendarDaysEqual = (left: Date[], right: Date[]): boolean => {
+  if (left.length !== right.length) return false;
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index].getTime() !== right[index].getTime()) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 const hasOnlyEmptyMeals = (nutritionDay: DailyNutrition): boolean => {
   const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
   if (meals.length === 0) return true;
-  return meals.every((meal) => !Array.isArray(meal.foods) || meal.foods.length === 0);
+  return meals.every(
+    (meal) => !Array.isArray(meal.foods) || meal.foods.length === 0,
+  );
 };
 
-const isSyntheticEmptyNutritionFallback = (nutritionDay: DailyNutrition): boolean =>
+const isSyntheticEmptyNutritionFallback = (
+  nutritionDay: DailyNutrition,
+): boolean =>
   !nutritionDay.id &&
   !nutritionDay.localUpdatedAt &&
   hasOnlyEmptyMeals(nutritionDay);
+
+const sumNutritionCalories = (nutritionDay: DailyNutrition): number => {
+  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
+  return meals.reduce((total, meal) => {
+    const foods = Array.isArray(meal.foods) ? meal.foods : [];
+    return (
+      total + foods.reduce((sum, food) => sum + (Number(food.calories) || 0), 0)
+    );
+  }, 0);
+};
 
 const buildMealSummaries = (
   meals: { mealName: string; foods: Food[] }[] | undefined,
@@ -95,9 +282,11 @@ const buildMealSummaries = (
 
   return MEALS.map((mealName) => {
     const meal = mealMap.get(mealName);
-    const foods = ((meal?.foods as FoodWithOptionalBrand[]) || []).map((food) => ({
-      ...food,
-    }));
+    const foods = ((meal?.foods as FoodWithOptionalBrand[]) || []).map(
+      (food) => ({
+        ...food,
+      }),
+    );
 
     const macros = foods.reduce(
       (totals, food) => {
@@ -122,7 +311,10 @@ const buildMealSummaries = (
     return {
       mealName,
       foods,
-      calories: foods.reduce((sum, food) => sum + (Number(food.calories) || 0), 0),
+      calories: foods.reduce(
+        (sum, food) => sum + (Number(food.calories) || 0),
+        0,
+      ),
       macros,
       percentages,
       arcs: {
@@ -152,11 +344,31 @@ const Nutrition = () => {
     moveFoodToMeal,
   } = useNutrition();
 
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    startOfDay(new Date()),
+  );
+  const [visibleCalendarDate, setVisibleCalendarDate] = useState<Date>(() =>
+    startOfDay(new Date()),
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [daysData, setDaysData] = useState<DayData[]>([]);
-  const [calendarDays, setCalendarDays] = useState<Date[]>(() => buildCalendarDays(null));
+  const [calendarDays, setCalendarDays] = useState<Date[]>(() =>
+    buildCalendarDays(null, { windowDays: CALENDAR_INITIAL_BACK_DAYS }),
+  );
+  // ─── FIX 1 ───────────────────────────────────────────────────────────────────
+  // Never start in a "loading" state.  The calendar renders immediately with
+  // empty rings that fill in silently.  `calendarLoading` is kept only so the
+  // pull-to-refresh flow can still pass a signal to the log modal.
   const [calendarLoading, setCalendarLoading] = useState(false);
+  // ─────────────────────────────────────────────────────────────────────────────
+  const [calendarEarliestDate, setCalendarEarliestDate] = useState<Date | null>(
+    null,
+  );
+  const [calendarWindowDays, setCalendarWindowDays] = useState(
+    CALENDAR_INITIAL_BACK_DAYS,
+  );
+  const [calendarScrollRequest, setCalendarScrollRequest] =
+    useState<CalendarScrollRequest | null>(null);
   const [showCalendarLogModal, setShowCalendarLogModal] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
@@ -168,6 +380,24 @@ const Nutrition = () => {
 
   const calendarRequestIdRef = useRef(0);
   const initialLoadUserIdRef = useRef<string | null>(null);
+  const previousCalendarUserIdRef = useRef<string | null>(null);
+  const calendarBootStartedAtRef = useRef(Date.now());
+  const lastVisibleCalendarDayRef = useRef<Date | null>(null);
+  const lastVisibleCalendarMonthKeyRef = useRef<string | null>(
+    toMonthLookupKey(startOfDay(new Date())),
+  );
+  const prependInFlightRef = useRef(false);
+  const loadedDayKeysRef = useRef<Set<string>>(new Set());
+  const pendingDayKeysRef = useRef<Set<string>>(new Set());
+  const lastDaysDataChangeReasonRef = useRef<string>("initial");
+  const lastCalendarDaysChangeReasonRef = useRef<string>("initial");
+  const previousCalendarCountsRef = useRef<{
+    calendarDays: number;
+    daysData: number;
+  }>({
+    calendarDays: calendarDays.length,
+    daysData: daysData.length,
+  });
 
   const mealSummaries = useMemo(
     () => buildMealSummaries(todayNutrition?.meals),
@@ -175,7 +405,10 @@ const Nutrition = () => {
   );
 
   const nutritionStats = useMemo<NutritionStats>(() => {
-    const totalCalories = mealSummaries.reduce((sum, meal) => sum + meal.calories, 0);
+    const totalCalories = mealSummaries.reduce(
+      (sum, meal) => sum + meal.calories,
+      0,
+    );
     const totalMacros = mealSummaries.reduce(
       (totals, meal) => {
         totals.protein += meal.macros.protein;
@@ -212,22 +445,15 @@ const Nutrition = () => {
     return Math.min((todayWater.total / todayWater.goal) * 100, 100);
   }, [todayWater?.goal, todayWater?.total]);
 
-  const dateHeaderLabel = useMemo(() => {
-    const today = startOfDay(new Date());
-    const normalizedSelected = startOfDay(selectedDate);
+  const dateHeaderLabel = useMemo(
+    () => formatHeaderDateLabel(selectedDate, language),
+    [language, selectedDate],
+  );
 
-    if (normalizedSelected.toDateString() === today.toDateString()) {
-      return t("common_today");
-    }
-
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (normalizedSelected.toDateString() === yesterday.toDateString()) {
-      return t("common_yesterday");
-    }
-
-    return `${normalizedSelected.getDate()} ${MONTH_NAMES[language][normalizedSelected.getMonth()]}, ${normalizedSelected.getFullYear()}`;
-  }, [language, selectedDate, t]);
+  const calendarMonthLabel = useMemo(
+    () => formatMonthYearLabel(visibleCalendarDate, language),
+    [language, visibleCalendarDate],
+  );
 
   const calendarDataSignature = useMemo(() => {
     let hash = 0;
@@ -248,17 +474,488 @@ const Nutrition = () => {
   );
 
   const mainCalendarInitialIndex = useMemo(() => {
+    const selectedKey = toDayLookupKey(startOfDay(selectedDate));
+    const selectedIndex = calendarDays.findIndex(
+      (day) => toDayLookupKey(day) === selectedKey,
+    );
+    if (selectedIndex !== -1) return selectedIndex;
+
     const todayKey = toDayLookupKey(startOfDay(new Date()));
-    const todayIndex = calendarDays.findIndex((day) => toDayLookupKey(day) === todayKey);
+    const todayIndex = calendarDays.findIndex(
+      (day) => toDayLookupKey(day) === todayKey,
+    );
     if (todayIndex !== -1) return todayIndex;
     return Math.max(calendarDays.length - 1, 0);
-  }, [calendarDays]);
+  }, [calendarDays, selectedDate]);
 
-  const loadNutritionData = useCallback(
+  const maxPlannableDate = useMemo(() => {
+    const planningAnchor = startOfDay(new Date());
+    planningAnchor.setDate(planningAnchor.getDate() + CALENDAR_FUTURE_DAYS);
+    return endOfCalendarWeek(planningAnchor);
+  }, []);
+
+  const calendarHasFuture2Days = useMemo(
+    () => mainCalendarInitialIndex + 2 < calendarDays.length,
+    [calendarDays.length, mainCalendarInitialIndex],
+  );
+
+  const logCalendarDayLoaded = useCallback(
+    (dateKey: string, source: "cache" | "remote" | "empty") => {
+      if (!__DEV__) return;
+      console.log("nutrition_calendar_day_loaded", { dateKey, source });
+      console.log(
+        `[NutritionCalendar] s-a incarcat informatiile pentru data ${dateKey} (sursa: ${source})`,
+      );
+    },
+    [],
+  );
+
+  const upsertCalendarDayData = useCallback(
+    (date: Date, calories: number, goal: number) => {
+      const normalizedDate = startOfDay(date);
+      const dayLookupKey = toDayLookupKey(normalizedDate);
+      lastDaysDataChangeReasonRef.current = "upsert_calendar_day";
+
+      setDaysData((previousDaysData) => {
+        const existingIndex = previousDaysData.findIndex(
+          (day) => toDayLookupKey(day.date) === dayLookupKey,
+        );
+
+        if (existingIndex !== -1) {
+          const existing = previousDaysData[existingIndex];
+          if (existing.calories === calories && existing.goal === goal) {
+            return previousDaysData;
+          }
+
+          const updated = [...previousDaysData];
+          updated[existingIndex] = { ...existing, calories, goal };
+          return updated;
+        }
+
+        return [...previousDaysData, { date: normalizedDate, calories, goal }];
+      });
+
+      loadedDayKeysRef.current.add(toDateKey(normalizedDate));
+
+      if (user?.uid) {
+        void upsertNutritionCalendarSummaryDay(user.uid, {
+          date: normalizedDate,
+          calories,
+          goal,
+        });
+      }
+    },
+    [user?.uid],
+  );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (calendarDays.length === 0) return;
+
+    console.log("nutrition_calendar_ready_ms", {
+      latencyMs: Date.now() - calendarBootStartedAtRef.current,
+      dayCount: calendarDays.length,
+      initialIndex: mainCalendarInitialIndex,
+      hasFuture2Days: calendarHasFuture2Days,
+      selectedDateKey: toDayLookupKey(selectedDate),
+    });
+  }, [
+    calendarDays.length,
+    calendarHasFuture2Days,
+    mainCalendarInitialIndex,
+    selectedDate,
+  ]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (calendarDays.length === 0) return;
+    if (calendarHasFuture2Days) return;
+
+    console.log("nutrition_calendar_future_days_guard", {
+      dayCount: calendarDays.length,
+      targetIndex: mainCalendarInitialIndex,
+      hasFuture2Days: false,
+      success: false,
+    });
+  }, [calendarDays.length, calendarHasFuture2Days, mainCalendarInitialIndex]);
+
+  const applyCalendarSummary = useCallback(
+    (
+      summary: NutritionCalendarSummary | null,
+      reason: "hydrate_cache" | "seed_remote" | "reset" = "hydrate_cache",
+    ) => {
+      if (!summary) {
+        setCalendarEarliestDate(null);
+        lastDaysDataChangeReasonRef.current = `summary_${reason}_reset`;
+        setDaysData([]);
+        setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
+        loadedDayKeysRef.current.clear();
+        pendingDayKeysRef.current.clear();
+        if (__DEV__) {
+          console.log("nutrition_calendar_apply_summary", {
+            reason,
+            incomingDays: 0,
+            previousDays: 0,
+            mergedDays: 0,
+            earliestDate: null,
+          });
+        }
+        return;
+      }
+
+      const earliestDate = summary.earliestDate
+        ? startOfDay(new Date(summary.earliestDate))
+        : null;
+      setCalendarEarliestDate(earliestDate);
+
+      const mappedDaysData: DayData[] = summary.days.map((day) => ({
+        date: startOfDay(new Date(day.date)),
+        calories: Number(day.calories) || 0,
+        goal: Number(day.goal) || DEFAULT_GOALS.calorie,
+      }));
+
+      setDaysData((previousDaysData) => {
+        if (mappedDaysData.length === 0) {
+          if (__DEV__) {
+            console.log("nutrition_calendar_apply_summary_metadata_only", {
+              reason,
+              incomingDays: 0,
+              retainedDays: previousDaysData.length,
+              earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+            });
+          }
+          return previousDaysData;
+        }
+
+        lastDaysDataChangeReasonRef.current = `summary_${reason}`;
+        const mergedByKey = new Map<string, DayData>();
+        for (const day of mappedDaysData) {
+          mergedByKey.set(toDateKey(day.date), day);
+        }
+        for (const day of previousDaysData) {
+          mergedByKey.set(toDateKey(day.date), day);
+        }
+        const mergedDaysData = [...mergedByKey.values()].sort(
+          (left, right) => left.date.getTime() - right.date.getTime(),
+        );
+
+        loadedDayKeysRef.current = new Set(
+          mergedDaysData.map((day) => toDateKey(day.date)),
+        );
+
+        if (__DEV__) {
+          console.log("nutrition_calendar_apply_summary", {
+            reason,
+            incomingDays: mappedDaysData.length,
+            previousDays: previousDaysData.length,
+            mergedDays: mergedDaysData.length,
+            earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+          });
+        }
+
+        return mergedDaysData;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    const previousCounts = previousCalendarCountsRef.current;
+    const nextCounts = {
+      calendarDays: calendarDays.length,
+      daysData: daysData.length,
+    };
+
+    const calendarDaysChanged =
+      previousCounts.calendarDays !== nextCounts.calendarDays;
+    const daysDataChanged = previousCounts.daysData !== nextCounts.daysData;
+
+    if (!calendarDaysChanged && !daysDataChanged) {
+      return;
+    }
+
+    console.log("nutrition_calendar_state_transition", {
+      previousCalendarDays: previousCounts.calendarDays,
+      nextCalendarDays: nextCounts.calendarDays,
+      previousDaysData: previousCounts.daysData,
+      nextDaysData: nextCounts.daysData,
+      calendarDaysReason: calendarDaysChanged
+        ? lastCalendarDaysChangeReasonRef.current
+        : null,
+      daysDataReason: daysDataChanged ? lastDaysDataChangeReasonRef.current : null,
+    });
+
+    if (calendarDaysChanged) {
+      lastCalendarDaysChangeReasonRef.current = "idle";
+    }
+    if (daysDataChanged) {
+      lastDaysDataChangeReasonRef.current = "idle";
+    }
+
+    previousCalendarCountsRef.current = nextCounts;
+  }, [calendarDays.length, daysData.length]);
+
+  const loadCalendarDaySummary = useCallback(
     async (
       date: Date,
-      options?: Parameters<typeof refreshNutrition>[1],
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
     ) => {
+      const userId = user?.uid;
+      if (!userId) return;
+
+      const force = options?.force ?? false;
+      const forceRemote = options?.forceRemote ?? false;
+      const normalizedDate = startOfDay(date);
+      if (normalizedDate > maxPlannableDate) return;
+
+      const dateKey = toDateKey(normalizedDate);
+      if (!force && loadedDayKeysRef.current.has(dateKey)) return;
+      if (pendingDayKeysRef.current.has(dateKey)) return;
+
+      pendingDayKeysRef.current.add(dateKey);
+
+      try {
+        let hasCachedSnapshot = false;
+        const cached = await getCachedNutritionForDate(normalizedDate);
+        if (cached) {
+          hasCachedSnapshot = true;
+          const calories = sumNutritionCalories(cached);
+          const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
+          upsertCalendarDayData(normalizedDate, calories, goal);
+          logCalendarDayLoaded(dateKey, "cache");
+          if (!forceRemote) {
+            return;
+          }
+        }
+
+        const remoteResult = await getDailyNutrition(userId, normalizedDate);
+        if (remoteResult.success && remoteResult.data) {
+          const nutrition = remoteResult.data as DailyNutrition;
+          const calories = sumNutritionCalories(nutrition);
+          const goal = nutrition.calorieGoal || DEFAULT_GOALS.calorie;
+
+          upsertCalendarDayData(normalizedDate, calories, goal);
+          void cacheNutritionDay(normalizedDate, nutrition);
+          logCalendarDayLoaded(dateKey, "remote");
+          return;
+        }
+
+        if (!hasCachedSnapshot) {
+          loadedDayKeysRef.current.add(dateKey);
+          logCalendarDayLoaded(dateKey, "empty");
+        }
+      } catch (error) {
+        console.error("[Nutrition] Error loading calendar day summary:", error);
+      } finally {
+        pendingDayKeysRef.current.delete(dateKey);
+      }
+    },
+    [logCalendarDayLoaded, maxPlannableDate, upsertCalendarDayData, user?.uid],
+  );
+
+  const preloadCalendarDates = useCallback(
+    (
+      dates: Date[],
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
+    ) => {
+      if (dates.length === 0) return;
+      const uniqueDays = new Map<string, Date>();
+      for (const date of dates) {
+        const normalized = startOfDay(date);
+        uniqueDays.set(toDateKey(normalized), normalized);
+      }
+
+      void Promise.all(
+        [...uniqueDays.values()].map((date) =>
+          loadCalendarDaySummary(date, options),
+        ),
+      );
+    },
+    [loadCalendarDaySummary],
+  );
+
+  const requestCalendarWindowLoad = useCallback(
+    (
+      date: Date,
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
+    ) => {
+      const datesToLoad = buildCalendarWindowDates(date, {
+        weeksBefore: CALENDAR_PRELOAD_WEEKS_BEFORE,
+        weeksAfter: CALENDAR_PRELOAD_WEEKS_AFTER,
+        maxDate: maxPlannableDate,
+      });
+      preloadCalendarDates(datesToLoad, options);
+    },
+    [maxPlannableDate, preloadCalendarDates],
+  );
+
+  const calendarAbsoluteStartDate = useMemo(() => {
+    if (calendarEarliestDate) {
+      return startOfDay(
+        new Date(
+          calendarEarliestDate.getFullYear(),
+          calendarEarliestDate.getMonth(),
+          1,
+        ),
+      );
+    }
+
+    if (daysData.length === 0) {
+      return null;
+    }
+
+    let minTimestamp = Number.POSITIVE_INFINITY;
+    for (const day of daysData) {
+      const normalized = startOfDay(day.date);
+      const timestamp = normalized.getTime();
+      if (timestamp < minTimestamp) {
+        minTimestamp = timestamp;
+      }
+    }
+
+    if (!Number.isFinite(minTimestamp)) {
+      return null;
+    }
+
+    const earliestLoadedDate = new Date(minTimestamp);
+    return startOfDay(
+      new Date(
+        earliestLoadedDate.getFullYear(),
+        earliestLoadedDate.getMonth(),
+        1,
+      ),
+    );
+  }, [calendarEarliestDate, daysData]);
+
+  const canLoadMoreCalendarDays = useMemo(() => {
+    if (!calendarAbsoluteStartDate || calendarDays.length === 0) {
+      return false;
+    }
+
+    const firstLoadedDay = startOfDay(calendarDays[0]);
+    return firstLoadedDay.getTime() > calendarAbsoluteStartDate.getTime();
+  }, [calendarAbsoluteStartDate, calendarDays]);
+
+  const handleCalendarReachStart = useCallback(() => {
+    if (prependInFlightRef.current) {
+      if (__DEV__) {
+        console.log("nutrition_calendar_prepend_skipped", {
+          reason: "inflight",
+        });
+      }
+      return;
+    }
+    if (!canLoadMoreCalendarDays) {
+      if (__DEV__) {
+        console.log("nutrition_calendar_prepend_skipped", {
+          reason: "no_more_days",
+        });
+      }
+      return;
+    }
+
+    const nextChunkDays = buildCalendarChunkBeforeDate(
+      calendarDays[0],
+      CALENDAR_LOAD_CHUNK_DAYS,
+      calendarAbsoluteStartDate,
+    );
+    if (nextChunkDays.length === 0) {
+      if (__DEV__) {
+        console.log("nutrition_calendar_prepend_skipped", {
+          reason: "empty_chunk",
+        });
+      }
+      return;
+    }
+
+    prependInFlightRef.current = true;
+    if (__DEV__) {
+      console.log("nutrition_calendar_prepend_requested", {
+        firstDayKey: toDateKey(startOfDay(calendarDays[0])),
+        chunkDays: nextChunkDays.length,
+      });
+    }
+    preloadCalendarDates(nextChunkDays);
+    setCalendarWindowDays((previous) => previous + nextChunkDays.length);
+  }, [
+    calendarAbsoluteStartDate,
+    calendarDays,
+    canLoadMoreCalendarDays,
+    preloadCalendarDates,
+  ]);
+
+  useEffect(() => {
+    const nextCalendarDays = buildCalendarDays(calendarEarliestDate, {
+      windowDays: calendarWindowDays,
+    });
+
+    setCalendarDays((previousDays) => {
+      if (areCalendarDaysEqual(previousDays, nextCalendarDays)) {
+        return previousDays;
+      }
+
+      lastCalendarDaysChangeReasonRef.current = "rebuild_calendar_window";
+      if (__DEV__) {
+        console.log("nutrition_calendar_rebuild_days", {
+          previousCount: previousDays.length,
+          nextCount: nextCalendarDays.length,
+          windowDays: calendarWindowDays,
+          earliestDate: calendarEarliestDate
+            ? toDateKey(startOfDay(calendarEarliestDate))
+            : null,
+        });
+      }
+
+      return nextCalendarDays;
+    });
+  }, [calendarEarliestDate, calendarWindowDays]);
+
+  useEffect(() => {
+    prependInFlightRef.current = false;
+  }, [calendarDays.length]);
+
+
+  // Keep nearby weeks warm so rings are already filled when the user swipes.
+  useEffect(() => {
+    if (!user?.uid) return;
+    requestCalendarWindowLoad(selectedDate, { force: true });
+  }, [requestCalendarWindowLoad, selectedDate, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    requestCalendarWindowLoad(visibleCalendarDate);
+  }, [requestCalendarWindowLoad, user?.uid, visibleCalendarDate]);
+
+  useEffect(() => {
+    if (calendarDays.length === 0) return;
+    const normalizedSelected = startOfDay(selectedDate);
+    const firstDay = startOfDay(calendarDays[0]);
+    if (normalizedSelected >= firstDay) return;
+
+    const today = startOfDay(new Date());
+    const diffDays = Math.ceil(
+      (today.getTime() - normalizedSelected.getTime()) / DAY_IN_MS,
+    );
+    const requiredWindowDays = Math.max(CALENDAR_INITIAL_BACK_DAYS, diffDays);
+
+    if (requiredWindowDays > calendarWindowDays) {
+      setCalendarWindowDays(requiredWindowDays);
+    }
+  }, [calendarDays, calendarWindowDays, selectedDate]);
+
+  const loadNutritionData = useCallback(
+    async (date: Date, options?: Parameters<typeof refreshNutrition>[1]) => {
       if (!user?.uid) return;
 
       try {
@@ -270,77 +967,156 @@ const Nutrition = () => {
     [refreshNutrition, user?.uid],
   );
 
-  const loadCalendarHistory = useCallback(async () => {
-    const userId = user?.uid;
-    calendarRequestIdRef.current += 1;
-    const requestId = calendarRequestIdRef.current;
+  const loadCalendarHistory = useCallback(
+    async (options?: { forceRemote?: boolean }) => {
+      const userId = user?.uid;
+      const forceRemote = options?.forceRemote ?? false;
+      calendarRequestIdRef.current += 1;
+      const requestId = calendarRequestIdRef.current;
+      let cachedSummary: NutritionCalendarSummary | null = null;
 
-    if (!userId) {
-      setDaysData([]);
-      setCalendarDays(buildCalendarDays(null));
-      setCalendarLoading(false);
-      return;
-    }
-
-    setCalendarLoading(true);
-
-    try {
-      const result = await getUserNutritionHistory(userId);
-      if (requestId !== calendarRequestIdRef.current) return;
-
-      if (!(result.success && Array.isArray(result.data))) {
+      if (!userId) {
+        lastDaysDataChangeReasonRef.current = "history_no_user_reset";
         setDaysData([]);
-        setCalendarDays(buildCalendarDays(null));
+        setCalendarEarliestDate(null);
+        setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
         return;
       }
 
-      const nutritionHistory = result.data as DailyNutrition[];
-      const dayMap = new Map<string, DayData>();
-      let earliestTimestamp: number | null = null;
-
-      for (const entry of nutritionHistory) {
-        const parsedDate = toValidDate(entry.date);
-        if (!parsedDate) continue;
-
-        const normalizedDate = startOfDay(parsedDate);
-        const dateTimestamp = normalizedDate.getTime();
-        if (earliestTimestamp === null || dateTimestamp < earliestTimestamp) {
-          earliestTimestamp = dateTimestamp;
-        }
-
-        const dayKey = toDayLookupKey(normalizedDate);
-        if (dayMap.has(dayKey)) continue;
-
-        dayMap.set(dayKey, {
-          date: normalizedDate,
-          calories: getCaloriesFromNutrition(entry),
-          goal: entry.calorieGoal || DEFAULT_GOALS.calorie,
-        });
-      }
-
-      setDaysData(Array.from(dayMap.values()));
-      setCalendarDays(
-        buildCalendarDays(earliestTimestamp === null ? null : new Date(earliestTimestamp)),
+      const cacheResult = await measureAsync(
+        "nutrition_calendar_hydrate_cache_ms",
+        () => getCachedNutritionCalendarSummary(userId, { allowStale: true }),
+        (result) => ({
+          source: result.data
+            ? result.data.days.length > 0
+              ? "cache"
+              : result.data.earliestDate
+                ? "cache_metadata"
+                : "fallback"
+            : "fallback",
+          itemCount: result.data?.days.length ?? 0,
+          hasEarliestDate: Boolean(result.data?.earliestDate),
+          cacheAgeMs: result.ageMs ?? null,
+          success: Boolean(
+            result.data && (result.data.days.length > 0 || result.data.earliestDate),
+          ),
+        }),
       );
-    } catch (error) {
-      console.error("[Nutrition] Error loading nutrition history:", error);
+
       if (requestId !== calendarRequestIdRef.current) return;
 
-      setDaysData([]);
-      setCalendarDays(buildCalendarDays(null));
-    } finally {
-      if (requestId === calendarRequestIdRef.current) {
-        setCalendarLoading(false);
+      if (cacheResult.data) {
+        cachedSummary = cacheResult.data;
+        applyCalendarSummary(cacheResult.data, "hydrate_cache");
+        // ─── FIX 3 ─────────────────────────────────────────────────────────────
+        // Never flip calendarLoading to true.  If there's no cache we simply
+        // start fetching remote data silently in the background without blocking
+        // the calendar UI.
+        // ───────────────────────────────────────────────────────────────────────
       }
-    }
-  }, [user?.uid]);
+
+      const cachedEarliest = cachedSummary?.earliestDate ?? null;
+      if (cachedEarliest && !forceRemote) {
+        return;
+      }
+
+      try {
+        const earliestDate = await measureAsync(
+          "nutrition_calendar_seed_remote_ms",
+          () => getUserNutritionEarliestDate(userId),
+          (result) => ({
+            source: result ? "remote" : "fallback",
+            itemCount: 0,
+            cacheAgeMs: null,
+            success: Boolean(result),
+          }),
+        );
+
+        if (requestId !== calendarRequestIdRef.current) return;
+
+        const earliestIso = earliestDate
+          ? startOfDay(earliestDate).toISOString()
+          : null;
+        const nextSummary = cachedSummary
+          ? {
+              ...cachedSummary,
+              earliestDate: earliestIso ?? cachedSummary.earliestDate,
+            }
+          : {
+              userID: userId,
+              earliestDate: earliestIso,
+              days: [],
+              updatedAt: Date.now(),
+            };
+
+        if (nextSummary.earliestDate || cachedSummary) {
+          applyCalendarSummary(nextSummary, "seed_remote");
+          await setCachedNutritionCalendarSummary(userId, {
+            earliestDate: nextSummary.earliestDate,
+            days: nextSummary.days,
+          });
+        } else if (!cachedSummary) {
+          lastDaysDataChangeReasonRef.current = "history_remote_empty_reset";
+          setDaysData([]);
+          setCalendarEarliestDate(null);
+          setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
+        }
+      } catch (error) {
+        console.error("[Nutrition] Error loading calendar seed:", error);
+        if (requestId !== calendarRequestIdRef.current) return;
+
+        if (!cachedSummary) {
+          lastDaysDataChangeReasonRef.current = "history_seed_error_reset";
+          setDaysData([]);
+          setCalendarEarliestDate(null);
+          setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
+        }
+      } finally {
+        // Keep calendarLoading at false — we never set it to true above.
+        if (requestId === calendarRequestIdRef.current) {
+          setCalendarLoading(false);
+        }
+      }
+    },
+    [applyCalendarSummary, user?.uid],
+  );
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (user?.uid && previousCalendarUserIdRef.current !== user.uid) {
+      calendarBootStartedAtRef.current = Date.now();
+      lastDaysDataChangeReasonRef.current = "user_switch_reset";
       setDaysData([]);
-      setCalendarDays(buildCalendarDays(null));
+      setCalendarEarliestDate(null);
+      setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
+      // ─── FIX 4 ─────────────────────────────────────────────────────────────
+      // Do NOT set calendarLoading to true on user change.  The calendar stays
+      // visible; stale rings from the previous user are replaced as new data
+      // arrives.
+      // ───────────────────────────────────────────────────────────────────────
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = null;
+      lastVisibleCalendarMonthKeyRef.current = null;
+      prependInFlightRef.current = false;
+      loadedDayKeysRef.current.clear();
+      pendingDayKeysRef.current.clear();
+    }
+    previousCalendarUserIdRef.current = user?.uid || null;
+
+    if (!user?.uid) {
+      calendarBootStartedAtRef.current = Date.now();
+      lastDaysDataChangeReasonRef.current = "user_signed_out_reset";
+      setDaysData([]);
+      setCalendarEarliestDate(null);
+      setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
+      setCalendarLoading(false);
       setRefreshing(false);
       setShowCalendarLogModal(false);
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = null;
+      lastVisibleCalendarMonthKeyRef.current = null;
+      prependInFlightRef.current = false;
+      loadedDayKeysRef.current.clear();
+      pendingDayKeysRef.current.clear();
       initialLoadUserIdRef.current = null;
       return;
     }
@@ -357,12 +1133,7 @@ const Nutrition = () => {
 
   useEffect(() => {
     if (!user?.uid) return;
-
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      void loadCalendarHistory();
-    });
-
-    return () => interaction.cancel();
+    void loadCalendarHistory();
   }, [loadCalendarHistory, user?.uid]);
 
   useEffect(() => {
@@ -372,8 +1143,7 @@ const Nutrition = () => {
     if (!nutritionDate) return;
 
     const normalizedDate = startOfDay(nutritionDate);
-    const today = startOfDay(new Date());
-    if (normalizedDate > today) return;
+    if (normalizedDate > maxPlannableDate) return;
 
     const nutritionDateKey = toDayLookupKey(normalizedDate);
     const calories = nutritionStats.totalCalories;
@@ -381,6 +1151,7 @@ const Nutrition = () => {
     const isFallbackEmptySnapshot =
       calories === 0 && isSyntheticEmptyNutritionFallback(todayNutrition);
 
+    lastDaysDataChangeReasonRef.current = "sync_today_nutrition";
     setDaysData((previousDaysData) => {
       const existingIndex = previousDaysData.findIndex(
         (day) => toDayLookupKey(day.date) === nutritionDateKey,
@@ -406,7 +1177,24 @@ const Nutrition = () => {
 
       return [...previousDaysData, { date: normalizedDate, calories, goal }];
     });
-  }, [nutritionStats.totalCalories, todayNutrition]);
+
+    if (!isFallbackEmptySnapshot) {
+      loadedDayKeysRef.current.add(toDateKey(normalizedDate));
+    }
+
+    if (!isFallbackEmptySnapshot && user?.uid) {
+      void upsertNutritionCalendarSummaryDay(user.uid, {
+        date: normalizedDate,
+        calories,
+        goal,
+      });
+    }
+  }, [
+    maxPlannableDate,
+    nutritionStats.totalCalories,
+    todayNutrition,
+    user?.uid,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -415,6 +1203,9 @@ const Nutrition = () => {
   }, []);
 
   const onRefresh = useCallback(() => {
+    calendarBootStartedAtRef.current = Date.now();
+    loadedDayKeysRef.current.clear();
+    pendingDayKeysRef.current.clear();
     setRefreshing(true);
 
     void (async () => {
@@ -425,26 +1216,44 @@ const Nutrition = () => {
             preloadWeek: true,
             reason: "pull_to_refresh",
           }),
-          loadCalendarHistory(),
+          loadCalendarHistory({ forceRemote: true }),
         ]);
+        requestCalendarWindowLoad(selectedDate, {
+          force: true,
+          forceRemote: true,
+        });
       } finally {
         setRefreshing(false);
       }
     })();
-  }, [loadCalendarHistory, loadNutritionData, selectedDate]);
+  }, [loadCalendarHistory, loadNutritionData, requestCalendarWindowLoad, selectedDate]);
 
-  const handleDayPress = useCallback((day: Date, _index?: number) => {
-    const today = startOfDay(new Date());
-    if (day > today) return;
-
-    const normalizedDay = normalizeDate(day);
-    setSelectedDate((previousDate) => {
-      if (toDayLookupKey(normalizedDay) === toDayLookupKey(previousDate)) {
-        return previousDate;
-      }
-      return normalizedDay;
-    });
+  const updateVisibleCalendarMonth = useCallback((date: Date) => {
+    const normalizedDate = startOfDay(date);
+    const monthKey = toMonthLookupKey(normalizedDate);
+    lastVisibleCalendarMonthKeyRef.current = monthKey;
+    setVisibleCalendarDate((previousDate) =>
+      toMonthLookupKey(previousDate) === monthKey ? previousDate : normalizedDate,
+    );
   }, []);
+
+  const handleDayPress = useCallback(
+    (day: Date, _index?: number) => {
+      const normalizedDay = normalizeDate(day);
+      if (normalizedDay > maxPlannableDate) return;
+
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = normalizedDay;
+      updateVisibleCalendarMonth(normalizedDay);
+      setSelectedDate((previousDate) => {
+        if (toDayLookupKey(normalizedDay) === toDayLookupKey(previousDate)) {
+          return previousDate;
+        }
+        return normalizedDay;
+      });
+    },
+    [maxPlannableDate, updateVisibleCalendarMonth],
+  );
 
   const handleOpenSettings = useCallback(() => {
     router.push("/(modals)/nutritionSettings");
@@ -458,18 +1267,57 @@ const Nutrition = () => {
     setShowCalendarLogModal(false);
   }, []);
 
-  const handleCalendarModalDayPress = useCallback((day: Date, _index?: number) => {
-    const today = startOfDay(new Date());
-    if (day > today) return;
+  const handleCalendarModalDayPress = useCallback(
+    (day: Date, _index?: number) => {
+      const normalizedDate = startOfDay(day);
+      if (normalizedDate > maxPlannableDate) return;
 
-    const normalizedDate = startOfDay(day);
-    setSelectedDate((previousDate) => {
-      if (toDayLookupKey(normalizedDate) === toDayLookupKey(previousDate)) {
-        return previousDate;
-      }
-      return normalizedDate;
-    });
+      lastVisibleCalendarDayRef.current = normalizedDate;
+      updateVisibleCalendarMonth(normalizedDate);
+      setCalendarScrollRequest({
+        date: normalizedDate,
+        animated: true,
+        reason: "selection",
+      });
+      setSelectedDate((previousDate) => {
+        if (toDayLookupKey(normalizedDate) === toDayLookupKey(previousDate)) {
+          return previousDate;
+        }
+        return normalizedDate;
+      });
+    },
+    [maxPlannableDate, updateVisibleCalendarMonth],
+  );
+
+  const handleCalendarScrollHandled = useCallback((_date: Date) => {
+    setCalendarScrollRequest(null);
   }, []);
+
+  const handleCalendarVisibleDayChange = useCallback(
+    (day: Date) => {
+      const normalizedDay = startOfDay(day);
+      if (
+        lastVisibleCalendarDayRef.current &&
+        toDateKey(lastVisibleCalendarDayRef.current) === toDateKey(normalizedDay)
+      ) {
+        return;
+      }
+
+      lastVisibleCalendarDayRef.current = normalizedDay;
+      requestCalendarWindowLoad(normalizedDay);
+
+      const monthKey = toMonthLookupKey(normalizedDay);
+      if (lastVisibleCalendarMonthKeyRef.current === monthKey) {
+        return;
+      }
+
+      lastVisibleCalendarMonthKeyRef.current = monthKey;
+      setVisibleCalendarDate((previousDate) =>
+        toMonthLookupKey(previousDate) === monthKey ? previousDate : normalizedDay,
+      );
+    },
+    [requestCalendarWindowLoad],
+  );
 
   const handleMealPress = useCallback(
     (mealName: string) => {
@@ -528,12 +1376,20 @@ const Nutrition = () => {
 
   const handleSaveQuantity = useCallback(async () => {
     const parsedQuantity = Number.parseFloat(editQuantity);
-    if (!editingFood || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+    if (
+      !editingFood ||
+      !Number.isFinite(parsedQuantity) ||
+      parsedQuantity <= 0
+    ) {
       Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
-    await updateFoodQuantity(editingFood.mealName, editingFood.foodIndex, parsedQuantity);
+    await updateFoodQuantity(
+      editingFood.mealName,
+      editingFood.foodIndex,
+      parsedQuantity,
+    );
     setShowEditModal(false);
     setEditingFood(null);
     Alert.alert(t("common_success"), t("nutrition_quantity_updated"));
@@ -624,6 +1480,10 @@ const Nutrition = () => {
             onOpenSettings={handleOpenSettings}
           />
 
+          <Typo size={24} fontWeight="700" style={styles.calendarMonthTitle}>
+            {calendarMonthLabel}
+          </Typo>
+
           <NutritionCalendar
             calendarDays={calendarDays}
             daysData={daysData}
@@ -631,12 +1491,20 @@ const Nutrition = () => {
             loading={calendarLoading}
             initialIndex={mainCalendarInitialIndex}
             extraDataToken={calendarExtraDataToken}
+            scrollToDate={calendarScrollRequest?.date ?? null}
+            scrollToDateAnimated={calendarScrollRequest?.animated ?? true}
+            onScrollToDateHandled={handleCalendarScrollHandled}
             onDayPress={handleDayPress}
+            onVisibleDayChange={handleCalendarVisibleDayChange}
+            onReachStart={handleCalendarReachStart}
           />
 
           <NutritionObjectiveCard stats={nutritionStats} />
 
-          <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.mealsSection}>
+          <Animated.View
+            entering={FadeInDown.duration(400).delay(300)}
+            style={styles.mealsSection}
+          >
             {mealSummaries.map((summary) => (
               <NutritionMealCard
                 key={summary.mealName}
@@ -663,6 +1531,7 @@ const Nutrition = () => {
             calendarDays={calendarDays}
             daysData={daysData}
             selectedDate={selectedDate}
+            maxSelectableDate={maxPlannableDate}
             loading={calendarLoading}
             onClose={handleCloseCalendarLog}
             onDaySelect={handleCalendarModalDayPress}
@@ -700,6 +1569,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacingX._20,
+  },
+  calendarMonthTitle: {
+    marginBottom: spacingY._10,
+    paddingHorizontal: spacingX._5,
   },
   mealsSection: {
     marginBottom: spacingY._30,

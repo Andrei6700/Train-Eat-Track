@@ -1,17 +1,38 @@
 import CustomTabs from '@/src/components/navigation/CustomTabs';
 import { colors } from '@/constants/theme';
+import { useAuth } from '@/src/contexts/authContext';
+import { prefetchNutritionCalendarSummary } from '@/src/services/nutritionService';
+import { prefetchWorkoutHistorySnapshot } from '@/src/services/workoutService';
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 
-const _layout = () => {
+const TabsLayout = () => {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const userId = user?.uid;
+    if (!userId) return;
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void Promise.allSettled([
+        prefetchWorkoutHistorySnapshot(userId),
+        prefetchNutritionCalendarSummary(userId),
+      ]);
+    });
+
+    return () => {
+      interaction.cancel();
+    };
+  }, [user?.uid]);
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabs {...props} />}
       screenOptions={{ 
         headerShown: false,
-        lazy: false, // Disable lazy loading for faster transitions
-        animation: "none", // Disable animations for instant transitions
+        lazy: true,
+        animation: "none",
         freezeOnBlur: true, // Preserve state when switching tabs
       }}
       sceneContainerStyle={{
@@ -28,6 +49,4 @@ const _layout = () => {
   );
 };
 
-export default React.memo(_layout);
-
-const styles = StyleSheet.create({});
+export default React.memo(TabsLayout);

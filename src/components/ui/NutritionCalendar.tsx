@@ -1,12 +1,12 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
+import { toDateKey } from "@/src/utils/dateKey";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { FlashList } from "@shopify/flash-list";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  InteractionManager,
+  LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   StyleSheet,
@@ -16,9 +16,14 @@ import {
 import Svg, { Circle } from "react-native-svg";
 import Typo from "../ui/Typo";
 
-const DAY_WIDTH = scale(52);
-const ITEM_SPACING = spacingX._7 ?? 6;
-const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
+const WEEK_DAYS_COUNT = 7;
+const DAY_SPACING = spacingX._7 ?? 6;
+const FALLBACK_DAY_WIDTH = scale(48);
+const FALLBACK_PAGE_WIDTH =
+  FALLBACK_DAY_WIDTH * WEEK_DAYS_COUNT + DAY_SPACING * (WEEK_DAYS_COUNT - 1);
+const RING_VIEWBOX_SIZE = 52;
+const RING_RADIUS = 22;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const CalendarFlashList = FlashList as any;
 
 export type NutritionCalendarDayData = {
@@ -40,8 +45,12 @@ type NutritionCalendarProps = {
   loading?: boolean;
   initialIndex?: number | null;
   extraDataToken?: string;
+  scrollToDate?: Date | null;
+  scrollToDateAnimated?: boolean;
+  onScrollToDateHandled?: (date: Date) => void;
   onDayPress: (date: Date, index: number) => void;
   onVisibleDayChange?: (day: Date) => void;
+  onReachStart?: () => void;
 };
 
 const STATUS_EMPTY: DayStatus = {
@@ -50,11 +59,32 @@ const STATUS_EMPTY: DayStatus = {
   color: colors.neutral700,
 };
 
-const dayKey = (date: Date): string =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
+
+const startOfDay = (date: Date): Date => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
+
+const dayKey = (date: Date): string => toDateKey(startOfDay(date));
+
+const addDays = (date: Date, amount: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return startOfDay(next);
+};
+
+const startOfWeekMonday = (date: Date): Date => {
+  const normalized = startOfDay(date);
+  const day = normalized.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  return addDays(normalized, mondayOffset);
+};
+
+const buildWeekDays = (weekStart: Date): Date[] =>
+  Array.from({ length: WEEK_DAYS_COUNT }, (_, index) => addDays(weekStart, index));
 
 const getDayLabel = (date: Date, labels: string[]): string =>
   labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
@@ -88,19 +118,31 @@ const getStatusForDay = (
 
 type DayCardProps = {
   date: Date;
+  dayWidth: number;
   isToday: boolean;
   isSelected: boolean;
   status: DayStatus;
   onPress: () => void;
 };
 
-const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardProps) => {
+const DayCardInner = ({
+  date,
+  dayWidth,
+  isToday,
+  isSelected,
+  status,
+  onPress,
+}: DayCardProps) => {
   const { language } = useLanguage();
-  const circumference = 2 * Math.PI * 22;
-  const strokeDashoffset = circumference - (status.percentage / 100) * circumference;
+  const strokeDashoffset =
+    RING_CIRCUMFERENCE - (status.percentage / 100) * RING_CIRCUMFERENCE;
 
   return (
-    <TouchableOpacity style={styles.dayCard} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.dayCard, { width: dayWidth }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.dayContent}>
         <Typo
           size={11}
@@ -111,12 +153,16 @@ const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardPro
           {getDayLabel(date, WEEK_DAY_SHORT_NAMES[language])}
         </Typo>
 
-        <View style={styles.ringContainer}>
-          <Svg width={DAY_WIDTH} height={DAY_WIDTH} viewBox="0 0 52 52">
+        <View style={[styles.ringContainer, { width: dayWidth, height: dayWidth }]}>
+          <Svg
+            width={dayWidth}
+            height={dayWidth}
+            viewBox={`0 0 ${RING_VIEWBOX_SIZE} ${RING_VIEWBOX_SIZE}`}
+          >
             <Circle
               cx="26"
               cy="26"
-              r="22"
+              r={`${RING_RADIUS}`}
               stroke={colors.neutral700}
               strokeWidth="3.5"
               fill="none"
@@ -125,11 +171,11 @@ const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardPro
               <Circle
                 cx="26"
                 cy="26"
-                r="22"
+                r={`${RING_RADIUS}`}
                 stroke={status.color}
                 strokeWidth="3.5"
                 fill="none"
-                strokeDasharray={circumference}
+                strokeDasharray={RING_CIRCUMFERENCE}
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
                 rotation="-90"
@@ -139,8 +185,17 @@ const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardPro
           </Svg>
 
           <View style={styles.dayNumberContainer}>
-            <View style={styles.dayNumberContent}>
-              <Typo size={20} fontWeight="700" color={isToday ? colors.primary : colors.white}>
+            <View
+              style={[
+                styles.dayNumberContent,
+                { minHeight: Math.max(dayWidth - 8, verticalScale(36)) },
+              ]}
+            >
+              <Typo
+                size={16}
+                fontWeight="700"
+                color={isSelected || isToday ? colors.primary : colors.white}
+              >
                 {date.getDate()}
               </Typo>
               {isSelected ? (
@@ -159,11 +214,12 @@ const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardPro
 const DayCard = React.memo(
   DayCardInner,
   (prevProps, nextProps) =>
+    prevProps.dayWidth === nextProps.dayWidth &&
     prevProps.isToday === nextProps.isToday &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.status.percentage === nextProps.status.percentage &&
     prevProps.status.color === nextProps.status.color &&
-    prevProps.date.getDate() === nextProps.date.getDate(),
+    dayKey(prevProps.date) === dayKey(nextProps.date),
 );
 DayCard.displayName = "DayCard";
 
@@ -171,120 +227,450 @@ const NutritionCalendar = ({
   calendarDays,
   daysData,
   selectedDate,
-  loading = false,
+  // `loading` is kept in the API but no longer used to gate rendering.
+  loading: _loading = false,
   initialIndex = null,
   extraDataToken,
+  scrollToDate = null,
+  scrollToDateAnimated = true,
+  onScrollToDateHandled,
   onDayPress,
   onVisibleDayChange,
+  onReachStart,
 }: NutritionCalendarProps) => {
   const listRef = useRef<any>(null);
-  const didInitialScrollRef = useRef(false);
+  const [pageWidth, setPageWidth] = useState(FALLBACK_PAGE_WIDTH);
+  const [layoutReady, setLayoutReady] = useState(false);
   const lastReportedIndexRef = useRef<number | null>(null);
+  const startReachTriggeredRef = useRef(false);
+  const lastHandledScrollKeyRef = useRef<string | null>(null);
+  const hasInitialAutoCenterRef = useRef(false);
+  const autoCenteredSelectionWeekKeyRef = useRef<string | null>(null);
+  const lastAutoCenteredIndexRef = useRef<number | null>(null);
+  const didUserInteractRef = useRef(false);
+  const pendingScrollToDateRef = useRef<{
+    key: string;
+    date: Date;
+    index: number;
+  } | null>(null);
 
-  const todayKey = useMemo(() => dayKey(new Date()), []);
+  const todayKey = useMemo(() => dayKey(startOfDay(new Date())), []);
   const selectedDayKey = useMemo(
-    () => (selectedDate ? dayKey(selectedDate) : null),
+    () => (selectedDate ? dayKey(startOfDay(selectedDate)) : null),
+    [selectedDate],
+  );
+  const selectedWeekKey = useMemo(
+    () => (selectedDate ? dayKey(startOfWeekMonday(selectedDate)) : null),
     [selectedDate],
   );
 
   const dayDataByKey = useMemo(() => {
     const map = new Map<string, NutritionCalendarDayData>();
     for (const day of daysData) {
-      map.set(dayKey(day.date), day);
+      map.set(dayKey(startOfDay(day.date)), day);
     }
     return map;
   }, [daysData]);
 
-  const dayStatusByKey = useMemo(() => {
-    const map = new Map<string, DayStatus>();
-    for (const date of calendarDays) {
-      const key = dayKey(date);
-      map.set(key, getStatusForDay(dayDataByKey.get(key)));
+  const weekStartDates = useMemo(() => {
+    if (calendarDays.length === 0) return [];
+
+    const sortedDays = [...calendarDays].sort(
+      (left, right) => left.getTime() - right.getTime(),
+    );
+    const firstWeekStart = startOfWeekMonday(sortedDays[0]);
+    const lastDay = startOfDay(sortedDays[sortedDays.length - 1]);
+
+    const weeks: Date[] = [];
+    for (
+      let cursor = firstWeekStart;
+      cursor <= lastDay;
+      cursor = addDays(cursor, WEEK_DAYS_COUNT)
+    ) {
+      weeks.push(cursor);
+    }
+
+    return weeks;
+  }, [calendarDays]);
+
+  const weekIndexByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let index = 0; index < weekStartDates.length; index += 1) {
+      map.set(dayKey(weekStartDates[index]), index);
     }
     return map;
-  }, [calendarDays, dayDataByKey]);
+  }, [weekStartDates]);
 
+  const findWeekIndexForDate = useCallback(
+    (date: Date): number => {
+      const weekKey = dayKey(startOfWeekMonday(date));
+      return weekIndexByKey.get(weekKey) ?? -1;
+    },
+    [weekIndexByKey],
+  );
+
+  const safePageWidth = useMemo(
+    () => (pageWidth > 0 ? pageWidth : FALLBACK_PAGE_WIDTH),
+    [pageWidth],
+  );
+
+  const dayWidth = useMemo(() => {
+    const available = safePageWidth - DAY_SPACING * (WEEK_DAYS_COUNT - 1);
+    const computed = available / WEEK_DAYS_COUNT;
+    return Math.max(verticalScale(42), computed);
+  }, [safePageWidth]);
+
+  const logScrollDecision = useCallback(
+    (action: string, payload?: Record<string, unknown>) => {
+      if (!__DEV__) return;
+      console.log("nutrition_calendar_scroll_decision", {
+        action,
+        didUserInteract: didUserInteractRef.current,
+        ...(payload || {}),
+      });
+    },
+    [],
+  );
+
+  const safeInitialWeekIndex = useMemo(() => {
+    if (weekStartDates.length === 0) return 0;
+
+    if (selectedDate) {
+      const selectedWeekIndex = findWeekIndexForDate(selectedDate);
+      if (selectedWeekIndex >= 0) return selectedWeekIndex;
+    }
+
+    if (
+      initialIndex !== null &&
+      initialIndex >= 0 &&
+      initialIndex < calendarDays.length
+    ) {
+      const initialDate = calendarDays[initialIndex];
+      const initialWeekIndex = findWeekIndexForDate(initialDate);
+      if (initialWeekIndex >= 0) return initialWeekIndex;
+    }
+
+    const todayWeekIndex = findWeekIndexForDate(new Date());
+    if (todayWeekIndex >= 0) return todayWeekIndex;
+
+    return Math.max(weekStartDates.length - 1, 0);
+  }, [
+    calendarDays,
+    findWeekIndexForDate,
+    initialIndex,
+    selectedDate,
+    weekStartDates.length,
+  ]);
+
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.max(event.nativeEvent.layout.width, 0);
+    setPageWidth((previousWidth) =>
+      Math.abs(previousWidth - nextWidth) < 1 ? previousWidth : nextWidth,
+    );
+    if (nextWidth > 0) {
+      setLayoutReady(true);
+    }
+  }, []);
+
+  // Keep the calendar anchored once on mount, then only when selection changes.
   useEffect(() => {
-    didInitialScrollRef.current = false;
-    lastReportedIndexRef.current = null;
-  }, [calendarDays.length, initialIndex]);
+    if (!layoutReady) return;
+    if (!listRef.current) return;
+    if (weekStartDates.length === 0) return;
+    if (scrollToDate) return; // Programmatic date selection has priority.
 
-  useEffect(() => {
-    if (calendarDays.length === 0) return;
-    if (didInitialScrollRef.current) return;
+    const targetIndex = clamp(
+      safeInitialWeekIndex,
+      0,
+      Math.max(weekStartDates.length - 1, 0),
+    );
+    const targetWeekStart = weekStartDates[targetIndex];
+    if (!targetWeekStart) return;
+    const targetWeekKey = dayKey(targetWeekStart);
+    const shouldAutoCenterInitially = !hasInitialAutoCenterRef.current;
+    const selectionChanged =
+      selectedWeekKey !== null &&
+      selectedWeekKey !== autoCenteredSelectionWeekKeyRef.current;
+    const targetIndexShifted =
+      lastAutoCenteredIndexRef.current !== null &&
+      lastAutoCenteredIndexRef.current !== targetIndex;
+    const shouldAutoCenterForShift =
+      targetIndexShifted && !didUserInteractRef.current;
+    const shouldAutoCenter =
+      shouldAutoCenterInitially || selectionChanged || shouldAutoCenterForShift;
 
-    const todayIndex = calendarDays.findIndex((date) => dayKey(date) === todayKey);
-    const fallbackIndex = todayIndex >= 0 ? todayIndex : Math.max(calendarDays.length - 1, 0);
-    const maxIndex = Math.max(0, calendarDays.length - 1);
-    const safeIndex = initialIndex === null ? fallbackIndex : clamp(initialIndex, 0, maxIndex);
-    const visibleDay = calendarDays[safeIndex];
-
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      try {
-        listRef.current?.scrollToIndex({
-          index: safeIndex,
-          animated: false,
-          viewPosition: 0.5,
+    if (!shouldAutoCenter) {
+      if (targetIndexShifted && didUserInteractRef.current) {
+        logScrollDecision("skip_post_interaction", {
+          reason: "skip_post_interaction",
+          targetIndex,
+          previousAutoCenteredIndex: lastAutoCenteredIndexRef.current,
+          targetWeekKey,
+          selectedWeekKey: selectedWeekKey ?? "none",
         });
-      } catch {
-        listRef.current?.scrollToOffset({
-          offset: safeIndex * ITEM_WIDTH,
-          animated: false,
-        });
-      } finally {
-        didInitialScrollRef.current = true;
+        return;
       }
 
-      if (visibleDay) {
-        lastReportedIndexRef.current = safeIndex;
-        onVisibleDayChange?.(visibleDay);
-      }
+      logScrollDecision("skip_same_selection", {
+        targetIndex,
+        targetWeekKey,
+        selectedWeekKey: selectedWeekKey ?? "none",
+        previousAutoCenteredIndex: lastAutoCenteredIndexRef.current,
+      });
+      return;
+    }
+
+    const autoCenterReason = shouldAutoCenterInitially
+      ? "initial"
+      : selectionChanged
+        ? "selection_change"
+        : "index_shift_pre_interaction";
+    hasInitialAutoCenterRef.current = true;
+    autoCenteredSelectionWeekKeyRef.current = selectedWeekKey ?? targetWeekKey;
+    const previousAutoCenteredIndex = lastAutoCenteredIndexRef.current;
+    lastAutoCenteredIndexRef.current = targetIndex;
+    logScrollDecision("auto_center", {
+      reason: autoCenterReason,
+      targetIndex,
+      targetWeekKey,
+      selectedWeekKey: selectedWeekKey ?? "none",
+      previousAutoCenteredIndex,
     });
 
-    return () => interaction.cancel();
-  }, [calendarDays, initialIndex, onVisibleDayChange, todayKey]);
+    requestAnimationFrame(() => {
+      if (!listRef.current) return;
+      listRef.current.scrollToIndex({
+        index: targetIndex,
+        animated: false,
+        viewPosition: 0,
+      });
+      lastReportedIndexRef.current = targetIndex;
+      onVisibleDayChange?.(targetWeekStart);
+    });
+  }, [
+    layoutReady,
+    logScrollDecision,
+    onVisibleDayChange,
+    safeInitialWeekIndex,
+    scrollToDate,
+    selectedWeekKey,
+    weekStartDates,
+  ]);
+
+  useEffect(() => {
+    if (!scrollToDate) {
+      lastHandledScrollKeyRef.current = null;
+      pendingScrollToDateRef.current = null;
+      return;
+    }
+
+    if (weekStartDates.length === 0) return;
+
+    const targetWeekKey = dayKey(startOfWeekMonday(scrollToDate));
+    if (lastHandledScrollKeyRef.current === targetWeekKey) {
+      logScrollDecision("programmatic_scroll", {
+        status: "skip_duplicate",
+        targetWeekKey,
+      });
+      return;
+    }
+
+    const targetIndex = weekIndexByKey.get(targetWeekKey);
+    if (targetIndex === undefined) return;
+
+    const attemptScroll = (attempt: number) => {
+      if (!listRef.current) {
+        if (attempt < 3) {
+          requestAnimationFrame(() => attemptScroll(attempt + 1));
+        }
+        return;
+      }
+
+      pendingScrollToDateRef.current = {
+        key: targetWeekKey,
+        date: scrollToDate,
+        index: targetIndex,
+      };
+      lastHandledScrollKeyRef.current = targetWeekKey;
+      autoCenteredSelectionWeekKeyRef.current = targetWeekKey;
+      lastAutoCenteredIndexRef.current = targetIndex;
+      logScrollDecision("programmatic_scroll", {
+        status: "dispatch",
+        targetWeekKey,
+        targetIndex,
+        animated: scrollToDateAnimated,
+      });
+      listRef.current.scrollToIndex({
+        index: targetIndex,
+        animated: scrollToDateAnimated,
+        viewPosition: 0,
+      });
+
+      if (
+        !scrollToDateAnimated ||
+        lastReportedIndexRef.current === targetIndex
+      ) {
+        requestAnimationFrame(() => {
+          const pending = pendingScrollToDateRef.current;
+          if (!pending || pending.key !== targetWeekKey) return;
+
+          onVisibleDayChange?.(pending.date);
+          lastReportedIndexRef.current = targetIndex;
+          pendingScrollToDateRef.current = null;
+          onScrollToDateHandled?.(pending.date);
+        });
+      }
+    };
+
+    requestAnimationFrame(() => attemptScroll(0));
+  }, [
+    logScrollDecision,
+    onScrollToDateHandled,
+    onVisibleDayChange,
+    scrollToDate,
+    scrollToDateAnimated,
+    weekIndexByKey,
+    weekStartDates.length,
+  ]);
+
+  useEffect(() => {
+    if (lastReportedIndexRef.current === null && weekStartDates.length > 0) {
+      lastReportedIndexRef.current = safeInitialWeekIndex;
+    }
+    startReachTriggeredRef.current = false;
+  }, [safeInitialWeekIndex, weekStartDates.length]);
+
+  const getIndexFromOffset = useCallback(
+    (offsetX: number) => {
+      if (weekStartDates.length === 0) return 0;
+      return clamp(
+        Math.round(offsetX / safePageWidth),
+        0,
+        weekStartDates.length - 1,
+      );
+    },
+    [safePageWidth, weekStartDates.length],
+  );
+
+  const updateReachStartFromOffset = useCallback(
+    (offsetX: number) => {
+      if (weekStartDates.length === 0) return;
+
+      if (offsetX <= safePageWidth * 0.35) {
+        if (!startReachTriggeredRef.current) {
+          startReachTriggeredRef.current = true;
+          onReachStart?.();
+        }
+      } else {
+        startReachTriggeredRef.current = false;
+      }
+    },
+    [onReachStart, safePageWidth, weekStartDates.length],
+  );
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (calendarDays.length === 0 || !onVisibleDayChange) return;
-
-      const offsetX = event.nativeEvent.contentOffset.x;
-      const nextIndex = clamp(
-        Math.round(offsetX / ITEM_WIDTH),
-        0,
-        calendarDays.length - 1,
-      );
-
-      if (lastReportedIndexRef.current === nextIndex) return;
-      lastReportedIndexRef.current = nextIndex;
-
-      const visibleDay = calendarDays[nextIndex];
-      if (visibleDay) {
-        onVisibleDayChange(visibleDay);
-      }
+      updateReachStartFromOffset(event.nativeEvent.contentOffset.x);
     },
-    [calendarDays, onVisibleDayChange],
+    [updateReachStartFromOffset],
   );
 
-  const renderDay = useCallback(
+  const handleScrollBeginDrag = useCallback(() => {
+    didUserInteractRef.current = true;
+  }, []);
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (weekStartDates.length === 0) return;
+
+      const offsetX = event.nativeEvent.contentOffset.x;
+      updateReachStartFromOffset(offsetX);
+
+      const nextIndex = getIndexFromOffset(offsetX);
+      const previousIndex = lastReportedIndexRef.current;
+      const didIndexChange =
+        previousIndex === null || previousIndex !== nextIndex;
+      lastReportedIndexRef.current = nextIndex;
+
+      if (didIndexChange) {
+        const visibleWeekStart = weekStartDates[nextIndex];
+        if (visibleWeekStart) {
+          logScrollDecision("visible_week_changed", {
+            index: nextIndex,
+            weekKey: dayKey(visibleWeekStart),
+          });
+          onVisibleDayChange?.(visibleWeekStart);
+        }
+      }
+
+      const pending = pendingScrollToDateRef.current;
+      if (!pending) return;
+
+      pendingScrollToDateRef.current = null;
+      onScrollToDateHandled?.(pending.date);
+    },
+    [
+      getIndexFromOffset,
+      logScrollDecision,
+      onScrollToDateHandled,
+      onVisibleDayChange,
+      updateReachStartFromOffset,
+      weekStartDates,
+    ],
+  );
+
+  const renderWeek = useCallback(
     ({ item, index }: { item: Date; index: number }) => {
-      const key = dayKey(item);
+      const weekDays = buildWeekDays(item);
+
       return (
-        <DayCard
-          date={item}
-          isToday={key === todayKey}
-          isSelected={selectedDayKey === key}
-          status={dayStatusByKey.get(key) || STATUS_EMPTY}
-          onPress={() => onDayPress(item, index)}
-        />
+        <View style={[styles.weekPage, { width: safePageWidth }]}>
+          {weekDays.map((date, dayIndex) => {
+            const key = dayKey(date);
+            const status = getStatusForDay(dayDataByKey.get(key));
+
+            return (
+              <View
+                key={key}
+                style={dayIndex < WEEK_DAYS_COUNT - 1 ? styles.daySpacing : undefined}
+              >
+                <DayCard
+                  date={date}
+                  dayWidth={dayWidth}
+                  isToday={key === todayKey}
+                  isSelected={selectedDayKey === key}
+                  status={status}
+                  onPress={() => onDayPress(date, index * WEEK_DAYS_COUNT + dayIndex)}
+                />
+              </View>
+            );
+          })}
+        </View>
       );
     },
-    [dayStatusByKey, onDayPress, selectedDayKey, todayKey],
+    [
+      dayDataByKey,
+      dayWidth,
+      onDayPress,
+      safePageWidth,
+      selectedDayKey,
+      todayKey,
+    ],
   );
 
   const listExtraData = useMemo(
-    () => `${extraDataToken || "calendar"}-${selectedDayKey || "none"}`,
-    [extraDataToken, selectedDayKey],
+    () => `${extraDataToken || "calendar"}-${selectedDayKey || "none"}-${dayWidth}`,
+    [dayWidth, extraDataToken, selectedDayKey],
+  );
+
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number }) => {
+      const offset = safePageWidth * info.index;
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset, animated: false });
+      });
+    },
+    [safePageWidth],
   );
 
   const keyExtractor = useCallback((item: Date, index: number) => {
@@ -292,51 +678,48 @@ const NutritionCalendar = ({
     return Number.isFinite(timestamp) ? `${timestamp}` : `fallback-${index}`;
   }, []);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <CalendarFlashList
-        ref={listRef}
-        data={calendarDays}
-        renderItem={renderDay}
-        keyExtractor={keyExtractor}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.calendarContainer}
-        style={styles.calendar}
-        estimatedItemSize={ITEM_WIDTH}
-        getItemType={() => "day"}
-        getItemLayout={(_data: Date[] | null, index: number) => ({
-          length: ITEM_WIDTH,
-          offset: ITEM_WIDTH * index,
-          index,
-        })}
-        initialNumToRender={Math.min(calendarDays.length, 14)}
-        maxToRenderPerBatch={14}
-        windowSize={7}
-        removeClippedSubviews
-        scrollEnabled
-        snapToInterval={ITEM_WIDTH}
-        decelerationRate="fast"
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        extraData={listExtraData}
-        ItemSeparatorComponent={Separator}
-      />
+    <View style={styles.container} onLayout={handleLayout}>
+      {layoutReady ? (
+        <CalendarFlashList
+          ref={listRef}
+          data={weekStartDates}
+          renderItem={renderWeek}
+          keyExtractor={keyExtractor}
+          horizontal
+          pagingEnabled
+          disableIntervalMomentum
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.calendarContainer}
+          style={styles.calendar}
+          estimatedItemSize={safePageWidth}
+          getItemType={() => "week"}
+          getItemLayout={(_data: Date[] | null, index: number) => ({
+            length: safePageWidth,
+            offset: safePageWidth * index,
+            index,
+          })}
+          initialScrollIndex={safeInitialWeekIndex}
+          initialNumToRender={Math.min(weekStartDates.length, 3)}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          removeClippedSubviews
+          decelerationRate="fast"
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScroll={handleScroll}
+          onScrollEndDrag={handleMomentumScrollEnd}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          scrollEventThrottle={16}
+          extraData={listExtraData}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+        />
+      ) : (
+        <View style={styles.calendarPlaceholder} />
+      )}
     </View>
   );
 };
-
-const SeparatorInner = () => <View style={styles.separator} />;
-const Separator = React.memo(SeparatorInner);
-Separator.displayName = "CalendarSeparator";
 
 export default React.memo(NutritionCalendar);
 
@@ -345,23 +728,24 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
   },
   calendar: {},
+  calendarPlaceholder: {
+    height: verticalScale(92),
+  },
   calendarContainer: {
     paddingVertical: spacingY._5,
     paddingHorizontal: 0,
   },
-  loadingContainer: {
-    height: verticalScale(95),
-    justifyContent: "center",
-    alignItems: "center",
+  weekPage: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  daySpacing: {
+    marginRight: DAY_SPACING,
   },
   dayCard: {
     alignItems: "center",
     paddingVertical: 0,
     paddingHorizontal: 0,
-    width: DAY_WIDTH,
-  },
-  separator: {
-    width: ITEM_SPACING,
   },
   dayContent: {
     alignItems: "center",
@@ -371,8 +755,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   ringContainer: {
-    width: DAY_WIDTH,
-    height: DAY_WIDTH,
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
@@ -389,22 +771,21 @@ const styles = StyleSheet.create({
   dayNumberContent: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: DAY_WIDTH - 6,
   },
   todayIndicator: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     borderWidth: 1.5,
     borderColor: colors.primary,
     backgroundColor: "transparent",
-    marginTop: verticalScale(2),
+    marginTop: verticalScale(1),
   },
   selectedIndicator: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.primary,
-    marginTop: verticalScale(2),
+    marginTop: verticalScale(1),
   },
 });

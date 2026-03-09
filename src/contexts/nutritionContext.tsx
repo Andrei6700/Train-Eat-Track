@@ -458,13 +458,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       throw new Error(nutritionResult.msg || "Failed to fetch nutrition");
     }
 
-    const defaultNutrition = buildDefaultNutrition(userID, date);
-    const saveResult = await saveDailyNutrition(defaultNutrition);
-    if (saveResult.success && saveResult.data?.id) {
-      defaultNutrition.id = saveResult.data.id;
-    }
-
-    return defaultNutrition;
+    return buildDefaultNutrition(userID, date);
   }, []);
 
   const resolveWaterData = useCallback(async (userID: string, date: Date) => {
@@ -477,13 +471,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       throw new Error(waterResult.msg || "Failed to fetch water");
     }
 
-    const defaultWater = buildDefaultWater(userID, date);
-    const saveResult = await saveDailyWater(defaultWater);
-    if (saveResult.success && saveResult.data?.id) {
-      defaultWater.id = saveResult.data.id;
-    }
-
-    return defaultWater;
+    return buildDefaultWater(userID, date);
   }, []);
 
   const fetchRemoteDayData = useCallback(
@@ -688,6 +676,28 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const fallbackNutrition = cachedNutrition || buildDefaultNutrition(userId, normalizedDate);
         const fallbackWater = cachedWater || buildDefaultWater(userId, normalizedDate);
+
+        if (!cachedNutrition) {
+          setTodayNutrition(
+            applyQueuedNutritionState(
+              fallbackNutrition,
+              userId,
+              normalizedDate,
+              syncQueue,
+            ),
+          );
+        }
+
+        if (!cachedWater) {
+          setTodayWater(
+            applyQueuedWaterState(
+              fallbackWater,
+              userId,
+              normalizedDate,
+              syncQueue,
+            ),
+          );
+        }
 
         const isConnected = Boolean(state.isConnected);
         if (!isConnected) {

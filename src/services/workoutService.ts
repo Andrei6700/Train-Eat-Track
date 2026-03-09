@@ -16,6 +16,12 @@ import {
 } from "firebase/firestore";
 import { cacheLastWorkout, getCachedLastWorkout } from "./cacheService";
 import {
+  getCachedWorkoutHistory,
+  removeCachedWorkoutHistoryItem,
+  setCachedWorkoutHistory,
+  upsertCachedWorkoutHistoryItem,
+} from "./workoutHistoryCacheService";
+import {
   enqueueOrMergeAction,
   getQueuedWorkoutDrafts,
   removeFromSyncQueue,
@@ -159,6 +165,21 @@ export const addWorkoutRemote = async (
           date: Timestamp.fromDate(workoutDate),
         });
 
+        const persistedWorkout: WorkoutHistory = {
+          ...workout,
+          id: remoteWorkout.id,
+          date: workoutDate,
+          isOffline: false,
+          syncStatus: undefined,
+          queuedActionId: undefined,
+          savedAt: undefined,
+        };
+
+        await Promise.all([
+          cacheLastWorkout(persistedWorkout),
+          upsertCachedWorkoutHistoryItem(workout.userID, persistedWorkout),
+        ]);
+
         return {
           success: true,
           data: { id: remoteWorkout.id, overwritten: true },
@@ -193,7 +214,10 @@ export const addWorkoutRemote = async (
       savedAt: undefined,
     };
 
-    await cacheLastWorkout(persistedWorkout);
+    await Promise.all([
+      cacheLastWorkout(persistedWorkout),
+      upsertCachedWorkoutHistoryItem(workout.userID, persistedWorkout),
+    ]);
 
     return {
       success: true,
@@ -206,16 +230,28 @@ export const addWorkoutRemote = async (
 };
 
 export const getUserWorkouts = async (userID: string): Promise<ResponseType> => {
+  let queuedWorkouts: WorkoutHistory[] = [];
+  let cachedHistory: WorkoutHistory[] = [];
+
   try {
+    queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
+    const cachedHistoryResult = await getCachedWorkoutHistory(userID, {
+      allowStale: true,
+    });
+    cachedHistory = cachedHistoryResult.data || [];
+
     const online = await isOnline();
-    const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
 
     if (!online) {
-      const cachedWorkout = await getCachedLastWorkout();
-      const localCollection = [
-        ...queuedWorkouts,
-        ...(cachedWorkout ? [cachedWorkout] : []),
-      ];
+      const localCollection = mergeQueuedAndRemoteWorkouts(
+        queuedWorkouts,
+        cachedHistory,
+      );
+
+      if (localCollection.length > 0) {
+        await cacheLastWorkout(localCollection[0]);
+      }
+      await setCachedWorkoutHistory(userID, localCollection);
 
       return { success: true, data: localCollection };
     }
@@ -236,20 +272,35 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
     const mergedWorkouts = mergeQueuedAndRemoteWorkouts(queuedWorkouts, remoteWorkouts);
 
     if (mergedWorkouts.length > 0) {
-      await cacheLastWorkout(mergedWorkouts[0]);
+      await Promise.all([
+        cacheLastWorkout(mergedWorkouts[0]),
+        setCachedWorkoutHistory(userID, mergedWorkouts),
+      ]);
+    } else {
+      await setCachedWorkoutHistory(userID, []);
     }
 
     return { success: true, data: mergedWorkouts };
   } catch (error: any) {
     console.error("[workoutService] Error fetching workouts:", error);
 
-    const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
-    const cachedWorkout = await getCachedLastWorkout();
+    const fallbackFromCache = mergeQueuedAndRemoteWorkouts(
+      queuedWorkouts,
+      cachedHistory,
+    );
 
-    if (cachedWorkout || queuedWorkouts.length > 0) {
+    if (fallbackFromCache.length > 0) {
       return {
         success: true,
-        data: [...queuedWorkouts, ...(cachedWorkout ? [cachedWorkout] : [])],
+        data: fallbackFromCache,
+      };
+    }
+
+    const cachedWorkout = await getCachedLastWorkout();
+    if (cachedWorkout) {
+      return {
+        success: true,
+        data: [cachedWorkout],
       };
     }
 
@@ -387,6 +438,16 @@ export const addWorkout = async (
         savedAt: queuedAction.timestamp,
       });
 
+      await upsertCachedWorkoutHistoryItem(workout.userID, {
+        ...workout,
+        id: `offline_${queuedAction.id}`,
+        date: workoutDate,
+        isOffline: true,
+        syncStatus: "pending",
+        queuedActionId: queuedAction.id,
+        savedAt: queuedAction.timestamp,
+      });
+
       return {
         success: true,
         data: { id: `offline_${queuedAction.id}`, offline: true },
@@ -416,6 +477,16 @@ export const addWorkout = async (
       },
       dedupeKey,
       mergeStrategy: "replace_latest",
+    });
+
+    await upsertCachedWorkoutHistoryItem(workout.userID, {
+      ...workout,
+      id: `offline_${queuedAction.id}`,
+      date: workoutDate,
+      isOffline: true,
+      syncStatus: "retry_scheduled",
+      queuedActionId: queuedAction.id,
+      savedAt: queuedAction.timestamp,
     });
 
     return {
@@ -477,14 +548,40 @@ export const deleteWorkout = async (
   try {
     if (workoutId.startsWith("offline_")) {
       const actionId = workoutId.replace("offline_", "");
+      const queuedWorkoutResult = await getWorkout(workoutId);
       await removeFromSyncQueue(actionId);
+
+      const queuedWorkout = queuedWorkoutResult.success
+        ? (queuedWorkoutResult.data as WorkoutHistory)
+        : null;
+      if (queuedWorkout?.userID) {
+        await removeCachedWorkoutHistoryItem(queuedWorkout.userID, workoutId);
+      }
       return { success: true, msg: "Offline workout deleted" };
     }
 
+    const existingWorkoutResult = await getWorkout(workoutId);
     await deleteDoc(doc(firestore, COLLECTION_NAME, workoutId));
+
+    const existingWorkout = existingWorkoutResult.success
+      ? (existingWorkoutResult.data as WorkoutHistory)
+      : null;
+    if (existingWorkout?.userID) {
+      await removeCachedWorkoutHistoryItem(existingWorkout.userID, workoutId);
+    }
     return { success: true, msg: "Workout deleted successfully" };
   } catch (error: any) {
     console.error("[workoutService] Error deleting workout:", error);
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
+export const prefetchWorkoutHistorySnapshot = async (
+  userID: string,
+): Promise<void> => {
+  try {
+    await getUserWorkouts(userID);
+  } catch (error) {
+    console.error("[workoutService] Prefetch workout history failed:", error);
   }
 };

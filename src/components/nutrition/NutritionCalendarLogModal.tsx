@@ -16,6 +16,7 @@ type NutritionCalendarLogModalProps = {
   calendarDays: Date[];
   daysData: NutritionCalendarDayData[];
   selectedDate: Date;
+  maxSelectableDate: Date;
   loading?: boolean;
   onClose: () => void;
   onDaySelect: (day: Date, index?: number) => void;
@@ -114,6 +115,7 @@ const NutritionCalendarLogModal = ({
   calendarDays,
   daysData,
   selectedDate,
+  maxSelectableDate,
   loading = false,
   onClose,
   onDaySelect,
@@ -131,18 +133,37 @@ const NutritionCalendarLogModal = ({
   }, [selectedDate, visible]);
 
   const today = useMemo(() => startOfDay(new Date()), []);
+  const maxSelectableDay = useMemo(
+    () => startOfDay(maxSelectableDate),
+    [maxSelectableDate],
+  );
   const todayKey = useMemo(() => toDateKey(today), [today]);
   const selectedKey = useMemo(() => toDateKey(startOfDay(selectedDate)), [selectedDate]);
 
-  const minMonth = useMemo(() => {
-    if (calendarDays.length === 0) return startOfMonth(today);
-    return startOfMonth(calendarDays[0]);
-  }, [calendarDays, today]);
+  const earliestLoggedDay = useMemo(() => {
+    if (daysData.length === 0) return null;
 
-  const maxMonth = useMemo(() => {
-    if (calendarDays.length === 0) return startOfMonth(today);
-    return startOfMonth(calendarDays[calendarDays.length - 1]);
-  }, [calendarDays, today]);
+    let earliest = startOfDay(daysData[0].date);
+    for (const day of daysData) {
+      const candidate = startOfDay(day.date);
+      if (candidate < earliest) {
+        earliest = candidate;
+      }
+    }
+
+    return earliest;
+  }, [daysData]);
+
+  const minMonth = useMemo(() => {
+    if (earliestLoggedDay) return startOfMonth(earliestLoggedDay);
+    if (calendarDays.length > 0) return startOfMonth(calendarDays[0]);
+    return startOfMonth(today);
+  }, [calendarDays, earliestLoggedDay, today]);
+
+  const maxMonth = useMemo(
+    () => startOfMonth(maxSelectableDay),
+    [maxSelectableDay],
+  );
 
   const canGoPreviousMonth = useMemo(
     () => !isSameMonth(activeMonth, minMonth),
@@ -257,10 +278,10 @@ const NutritionCalendarLogModal = ({
 
   const handleDayPress = useCallback(
     (day: Date) => {
-      if (day > today) return;
+      if (startOfDay(day) > maxSelectableDay) return;
       onDaySelect(startOfDay(day), day.getDate() - 1);
     },
-    [onDaySelect, today],
+    [maxSelectableDay, onDaySelect],
   );
 
   return (
@@ -356,7 +377,7 @@ const NutritionCalendarLogModal = ({
                     <TouchableOpacity
                       onPress={() => handleDayPress(day)}
                       style={styles.dayButton}
-                      disabled={day > today || loading}
+                      disabled={startOfDay(day) > maxSelectableDay || loading}
                       activeOpacity={0.8}
                     >
                       <View style={styles.dayCircleWrapper}>

@@ -5,13 +5,15 @@ import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
+import { getCachedWorkoutHistory } from "@/src/services/workoutHistoryCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
+import { measureAsync } from "@/src/utils/perf";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
@@ -65,10 +67,8 @@ const Statistics = () => {
 
   const [weightChartData, setWeightChartData] = useState<ChartDataPoint[]>([]);
   const [repsChartData, setRepsChartData] = useState<ChartDataPoint[]>([]);
-
-  useEffect(() => {
-    fetchWorkoutsHistory();
-  }, [user?.uid]);
+  const requestIdRef = useRef(0);
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     extractExercises();
@@ -85,20 +85,74 @@ const Statistics = () => {
     setRepsChartData([]);
   }, [language, selectedExercise, selectedPeriod, workoutsHistory]);
 
-  const fetchWorkoutsHistory = async () => {
-    if (!user?.uid) return;
+  const fetchWorkoutsHistory = useCallback(async () => {
+    const userId = user?.uid;
+    const requestId = ++requestIdRef.current;
+    if (!userId) {
+      setWorkoutsHistory([]);
+      setLoading(false);
+      return;
+    }
+
+    if (previousUserIdRef.current !== userId) {
+      setWorkoutsHistory([]);
+      setLoading(true);
+    }
+    previousUserIdRef.current = userId;
+
+    let hydratedFromCache = false;
+
+    const cacheResult = await measureAsync(
+      "statistics_hydrate_cache_ms",
+      () => getCachedWorkoutHistory(userId, { allowStale: true }),
+      (result) => ({
+        source: result.data ? "cache" : "fallback",
+        itemCount: result.data?.length ?? 0,
+        cacheAgeMs: result.ageMs ?? null,
+        success: Boolean(result.data),
+      }),
+    );
+
+    if (requestId !== requestIdRef.current) return;
+
+    if (cacheResult.data) {
+      hydratedFromCache = true;
+      setWorkoutsHistory(cacheResult.data);
+      setLoading(false);
+    }
 
     try {
-      const result = await getUserWorkouts(user.uid);
+      const result = await measureAsync(
+        "statistics_revalidate_remote_ms",
+        () => getUserWorkouts(userId),
+        (remoteResult) => ({
+          source: remoteResult.success ? "remote" : "fallback",
+          itemCount: Array.isArray(remoteResult.data) ? remoteResult.data.length : 0,
+          cacheAgeMs: null,
+          success: remoteResult.success,
+        }),
+      );
+      if (requestId !== requestIdRef.current) return;
+
       if (result.success) {
         setWorkoutsHistory(result.data || []);
+      } else if (!hydratedFromCache) {
+        setWorkoutsHistory([]);
       }
     } catch (error) {
       console.error("Error fetching workouts:", error);
+      if (!hydratedFromCache && requestId === requestIdRef.current) {
+        setWorkoutsHistory([]);
+      }
     } finally {
+      if (requestId !== requestIdRef.current) return;
       setLoading(false);
     }
-  };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    void fetchWorkoutsHistory();
+  }, [fetchWorkoutsHistory]);
 
   const getFilteredWorkouts = (period: PeriodType): WorkoutHistory[] => {
     const periodStart = getPeriodStartDate(period);
@@ -278,6 +332,12 @@ const Statistics = () => {
             {t("tab_statistics")}
           </Typo>
         </View>
+
+        {loading && workoutsHistory.length === 0 ? (
+          <View style={styles.initialLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : null}
 
         <View style={styles.segmentedContainer}>
           <SegmentedControl
@@ -643,6 +703,12 @@ const styles = StyleSheet.create({
   header: {
     paddingVertical: spacingY._15,
     alignItems: "center",
+  },
+  initialLoadingContainer: {
+    marginBottom: spacingY._12,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: verticalScale(28),
   },
   segmentedContainer: {
     marginBottom: spacingY._20,

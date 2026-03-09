@@ -11,8 +11,10 @@ import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { getHomeDerivedData } from "@/src/features/home/homeSelectors";
 import { invalidateCache } from "@/src/services/workoutCacheService";
+import { getCachedWorkoutHistory } from "@/src/services/workoutHistoryCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
+import { measureAsync } from "@/src/utils/perf";
 import { verticalScale } from "@/src/utils/styling";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -23,10 +25,11 @@ const Home = React.memo(() => {
   const { workoutPlan } = useWorkoutPlan();
   const userId = user?.uid;
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const latestRequestIdRef = useRef(0);
   const isMountedRef = useRef(true);
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -39,17 +42,49 @@ const Home = React.memo(() => {
       if (!userId) return;
 
       const requestId = ++latestRequestIdRef.current;
+      let hydratedFromCache = false;
+
       if (isRefresh) {
         setRefreshing(true);
       } else {
         setLoading(true);
+
+        const cachedHistory = await measureAsync(
+          "home_hydrate_cache_ms",
+          () => getCachedWorkoutHistory(userId, { allowStale: true }),
+          (result) => ({
+            source: result.data ? "cache" : "fallback",
+            itemCount: result.data?.length ?? 0,
+            cacheAgeMs: result.ageMs ?? null,
+            success: Boolean(result.data),
+          }),
+        );
+
+        if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
+          return;
+        }
+
+        if (cachedHistory.data) {
+          hydratedFromCache = true;
+          setWorkoutsHistory(cachedHistory.data);
+          setLoading(false);
+        }
       }
 
       try {
         if (shouldInvalidateCache) {
           invalidateCache();
         }
-        const result = await getUserWorkouts(userId);
+        const result = await measureAsync(
+          "home_revalidate_remote_ms",
+          () => getUserWorkouts(userId),
+          (remoteResult) => ({
+            source: remoteResult.success ? "remote" : "fallback",
+            itemCount: Array.isArray(remoteResult.data) ? remoteResult.data.length : 0,
+            cacheAgeMs: null,
+            success: remoteResult.success,
+          }),
+        );
 
         if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
           return;
@@ -60,12 +95,16 @@ const Home = React.memo(() => {
           return;
         }
 
-        setWorkoutsHistory([]);
+        if (!hydratedFromCache) {
+          setWorkoutsHistory([]);
+        }
       } catch {
         if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
           return;
         }
-        setWorkoutsHistory([]);
+        if (!hydratedFromCache) {
+          setWorkoutsHistory([]);
+        }
       } finally {
         if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
           return;
@@ -78,6 +117,12 @@ const Home = React.memo(() => {
   );
 
   useEffect(() => {
+    if (userId && previousUserIdRef.current !== userId) {
+      setWorkoutsHistory([]);
+      setLoading(true);
+    }
+    previousUserIdRef.current = userId || null;
+
     if (!userId) {
       setWorkoutsHistory([]);
       setLoading(false);
