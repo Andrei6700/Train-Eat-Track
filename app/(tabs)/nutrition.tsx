@@ -1,4 +1,7 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
+import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import NutritionCalendarLogModal from "@/src/components/nutrition/NutritionCalendarLogModal";
 import NutritionDateHeader from "@/src/components/nutrition/NutritionDateHeader";
 import NutritionEditQuantityModal, {
   EditableFoodState,
@@ -9,15 +12,16 @@ import NutritionObjectiveCard, {
   NutritionStats,
 } from "@/src/components/nutrition/NutritionObjectiveCard";
 import NutritionWaterCard from "@/src/components/nutrition/NutritionWaterCard";
-import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
-import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
-import NutritionCalendar from "@/src/components/ui/NutritionCalendar";
+import NutritionCalendar, {
+  NutritionCalendarDayData,
+} from "@/src/components/ui/NutritionCalendar";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
-import { preloadWeekNutrition } from "@/src/services/nutritionCacheService";
-import { Food } from "@/src/types/index";
+import { getUserNutritionHistory } from "@/src/services/nutritionService";
+import { DailyNutrition, Food } from "@/src/types/index";
+import { startOfDay, toValidDate } from "@/src/utils/dateKey";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, InteractionManager, RefreshControl, ScrollView, StyleSheet } from "react-native";
@@ -27,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"] as const;
 
 type FoodWithOptionalBrand = Food & { brand?: string };
-type DayData = { date: Date; calories: number; goal: number };
+type DayData = NutritionCalendarDayData;
 
 const DEFAULT_GOALS = {
   calorie: 2500,
@@ -38,19 +42,6 @@ const DEFAULT_GOALS = {
 
 const CIRCUMFERENCE = 2 * Math.PI * 40;
 
-const getWeekDays = (baseDate: Date): Date[] => {
-  const today = new Date(baseDate);
-  const dayOfWeek = today.getDay();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(monday);
-    day.setDate(monday.getDate() + index);
-    return day;
-  });
-};
-
 const toDayLookupKey = (date: Date): string =>
   `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
@@ -58,6 +49,29 @@ const normalizeDate = (date: Date | string): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
+};
+
+const buildCalendarDays = (earliestDate: Date | null): Date[] => {
+  const today = startOfDay(new Date());
+  const startDate = earliestDate
+    ? new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1)
+    : new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const days: Date[] = [];
+  for (let day = new Date(startDate); day <= today; day.setDate(day.getDate() + 1)) {
+    days.push(new Date(day));
+  }
+
+  return days;
+};
+
+const getCaloriesFromNutrition = (nutritionDay: DailyNutrition): number => {
+  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
+  return meals.reduce((totalCalories, meal) => {
+    const mealFoods = Array.isArray(meal.foods) ? meal.foods : [];
+    const mealCalories = mealFoods.reduce((sum, food) => sum + (Number(food.calories) || 0), 0);
+    return totalCalories + mealCalories;
+  }, 0);
 };
 
 const buildMealSummaries = (
@@ -127,11 +141,12 @@ const Nutrition = () => {
     moveFoodToMeal,
   } = useNutrition();
 
-  const currentWeek = useMemo(() => getWeekDays(new Date()), []);
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const [daysData, setDaysData] = useState<DayData[]>([]);
+  const [calendarDays, setCalendarDays] = useState<Date[]>(() => buildCalendarDays(null));
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [showCalendarLogModal, setShowCalendarLogModal] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingFood, setEditingFood] = useState<EditableFoodState>(null);
@@ -140,7 +155,8 @@ const Nutrition = () => {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [actionFood, setActionFood] = useState<EditableFoodState>(null);
 
-  const requestIdRef = useRef(0);
+  const dataRequestIdRef = useRef(0);
+  const calendarRequestIdRef = useRef(0);
 
   const mealSummaries = useMemo(
     () => buildMealSummaries(todayNutrition?.meals),
@@ -185,14 +201,14 @@ const Nutrition = () => {
   }, [todayWater?.goal, todayWater?.total]);
 
   const dateHeaderLabel = useMemo(() => {
-    const today = new Date();
-    const normalizedSelected = normalizeDate(selectedDate);
-    const normalizedToday = normalizeDate(today);
-    if (normalizedSelected.toDateString() === normalizedToday.toDateString()) {
+    const today = startOfDay(new Date());
+    const normalizedSelected = startOfDay(selectedDate);
+
+    if (normalizedSelected.toDateString() === today.toDateString()) {
       return t("common_today");
     }
 
-    const yesterday = new Date(normalizedToday);
+    const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     if (normalizedSelected.toDateString() === yesterday.toDateString()) {
       return t("common_yesterday");
@@ -201,52 +217,120 @@ const Nutrition = () => {
     return `${normalizedSelected.getDate()} ${MONTH_NAMES[language][normalizedSelected.getMonth()]}, ${normalizedSelected.getFullYear()}`;
   }, [language, selectedDate, t]);
 
+  const calendarDataSignature = useMemo(() => {
+    let hash = 0;
+    for (const day of daysData) {
+      const key = toDayLookupKey(day.date);
+      for (let index = 0; index < key.length; index += 1) {
+        hash = (hash * 31 + key.charCodeAt(index)) | 0;
+      }
+      hash = (hash * 31 + day.calories) | 0;
+      hash = (hash * 31 + day.goal) | 0;
+    }
+    return `${daysData.length}-${hash}`;
+  }, [daysData]);
+
+  const calendarExtraDataToken = useMemo(
+    () => `${calendarDays.length}-${calendarDataSignature}`,
+    [calendarDataSignature, calendarDays.length],
+  );
+
+  const mainCalendarInitialIndex = useMemo(() => {
+    const todayKey = toDayLookupKey(startOfDay(new Date()));
+    const todayIndex = calendarDays.findIndex((day) => toDayLookupKey(day) === todayKey);
+    if (todayIndex !== -1) return todayIndex;
+    return Math.max(calendarDays.length - 1, 0);
+  }, [calendarDays]);
+
   const loadNutritionData = useCallback(
     async (date: Date) => {
-      if (!user?.uid) {
-        setRefreshing(false);
-        return;
-      }
+      if (!user?.uid) return;
 
-      requestIdRef.current += 1;
-      const requestId = requestIdRef.current;
+      dataRequestIdRef.current += 1;
+      const requestId = dataRequestIdRef.current;
 
       try {
         await refreshNutrition(date);
+      } catch (error) {
+        console.error("[Nutrition] Error refreshing selected date:", error);
       } finally {
-        if (requestId === requestIdRef.current) {
-          setRefreshing(false);
-        }
+        if (requestId !== dataRequestIdRef.current) return;
       }
     },
     [refreshNutrition, user?.uid],
   );
 
-  const preloadWeekData = useCallback(async () => {
-    if (!user?.uid || currentWeek.length === 0) return;
+  const loadCalendarHistory = useCallback(async () => {
+    const userId = user?.uid;
+    calendarRequestIdRef.current += 1;
+    const requestId = calendarRequestIdRef.current;
+
+    if (!userId) {
+      setDaysData([]);
+      setCalendarDays(buildCalendarDays(null));
+      setCalendarLoading(false);
+      return;
+    }
 
     setCalendarLoading(true);
+
     try {
-      const cachedData = await preloadWeekNutrition(user.uid, currentWeek);
-      const daysArray: DayData[] = currentWeek.map((date) => {
-        const key = toDayLookupKey(date);
-        const cached = cachedData.get(key);
-        return {
-          date,
-          calories: cached?.calories || 0,
-          goal: cached?.goal || DEFAULT_GOALS.calorie,
-        };
-      });
-      setDaysData(daysArray);
+      const result = await getUserNutritionHistory(userId);
+      if (requestId !== calendarRequestIdRef.current) return;
+
+      if (!(result.success && Array.isArray(result.data))) {
+        setDaysData([]);
+        setCalendarDays(buildCalendarDays(null));
+        return;
+      }
+
+      const nutritionHistory = result.data as DailyNutrition[];
+      const dayMap = new Map<string, DayData>();
+      let earliestTimestamp: number | null = null;
+
+      for (const entry of nutritionHistory) {
+        const parsedDate = toValidDate(entry.date);
+        if (!parsedDate) continue;
+
+        const normalizedDate = startOfDay(parsedDate);
+        const dateTimestamp = normalizedDate.getTime();
+        if (earliestTimestamp === null || dateTimestamp < earliestTimestamp) {
+          earliestTimestamp = dateTimestamp;
+        }
+
+        const dayKey = toDayLookupKey(normalizedDate);
+        if (dayMap.has(dayKey)) continue;
+
+        dayMap.set(dayKey, {
+          date: normalizedDate,
+          calories: getCaloriesFromNutrition(entry),
+          goal: entry.calorieGoal || DEFAULT_GOALS.calorie,
+        });
+      }
+
+      setDaysData(Array.from(dayMap.values()));
+      setCalendarDays(
+        buildCalendarDays(earliestTimestamp === null ? null : new Date(earliestTimestamp)),
+      );
+    } catch (error) {
+      console.error("[Nutrition] Error loading nutrition history:", error);
+      if (requestId !== calendarRequestIdRef.current) return;
+
+      setDaysData([]);
+      setCalendarDays(buildCalendarDays(null));
     } finally {
-      setCalendarLoading(false);
+      if (requestId === calendarRequestIdRef.current) {
+        setCalendarLoading(false);
+      }
     }
-  }, [currentWeek, user?.uid]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user?.uid) {
       setDaysData([]);
+      setCalendarDays(buildCalendarDays(null));
       setRefreshing(false);
+      setShowCalendarLogModal(false);
       return;
     }
 
@@ -254,66 +338,94 @@ const Nutrition = () => {
   }, [loadNutritionData, selectedDate, user?.uid]);
 
   useEffect(() => {
-    if (!user?.uid || currentWeek.length === 0) return;
+    if (!user?.uid) return;
 
     const interaction = InteractionManager.runAfterInteractions(() => {
-      void preloadWeekData();
+      void loadCalendarHistory();
     });
 
     return () => interaction.cancel();
-  }, [currentWeek.length, preloadWeekData, user?.uid]);
+  }, [loadCalendarHistory, user?.uid]);
 
   useEffect(() => {
-    if (!todayNutrition || currentWeek.length === 0) return;
+    if (!todayNutrition) return;
 
-    const nutritionDate = normalizeDate(todayNutrition.date);
-    const nutritionDateKey = toDayLookupKey(nutritionDate);
-    const goal = todayNutrition.calorieGoal || DEFAULT_GOALS.calorie;
+    const nutritionDate = toValidDate(todayNutrition.date);
+    if (!nutritionDate) return;
+
+    const normalizedDate = startOfDay(nutritionDate);
+    const today = startOfDay(new Date());
+    if (normalizedDate > today) return;
+
+    const nutritionDateKey = toDayLookupKey(normalizedDate);
     const calories = nutritionStats.totalCalories;
+    const goal = todayNutrition.calorieGoal || DEFAULT_GOALS.calorie;
 
-    setDaysData((prevDaysData) => {
-      const existingIndex = prevDaysData.findIndex(
+    setDaysData((previousDaysData) => {
+      const existingIndex = previousDaysData.findIndex(
         (day) => toDayLookupKey(day.date) === nutritionDateKey,
       );
 
       if (existingIndex !== -1) {
-        const current = prevDaysData[existingIndex];
-        if (current.calories === calories && current.goal === goal) {
-          return prevDaysData;
+        const existing = previousDaysData[existingIndex];
+        if (existing.calories === calories && existing.goal === goal) {
+          return previousDaysData;
         }
 
-        const updated = [...prevDaysData];
-        updated[existingIndex] = { ...current, calories, goal };
+        const updated = [...previousDaysData];
+        updated[existingIndex] = { ...existing, calories, goal };
         return updated;
       }
 
-      const isInCurrentWeek = currentWeek.some(
-        (day) => toDayLookupKey(day) === nutritionDateKey,
-      );
-      if (!isInCurrentWeek) return prevDaysData;
-
-      return [...prevDaysData, { date: nutritionDate, calories, goal }];
+      return [...previousDaysData, { date: normalizedDate, calories, goal }];
     });
-  }, [currentWeek, nutritionStats.totalCalories, todayNutrition]);
+  }, [nutritionStats.totalCalories, todayNutrition]);
 
   useEffect(() => {
     return () => {
-      requestIdRef.current += 1;
+      dataRequestIdRef.current += 1;
+      calendarRequestIdRef.current += 1;
     };
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void loadNutritionData(selectedDate);
-  }, [loadNutritionData, selectedDate]);
+
+    void (async () => {
+      try {
+        await Promise.all([loadNutritionData(selectedDate), loadCalendarHistory()]);
+      } finally {
+        setRefreshing(false);
+      }
+    })();
+  }, [loadCalendarHistory, loadNutritionData, selectedDate]);
 
   const handleDayPress = useCallback((day: Date, _index?: number) => {
-    setSelectedDate(day);
+    const today = startOfDay(new Date());
+    if (day > today) return;
+
+    setSelectedDate(normalizeDate(day));
   }, []);
 
   const handleOpenSettings = useCallback(() => {
     router.push("/(modals)/nutritionSettings");
   }, [router]);
+
+  const handleOpenCalendarLog = useCallback(() => {
+    setShowCalendarLogModal(true);
+  }, []);
+
+  const handleCloseCalendarLog = useCallback(() => {
+    setShowCalendarLogModal(false);
+  }, []);
+
+  const handleCalendarModalDayPress = useCallback((day: Date, _index?: number) => {
+    const today = startOfDay(new Date());
+    if (day > today) return;
+
+    const normalizedDate = startOfDay(day);
+    setSelectedDate(normalizedDate);
+  }, []);
 
   const handleMealPress = useCallback(
     (mealName: string) => {
@@ -428,20 +540,24 @@ const Nutrition = () => {
   const handleDeleteFood = useCallback(() => {
     if (!actionFood) return;
 
-    Alert.alert(t("nutrition_delete_food_title"), t("nutrition_delete_food_message", {
-      name: actionFood.food.name,
-    }), [
-      { text: t("common_cancel"), style: "cancel" },
-      {
-        text: t("nutrition_delete_food"),
-        style: "destructive",
-        onPress: async () => {
-          await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
-          setShowActionsModal(false);
-          Alert.alert(t("common_success"), t("nutrition_food_deleted"));
+    Alert.alert(
+      t("nutrition_delete_food_title"),
+      t("nutrition_delete_food_message", {
+        name: actionFood.food.name,
+      }),
+      [
+        { text: t("common_cancel"), style: "cancel" },
+        {
+          text: t("nutrition_delete_food"),
+          style: "destructive",
+          onPress: async () => {
+            await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
+            setShowActionsModal(false);
+            Alert.alert(t("common_success"), t("nutrition_food_deleted"));
+          },
         },
-      },
-    ]);
+      ],
+    );
   }, [actionFood, removeFoodFromMeal, t]);
 
   return (
@@ -458,13 +574,18 @@ const Nutrition = () => {
             />
           }
         >
-          <NutritionDateHeader dateLabel={dateHeaderLabel} onOpenSettings={handleOpenSettings} />
+          <NutritionDateHeader
+            dateLabel={dateHeaderLabel}
+            onOpenCalendarLog={handleOpenCalendarLog}
+            onOpenSettings={handleOpenSettings}
+          />
 
           <NutritionCalendar
-            currentWeek={currentWeek}
-            selectedDate={selectedDate}
+            calendarDays={calendarDays}
             daysData={daysData}
             loading={calendarLoading}
+            initialIndex={mainCalendarInitialIndex}
+            extraDataToken={calendarExtraDataToken}
             onDayPress={handleDayPress}
           />
 
@@ -490,6 +611,18 @@ const Nutrition = () => {
             onAddWater={handleAddWater}
           />
         </ScrollView>
+
+        {showCalendarLogModal && (
+          <NutritionCalendarLogModal
+            visible={showCalendarLogModal}
+            calendarDays={calendarDays}
+            daysData={daysData}
+            selectedDate={selectedDate}
+            loading={calendarLoading}
+            onClose={handleCloseCalendarLog}
+            onDaySelect={handleCalendarModalDayPress}
+          />
+        )}
 
         <NutritionEditQuantityModal
           visible={showEditModal}

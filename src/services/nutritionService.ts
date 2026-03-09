@@ -5,7 +5,6 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
   Timestamp,
@@ -127,7 +126,6 @@ export const getUserNutritionHistory = async (
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      orderBy("dateKey", "desc"),
     );
 
     const querySnapshot = await getDocs(q);
@@ -135,6 +133,12 @@ export const getUserNutritionHistory = async (
 
     querySnapshot.forEach((docSnap) => {
       nutritionHistory.push(parseNutritionDoc(docSnap.id, docSnap.data(), new Date()));
+    });
+
+    nutritionHistory.sort((left, right) => {
+      const leftTime = parseFirestoreDate(left.date, new Date(0)).getTime();
+      const rightTime = parseFirestoreDate(right.date, new Date(0)).getTime();
+      return rightTime - leftTime;
     });
 
     return { success: true, data: nutritionHistory };

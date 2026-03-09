@@ -641,6 +641,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     toMeal: string,
   ) => {
     if (!todayNutrition || !user?.uid) return;
+    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
     const sourceMeal = todayNutrition.meals.find((meal) => meal.mealName === fromMeal);
     if (!sourceMeal || !sourceMeal.foods[foodIndex]) return;

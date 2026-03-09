@@ -222,88 +222,90 @@ const BarcodeScanner = () => {
             "qr",
           ],
         }}
+      />
+
+      {/* Header */}
+      <Animated.View
+        entering={FadeInDown.delay(100).duration(400)}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
-        {/* Header */}
-        <Animated.View
-          entering={FadeInDown.delay(100).duration(400)}
-          style={[styles.header, { paddingTop: insets.top + 10 }]}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.headerButton}
         >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.headerButton}
-          >
-            <Icons.XIcon size={24} color={colors.white} weight="bold" />
-          </TouchableOpacity>
+          <Icons.XIcon size={24} color={colors.white} weight="bold" />
+        </TouchableOpacity>
 
-          <Typo size={18} fontWeight="700" color={colors.white}>
-            {t("barcode_scanner_modal_title")}
+        <Typo size={18} fontWeight="700" color={colors.white}>
+          {t("barcode_scanner_modal_title")}
+        </Typo>
+
+        <TouchableOpacity
+          onPress={() => setFlashEnabled(!flashEnabled)}
+          style={styles.headerButton}
+        >
+          {flashEnabled ? (
+            <Icons.FlashlightIcon
+              size={24}
+              color={colors.primary}
+              weight="fill"
+            />
+          ) : (
+            <Icons.FlashlightIcon
+              size={24}
+              color={colors.white}
+              weight="regular"
+            />
+          )}
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Scanner Frame */}
+      {!scanned && (
+        <Animated.View
+          entering={FadeIn.delay(300).duration(600)}
+          style={styles.scannerFrame}
+          pointerEvents="none"
+        >
+          <View style={styles.scannerBox}>
+            {/* Corners */}
+            <View style={[styles.corner, styles.topLeft]} />
+            <View style={[styles.corner, styles.topRight]} />
+            <View style={[styles.corner, styles.bottomLeft]} />
+            <View style={[styles.corner, styles.bottomRight]} />
+          </View>
+
+          <Typo
+            size={16}
+            fontWeight="600"
+            color={colors.white}
+            style={styles.scannerText}
+          >
+            {t("barcode_scanner_modal_position_hint")}
           </Typo>
-
-          <TouchableOpacity
-            onPress={() => setFlashEnabled(!flashEnabled)}
-            style={styles.headerButton}
-          >
-            {flashEnabled ? (
-              <Icons.FlashlightIcon
-                size={24}
-                color={colors.primary}
-                weight="fill"
-              />
-            ) : (
-              <Icons.FlashlightIcon
-                size={24}
-                color={colors.white}
-                weight="regular"
-              />
-            )}
-          </TouchableOpacity>
         </Animated.View>
+      )}
 
-        {/* Scanner Frame */}
-        {!scanned && (
-          <Animated.View
-            entering={FadeIn.delay(300).duration(600)}
-            style={styles.scannerFrame}
-          >
-            <View style={styles.scannerBox}>
-              {/* Corners */}
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-            </View>
-
+      {/* Loading Overlay */}
+      {loading && (
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(300)}
+          style={styles.loadingOverlay}
+          pointerEvents="none"
+        >
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
             <Typo
               size={16}
               fontWeight="600"
-              color={colors.white}
-              style={styles.scannerText}
+              style={{ marginTop: spacingY._15 }}
             >
-              {t("barcode_scanner_modal_position_hint")}
+              {t("barcode_scanner_modal_searching_food")}
             </Typo>
-          </Animated.View>
-        )}
-
-        {/* Loading Overlay */}
-        {loading && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(300)}
-            style={styles.loadingOverlay}
-          >
-            <View style={styles.loadingCard}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Typo
-                size={16}
-                fontWeight="600"
-                style={{ marginTop: spacingY._15 }}
-              >
-                {t("barcode_scanner_modal_searching_food")}
-              </Typo>
-            </View>
-          </Animated.View>
-        )}
-      </CameraView>
+          </View>
+        </Animated.View>
+      )}
 
       {/* Quantity Modal */}
       <Modal
@@ -510,6 +512,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral900,
   },
   header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -526,7 +533,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scannerFrame: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -579,6 +587,7 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
     backgroundColor: "rgba(0, 0, 0, 0.8)",
     alignItems: "center",
     justifyContent: "center",

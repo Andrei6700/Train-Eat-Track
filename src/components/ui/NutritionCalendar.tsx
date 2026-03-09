@@ -4,7 +4,15 @@ import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { FlashList } from "@shopify/flash-list";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, InteractionManager, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  InteractionManager,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import Typo from "../ui/Typo";
 
@@ -13,7 +21,7 @@ const ITEM_SPACING = spacingX._7 ?? 6;
 const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
 const CalendarFlashList = FlashList as any;
 
-type DayData = {
+export type NutritionCalendarDayData = {
   date: Date;
   calories: number;
   goal: number;
@@ -26,11 +34,13 @@ type DayStatus = {
 };
 
 type NutritionCalendarProps = {
-  currentWeek: Date[];
-  selectedDate: Date;
-  daysData: DayData[];
+  calendarDays: Date[];
+  daysData: NutritionCalendarDayData[];
   loading?: boolean;
+  initialIndex?: number | null;
+  extraDataToken?: string;
   onDayPress: (date: Date, index: number) => void;
+  onVisibleDayChange?: (day: Date) => void;
 };
 
 const STATUS_EMPTY: DayStatus = {
@@ -42,10 +52,15 @@ const STATUS_EMPTY: DayStatus = {
 const dayKey = (date: Date): string =>
   `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
 const getDayLabel = (date: Date, labels: string[]): string =>
   labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
 
-const getStatusForDay = (dayData: DayData | undefined): DayStatus => {
+const getStatusForDay = (
+  dayData: NutritionCalendarDayData | undefined,
+): DayStatus => {
   if (!dayData || dayData.calories === 0) {
     return STATUS_EMPTY;
   }
@@ -143,19 +158,22 @@ const DayCard = React.memo(
 DayCard.displayName = "DayCard";
 
 const NutritionCalendar = ({
-  currentWeek,
-  selectedDate: _selectedDate,
+  calendarDays,
   daysData,
   loading = false,
+  initialIndex = null,
+  extraDataToken,
   onDayPress,
+  onVisibleDayChange,
 }: NutritionCalendarProps) => {
   const listRef = useRef<any>(null);
-  const initialScrollDoneRef = useRef(false);
+  const didInitialScrollRef = useRef(false);
+  const lastReportedIndexRef = useRef<number | null>(null);
 
   const todayKey = useMemo(() => dayKey(new Date()), []);
 
   const dayDataByKey = useMemo(() => {
-    const map = new Map<string, DayData>();
+    const map = new Map<string, NutritionCalendarDayData>();
     for (const day of daysData) {
       map.set(dayKey(day.date), day);
     }
@@ -164,39 +182,74 @@ const NutritionCalendar = ({
 
   const dayStatusByKey = useMemo(() => {
     const map = new Map<string, DayStatus>();
-    for (const date of currentWeek) {
+    for (const date of calendarDays) {
       const key = dayKey(date);
       map.set(key, getStatusForDay(dayDataByKey.get(key)));
     }
     return map;
-  }, [currentWeek, dayDataByKey]);
+  }, [calendarDays, dayDataByKey]);
 
   useEffect(() => {
-    if (currentWeek.length === 0) return;
-    if (initialScrollDoneRef.current) return;
+    didInitialScrollRef.current = false;
+    lastReportedIndexRef.current = null;
+  }, [calendarDays.length, initialIndex]);
 
-    const todayIndex = currentWeek.findIndex((date) => dayKey(date) === todayKey);
-    if (todayIndex < 0) return;
+  useEffect(() => {
+    if (calendarDays.length === 0) return;
+    if (didInitialScrollRef.current) return;
+
+    const todayIndex = calendarDays.findIndex((date) => dayKey(date) === todayKey);
+    const fallbackIndex = todayIndex >= 0 ? todayIndex : Math.max(calendarDays.length - 1, 0);
+    const maxIndex = Math.max(0, calendarDays.length - 1);
+    const safeIndex = initialIndex === null ? fallbackIndex : clamp(initialIndex, 0, maxIndex);
+    const visibleDay = calendarDays[safeIndex];
 
     const interaction = InteractionManager.runAfterInteractions(() => {
       try {
         listRef.current?.scrollToIndex({
-          index: todayIndex,
+          index: safeIndex,
           animated: false,
           viewPosition: 0.5,
         });
-        initialScrollDoneRef.current = true;
       } catch {
         listRef.current?.scrollToOffset({
-          offset: todayIndex * ITEM_WIDTH,
+          offset: safeIndex * ITEM_WIDTH,
           animated: false,
         });
-        initialScrollDoneRef.current = true;
+      } finally {
+        didInitialScrollRef.current = true;
+      }
+
+      if (visibleDay) {
+        lastReportedIndexRef.current = safeIndex;
+        onVisibleDayChange?.(visibleDay);
       }
     });
 
     return () => interaction.cancel();
-  }, [currentWeek, todayKey]);
+  }, [calendarDays, initialIndex, onVisibleDayChange, todayKey]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (calendarDays.length === 0 || !onVisibleDayChange) return;
+
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const nextIndex = clamp(
+        Math.round(offsetX / ITEM_WIDTH),
+        0,
+        calendarDays.length - 1,
+      );
+
+      if (lastReportedIndexRef.current === nextIndex) return;
+      lastReportedIndexRef.current = nextIndex;
+
+      const visibleDay = calendarDays[nextIndex];
+      if (visibleDay) {
+        onVisibleDayChange(visibleDay);
+      }
+    },
+    [calendarDays, onVisibleDayChange],
+  );
 
   const renderDay = useCallback(
     ({ item, index }: { item: Date; index: number }) => {
@@ -213,7 +266,10 @@ const NutritionCalendar = ({
     [dayStatusByKey, onDayPress, todayKey],
   );
 
-  const keyExtractor = useCallback((item: Date) => item.toISOString(), []);
+  const keyExtractor = useCallback((item: Date, index: number) => {
+    const timestamp = item.getTime();
+    return Number.isFinite(timestamp) ? `${timestamp}` : `fallback-${index}`;
+  }, []);
 
   if (loading) {
     return (
@@ -227,7 +283,7 @@ const NutritionCalendar = ({
     <View style={styles.container}>
       <CalendarFlashList
         ref={listRef}
-        data={currentWeek}
+        data={calendarDays}
         renderItem={renderDay}
         keyExtractor={keyExtractor}
         horizontal
@@ -241,13 +297,16 @@ const NutritionCalendar = ({
           offset: ITEM_WIDTH * index,
           index,
         })}
-        initialNumToRender={7}
-        maxToRenderPerBatch={7}
+        initialNumToRender={Math.min(calendarDays.length, 14)}
+        maxToRenderPerBatch={14}
         windowSize={7}
         removeClippedSubviews
         scrollEnabled
         snapToInterval={ITEM_WIDTH}
         decelerationRate="fast"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        extraData={extraDataToken}
         ItemSeparatorComponent={Separator}
       />
     </View>
