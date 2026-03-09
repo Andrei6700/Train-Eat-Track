@@ -924,8 +924,12 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     const handleUserChange = async () => {
       const previousUserId = previousUserIdRef.current;
       const nextUserId = user?.uid || null;
+      const isUserSwitch = Boolean(
+        previousUserId && nextUserId && previousUserId !== nextUserId,
+      );
+      const isLogout = Boolean(previousUserId && !nextUserId);
 
-      if (previousUserId && previousUserId !== nextUserId) {
+      if (isUserSwitch && previousUserId) {
         clearNutritionMemoryCache(previousUserId);
         clearWaterMemoryCache(waterMemoryCacheRef.current, previousUserId);
         inFlightDayRequestsRef.current.clear();
@@ -944,11 +948,13 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
           reason: "user_change",
         });
       } else {
-        clearNutritionMemoryCache();
-        clearWaterMemoryCache(waterMemoryCacheRef.current);
-        inFlightDayRequestsRef.current.clear();
-        inFlightWeekPreloadRef.current.clear();
-        await clearNutritionCache();
+        if (isLogout) {
+          clearNutritionMemoryCache();
+          clearWaterMemoryCache(waterMemoryCacheRef.current);
+          inFlightDayRequestsRef.current.clear();
+          inFlightWeekPreloadRef.current.clear();
+          await clearNutritionCache();
+        }
         setTodayNutrition(null);
         setTodayWater(null);
         setLoading(false);

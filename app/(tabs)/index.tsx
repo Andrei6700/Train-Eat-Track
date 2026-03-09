@@ -8,6 +8,7 @@ import Typo from "@/src/components/ui/Typo";
 import WeeklyActivityChart from "@/src/components/ui/WeeklyActivityChart";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
+import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { getHomeDerivedData } from "@/src/features/home/homeSelectors";
 import { invalidateCache } from "@/src/services/workoutCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
@@ -19,6 +20,7 @@ import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 const Home = React.memo(() => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { workoutPlan } = useWorkoutPlan();
   const userId = user?.uid;
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -90,8 +92,8 @@ const Home = React.memo(() => {
   }, [loadWorkouts]);
 
   const homeData = useMemo(
-    () => getHomeDerivedData(workoutsHistory),
-    [workoutsHistory],
+    () => getHomeDerivedData(workoutsHistory, workoutPlan),
+    [workoutPlan, workoutsHistory],
   );
 
   return (

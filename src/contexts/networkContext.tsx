@@ -1,5 +1,5 @@
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
 type NetworkContextType = {
   isConnected: boolean;
@@ -16,6 +16,7 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [isConnected, setIsConnected] = useState(true);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const previousConnectionRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     // Check initial connection status
@@ -23,19 +24,26 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({
       const connected = state.isConnected ?? true;
       setIsConnected(connected);
       setIsOfflineMode(!connected);
+      previousConnectionRef.current = connected;
     });
 
     // Subscribe to connection changes
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       const connected = state.isConnected ?? true;
+      const previousConnected = previousConnectionRef.current;
+
       setIsConnected(connected);
       setIsOfflineMode(!connected);
 
-      if (connected) {
-        console.log(" [NetworkContext] Back online");
-      } else {
-        console.log(" [NetworkContext] Offline mode");
+      if (__DEV__ && previousConnected !== null && previousConnected !== connected) {
+        if (connected) {
+          console.log("[NetworkContext] Back online");
+        } else {
+          console.log("[NetworkContext] Offline mode");
+        }
       }
+
+      previousConnectionRef.current = connected;
     });
 
     return () => unsubscribe();

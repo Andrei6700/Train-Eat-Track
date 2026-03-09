@@ -1,4 +1,6 @@
-import { WorkoutHistory } from "@/src/types/index";
+import { WorkoutHistory, WorkoutPlan } from "@/src/types/index";
+import { DAY_IN_MS, startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
 
 export type HomeQuickStats = {
   totalWorkouts: number;
@@ -19,49 +21,144 @@ export type HomeDerivedData = {
   recentWorkouts: WorkoutHistory[];
 };
 
-const DAY_IN_MS = 1000 * 60 * 60 * 24;
+const MAX_STREAK_LOOKBACK_DAYS = 3650;
 
-const getDayStart = (value: Date | string): Date => {
-  const parsedDate = new Date(value);
-  parsedDate.setHours(0, 0, 0, 0);
-  return parsedDate;
+const getDayStart = (value: Date | string): Date | null => {
+  const parsedDate = toValidDate(value);
+  if (!parsedDate) return null;
+  return startOfDay(parsedDate);
 };
 
-const calculateCurrentStreak = (nonRestWorkouts: WorkoutHistory[]): number => {
-  if (nonRestWorkouts.length === 0) {
-    return 0;
+const shiftDays = (date: Date, delta: number): Date => {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + delta);
+  return shifted;
+};
+
+const buildCompletedDaySet = (workouts: WorkoutHistory[]): Set<string> => {
+  const completedDaySet = new Set<string>();
+
+  for (const workout of workouts) {
+    if (workout.isRestDay) continue;
+    const parsedDate = getDayStart(workout.date);
+    if (!parsedDate) continue;
+    completedDaySet.add(toDateKey(parsedDate));
   }
 
-  const sortedWorkouts = [...nonRestWorkouts].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-  );
+  return completedDaySet;
+};
 
+const buildPlanDayMap = (
+  workoutPlan: WorkoutPlan | null | undefined,
+): Map<string, boolean> => {
+  const dayMap = new Map<string, boolean>();
+  if (!workoutPlan?.days?.length) return dayMap;
+
+  for (const day of workoutPlan.days) {
+    dayMap.set(day.day, Boolean(day.isRestDay));
+  }
+
+  return dayMap;
+};
+
+const isPlanUsableForCycle = (workoutPlan: WorkoutPlan | null | undefined): boolean => {
+  if (!workoutPlan?.days?.length) return false;
+
+  const splitDays = Number(workoutPlan.splitDays);
+  if (!Number.isFinite(splitDays) || splitDays <= 0) return false;
+
+  return Boolean(toValidDate(workoutPlan.createdAt));
+};
+
+const hasAnyTrainingDayInPlan = (workoutPlan: WorkoutPlan | null | undefined): boolean => {
+  if (!workoutPlan?.days?.length) return false;
+  return workoutPlan.days.some((day) => !day.isRestDay);
+};
+
+const isPlannedRestDay = (
+  date: Date,
+  workoutPlan: WorkoutPlan,
+  planDayMap: Map<string, boolean>,
+): boolean => {
+  const dayName = getCycleDayNameFromDate(date, workoutPlan);
+  return Boolean(planDayMap.get(dayName));
+};
+
+const calculateStrictCalendarStreak = (
+  completedDaySet: Set<string>,
+  startDate: Date,
+): number => {
   let streak = 0;
-  let currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
+  let cursor = startDate;
 
-  for (const workout of sortedWorkouts) {
-    const workoutDate = getDayStart(workout.date);
-    const diffDays = Math.floor((currentDate.getTime() - workoutDate.getTime()) / DAY_IN_MS);
-
-    if (diffDays === streak) {
-      streak++;
-      currentDate = workoutDate;
-    } else if (diffDays === streak + 1) {
-      // Allow one day gap to match the previous behavior.
-      streak++;
-      currentDate = workoutDate;
-    } else {
+  for (let idx = 0; idx < MAX_STREAK_LOOKBACK_DAYS; idx += 1) {
+    if (!completedDaySet.has(toDateKey(cursor))) {
       break;
     }
+    streak += 1;
+    cursor = shiftDays(cursor, -1);
   }
 
   return streak;
 };
 
-export const getHomeDerivedData = (workouts: WorkoutHistory[]): HomeDerivedData => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+const calculatePlanAwareConsistencyStreak = (
+  completedDaySet: Set<string>,
+  workoutPlan: WorkoutPlan,
+  startDate: Date,
+): number => {
+  if (!hasAnyTrainingDayInPlan(workoutPlan)) {
+    return 0;
+  }
+
+  const planDayMap = buildPlanDayMap(workoutPlan);
+
+  let streak = 0;
+  let cursor = startDate;
+
+  for (let idx = 0; idx < MAX_STREAK_LOOKBACK_DAYS; idx += 1) {
+    if (isPlannedRestDay(cursor, workoutPlan, planDayMap)) {
+      cursor = shiftDays(cursor, -1);
+      continue;
+    }
+
+    if (completedDaySet.has(toDateKey(cursor))) {
+      streak += 1;
+      cursor = shiftDays(cursor, -1);
+      continue;
+    }
+
+    break;
+  }
+
+  return streak;
+};
+
+const calculateCurrentStreak = (
+  workouts: WorkoutHistory[],
+  workoutPlan?: WorkoutPlan | null,
+): number => {
+  const completedDaySet = buildCompletedDaySet(workouts);
+  if (completedDaySet.size === 0) {
+    return 0;
+  }
+
+  const today = startOfDay(new Date());
+  const todayKey = toDateKey(today);
+  const startDate = completedDaySet.has(todayKey) ? today : shiftDays(today, -1);
+
+  if (!workoutPlan || !isPlanUsableForCycle(workoutPlan)) {
+    return calculateStrictCalendarStreak(completedDaySet, startDate);
+  }
+
+  return calculatePlanAwareConsistencyStreak(completedDaySet, workoutPlan, startDate);
+};
+
+export const getHomeDerivedData = (
+  workouts: WorkoutHistory[],
+  workoutPlan?: WorkoutPlan | null,
+): HomeDerivedData => {
+  const today = startOfDay(new Date());
 
   const dayOfWeek = today.getDay();
   const monday = new Date(today);
@@ -75,6 +172,8 @@ export const getHomeDerivedData = (workouts: WorkoutHistory[]): HomeDerivedData 
 
   for (const workout of workouts) {
     const workoutDate = getDayStart(workout.date);
+    if (!workoutDate) continue;
+
     const diffDays = Math.floor((workoutDate.getTime() - monday.getTime()) / DAY_IN_MS);
     const isCurrentWeek = diffDays >= 0 && diffDays < 7;
 
@@ -89,7 +188,7 @@ export const getHomeDerivedData = (workouts: WorkoutHistory[]): HomeDerivedData 
     totalDurationSeconds += workout.duration || 0;
 
     if (isCurrentWeek) {
-      weekWorkoutCounts[diffDays]++;
+      weekWorkoutCounts[diffDays] += 1;
     }
   }
 
@@ -100,7 +199,7 @@ export const getHomeDerivedData = (workouts: WorkoutHistory[]): HomeDerivedData 
       ? Math.round(totalHours).toString()
       : Number(totalHours.toFixed(1)).toString();
 
-  const currentStreak = calculateCurrentStreak(nonRestWorkouts);
+  const currentStreak = calculateCurrentStreak(workouts, workoutPlan);
   const workoutDaysCount = weekWorkoutCounts.filter((count) => count > 0).length;
 
   return {
