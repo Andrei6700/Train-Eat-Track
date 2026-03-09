@@ -2,15 +2,17 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
+import * as Icons from "phosphor-react-native";
 import React, { useMemo } from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import * as Icons from "phosphor-react-native";
+import Svg, { Circle } from "react-native-svg";
 
 export type NutritionStats = {
   totalCalories: number;
   totalMacros: { protein: number; carbs: number; fat: number };
   remainingCalories: number;
+  overCalories: number;
   progress: number;
   calorieGoal: number;
   proteinGoal: number;
@@ -25,15 +27,22 @@ const PROTEIN_COLOR = "#10B981";
 const CARBS_COLOR = "#EF4444";
 const FAT_COLOR = "#F59E0B";
 const FIRE_COLOR = "#FF6B35";
+const RING_COLOR_REMAINING = "#7DDC8A";
+const RING_COLOR_OVER_WARNING = "#F6B64E";
+const RING_COLOR_OVER_DANGER = "#EE7B80";
+const RING_TRACK_COLOR = "#A3A8AE";
+const RING_SIZE = verticalScale(124);
+const RING_RADIUS = 54;
+const RING_STROKE_WIDTH = 12;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
   const { t } = useLanguage();
-  const progressFillStyle = useMemo<ViewStyle>(
-    () => ({ height: `${stats.progress}%` }),
-    [stats.progress],
-  );
   const proteinFillStyle = useMemo<ViewStyle>(
-    () => ({ width: `${stats.proteinProgress}%`, backgroundColor: PROTEIN_COLOR }),
+    () => ({
+      width: `${stats.proteinProgress}%`,
+      backgroundColor: PROTEIN_COLOR,
+    }),
     [stats.proteinProgress],
   );
   const carbsFillStyle = useMemo<ViewStyle>(
@@ -44,6 +53,24 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
     () => ({ width: `${stats.fatProgress}%`, backgroundColor: FAT_COLOR }),
     [stats.fatProgress],
   );
+  const isOverCalories = stats.overCalories > 0;
+  const ringColor = useMemo(() => {
+    if (!isOverCalories) return RING_COLOR_REMAINING;
+    return stats.overCalories > 350
+      ? RING_COLOR_OVER_DANGER
+      : RING_COLOR_OVER_WARNING;
+  }, [isOverCalories, stats.overCalories]);
+  const displayValue = isOverCalories
+    ? stats.overCalories
+    : stats.remainingCalories;
+  const displayLabel = isOverCalories
+    ? t("nutrition_over_kcal_label")
+    : t("nutrition_remaining_kcal");
+  const ringProgress = isOverCalories
+    ? 100
+    : Math.max(0, Math.min(stats.progress, 100));
+  const ringStrokeDashOffset =
+    RING_CIRCUMFERENCE - (ringProgress / 100) * RING_CIRCUMFERENCE;
 
   return (
     <Animated.View
@@ -90,21 +117,48 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
 
         <View style={styles.rightSection}>
           <View style={styles.progressCircleContainer}>
-            <View style={styles.progressCircle}>
-              <View style={[styles.progressFill, progressFillStyle]} />
-              <View style={styles.circleInner}>
-                <Typo
-                  size={18}
-                  fontWeight="700"
-                  color={colors.white}
-                  style={styles.remainingCalories}
-                >
-                  {stats.remainingCalories}
-                </Typo>
-                <Typo size={12} color={colors.neutral400}>
-                  {t("nutrition_remaining_kcal")}
-                </Typo>
-              </View>
+            <Svg width={RING_SIZE} height={RING_SIZE} viewBox="0 0 124 124">
+              <Circle
+                cx="62"
+                cy="62"
+                r={RING_RADIUS}
+                stroke={RING_TRACK_COLOR}
+                strokeWidth={RING_STROKE_WIDTH}
+                fill="none"
+                opacity={0.5}
+              />
+              <Circle
+                cx="62"
+                cy="62"
+                r={RING_RADIUS}
+                stroke={ringColor}
+                strokeWidth={RING_STROKE_WIDTH}
+                fill="none"
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={ringStrokeDashOffset}
+                strokeLinecap="round"
+                rotation="-90"
+                origin="62, 62"
+              />
+            </Svg>
+
+            <View style={styles.circleInner}>
+              <Typo
+                size={21}
+                fontWeight="700"
+                color={ringColor}
+                style={styles.centerValue}
+              >
+                {displayValue}
+              </Typo>
+              <Typo
+                size={10}
+                color={colors.neutral200}
+                style={styles.centerLabel}
+                textProps={{ numberOfLines: 1 }}
+              >
+                {displayLabel}
+              </Typo>
             </View>
           </View>
         </View>
@@ -118,7 +172,12 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, proteinFillStyle]} />
           </View>
-          <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
+          <Typo
+            size={14}
+            fontWeight="600"
+            color={colors.white}
+            style={styles.macroValue}
+          >
             {Math.round(stats.totalMacros.protein)}g / {stats.proteinGoal}g
           </Typo>
         </View>
@@ -130,7 +189,12 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, carbsFillStyle]} />
           </View>
-          <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
+          <Typo
+            size={14}
+            fontWeight="600"
+            color={colors.white}
+            style={styles.macroValue}
+          >
             {Math.round(stats.totalMacros.carbs)}g / {stats.carbsGoal}g
           </Typo>
         </View>
@@ -142,7 +206,12 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
           <View style={styles.macroProgressBar}>
             <View style={[styles.macroProgressFill, fatFillStyle]} />
           </View>
-          <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
+          <Typo
+            size={14}
+            fontWeight="600"
+            color={colors.white}
+            style={styles.macroValue}
+          >
             {Math.round(stats.totalMacros.fat)}g / {stats.fatGoal}g
           </Typo>
         </View>
@@ -191,36 +260,28 @@ const styles = StyleSheet.create({
   },
   progressCircleContainer: {
     position: "relative",
-    width: verticalScale(120),
-    height: verticalScale(120),
-  },
-  progressCircle: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 60,
-    backgroundColor: colors.neutral700,
+    width: RING_SIZE,
+    height: RING_SIZE,
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
-  },
-  progressFill: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    width: "100%",
-    backgroundColor: colors.primary,
   },
   circleInner: {
-    width: verticalScale(100),
-    height: verticalScale(100),
-    borderRadius: 50,
-    backgroundColor: colors.neutral800,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     justifyContent: "center",
     alignItems: "center",
-    gap: verticalScale(2),
+    gap: verticalScale(1),
   },
-  remainingCalories: {
-    lineHeight: 24,
+  centerValue: {
+    lineHeight: 26,
+  },
+  centerLabel: {
+    textAlign: "center",
+    paddingHorizontal: spacingX._7,
+    lineHeight: 16,
   },
   macrosContainer: {
     flexDirection: "row",

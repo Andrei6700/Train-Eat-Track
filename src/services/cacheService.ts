@@ -44,6 +44,31 @@ const setCacheTimestamp = async (key: string): Promise<void> => {
   }
 };
 
+const removeCacheTimestamps = async (keys: string[]): Promise<void> => {
+  if (keys.length === 0) return;
+
+  try {
+    const timestamps = await getCacheTimestamps();
+    let changed = false;
+
+    for (const key of keys) {
+      if (key in timestamps) {
+        delete timestamps[key];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await AsyncStorage.setItem(
+        CACHE_KEYS.CACHE_TIMESTAMP,
+        JSON.stringify(timestamps)
+      );
+    }
+  } catch (error) {
+    console.error("[CacheService] Error removing cache timestamps:", error);
+  }
+};
+
 const isCacheValid = async (key: string, expiryMs: number): Promise<boolean> => {
   try {
     const timestamps = await getCacheTimestamps();
@@ -148,6 +173,18 @@ const getNutritionCacheKey = (date: Date): string => {
   return `${CACHE_KEYS.NUTRITION_PREFIX}${dateStr}`;
 };
 
+const toSerializableDate = (value: Date | string | undefined): string | null => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const buildNutritionCachePayload = (nutrition: DailyNutrition) => ({
+  ...nutrition,
+  date: toSerializableDate(nutrition.date) || nutrition.date,
+  updatedAt: toSerializableDate(nutrition.updatedAt),
+});
+
 export const cacheNutritionDay = async (
   date: Date,
   nutrition: DailyNutrition
@@ -160,16 +197,16 @@ export const cacheNutritionDay = async (
     }
 
     const key = getNutritionCacheKey(date);
-    
-    //  Convert date to a serializable format
-    const nutritionToCache = {
-      ...nutrition,
-      date: nutrition.date instanceof Date 
-        ? nutrition.date.toISOString() 
-        : nutrition.date,
-    };
+    const nutritionToCache = buildNutritionCachePayload(nutrition);
+    const serializedPayload = JSON.stringify(nutritionToCache);
+    const existingPayload = await AsyncStorage.getItem(key);
 
-    await AsyncStorage.setItem(key, JSON.stringify(nutritionToCache));
+    // Skip storage writes when nutrition payload is unchanged.
+    if (existingPayload === serializedPayload) {
+      return;
+    }
+
+    await AsyncStorage.setItem(key, serializedPayload);
     await setCacheTimestamp(key);
     console.log(" [CacheService] Nutrition cached for:", key);
   } catch (error) {
@@ -185,7 +222,7 @@ export const getCachedNutritionDay = async (
     const isValid = await isCacheValid(key, CACHE_EXPIRY.NUTRITION);
 
     if (!isValid) {
-      console.log("⚠️ [CacheService] Nutrition cache expired for:", key);
+      console.log("[CacheService] Nutrition cache expired for:", key);
       return null;
     }
 
@@ -215,7 +252,7 @@ export const cacheNutritionWeek = async (
 ): Promise<void> => {
   try {
     if (!weekData || weekData.length === 0) {
-      console.log("⚠️ [CacheService] No week data to cache");
+      console.log("[CacheService] No week data to cache");
       return;
     }
 
@@ -327,19 +364,42 @@ export const clearExpiredCache = async (): Promise<void> => {
     );
 
     let removedCount = 0;
+    const removedKeys: string[] = [];
     for (const key of nutritionKeys) {
       const isValid = await isCacheValid(key, CACHE_EXPIRY.NUTRITION);
       if (!isValid) {
         await AsyncStorage.removeItem(key);
+        removedKeys.push(key);
         removedCount++;
       }
     }
 
+    if (removedKeys.length > 0) {
+      await removeCacheTimestamps(removedKeys);
+    }
+
     if (removedCount > 0) {
-      console.log(`🧹 [CacheService] Removed ${removedCount} expired cache entries`);
+      console.log(`[CacheService] Removed ${removedCount} expired cache entries`);
     }
   } catch (error) {
     console.error("[CacheService] Error clearing expired cache:", error);
+  }
+};
+
+export const clearNutritionCache = async (): Promise<void> => {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const nutritionKeys = allKeys.filter((key) =>
+      key.startsWith(CACHE_KEYS.NUTRITION_PREFIX)
+    );
+
+    if (nutritionKeys.length === 0) return;
+
+    await AsyncStorage.multiRemove(nutritionKeys);
+    await removeCacheTimestamps(nutritionKeys);
+    console.log("[CacheService] Nutrition cache cleared");
+  } catch (error) {
+    console.error("[CacheService] Error clearing nutrition cache:", error);
   }
 };
 
@@ -353,7 +413,8 @@ export const clearAllCache = async (): Promise<void> => {
     );
 
     await AsyncStorage.multiRemove(cacheKeys);
-    console.log("🧹 [CacheService] All cache cleared");
+    await removeCacheTimestamps(cacheKeys);
+    console.log("[CacheService] All cache cleared");
   } catch (error) {
     console.error("[CacheService] Error clearing all cache:", error);
   }

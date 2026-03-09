@@ -74,6 +74,17 @@ const getCaloriesFromNutrition = (nutritionDay: DailyNutrition): number => {
   }, 0);
 };
 
+const hasOnlyEmptyMeals = (nutritionDay: DailyNutrition): boolean => {
+  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
+  if (meals.length === 0) return true;
+  return meals.every((meal) => !Array.isArray(meal.foods) || meal.foods.length === 0);
+};
+
+const isSyntheticEmptyNutritionFallback = (nutritionDay: DailyNutrition): boolean =>
+  !nutritionDay.id &&
+  !nutritionDay.localUpdatedAt &&
+  hasOnlyEmptyMeals(nutritionDay);
+
 const buildMealSummaries = (
   meals: { mealName: string; foods: Food[] }[] | undefined,
 ): MealSummary[] => {
@@ -155,8 +166,8 @@ const Nutrition = () => {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [actionFood, setActionFood] = useState<EditableFoodState>(null);
 
-  const dataRequestIdRef = useRef(0);
   const calendarRequestIdRef = useRef(0);
+  const initialLoadUserIdRef = useRef<string | null>(null);
 
   const mealSummaries = useMemo(
     () => buildMealSummaries(todayNutrition?.meals),
@@ -184,6 +195,7 @@ const Nutrition = () => {
       totalCalories,
       totalMacros,
       remainingCalories: Math.max(calorieGoal - totalCalories, 0),
+      overCalories: Math.max(totalCalories - calorieGoal, 0),
       progress: Math.min((totalCalories / calorieGoal) * 100, 100),
       calorieGoal,
       proteinGoal,
@@ -243,18 +255,16 @@ const Nutrition = () => {
   }, [calendarDays]);
 
   const loadNutritionData = useCallback(
-    async (date: Date) => {
+    async (
+      date: Date,
+      options?: Parameters<typeof refreshNutrition>[1],
+    ) => {
       if (!user?.uid) return;
 
-      dataRequestIdRef.current += 1;
-      const requestId = dataRequestIdRef.current;
-
       try {
-        await refreshNutrition(date);
+        await refreshNutrition(date, options);
       } catch (error) {
         console.error("[Nutrition] Error refreshing selected date:", error);
-      } finally {
-        if (requestId !== dataRequestIdRef.current) return;
       }
     },
     [refreshNutrition, user?.uid],
@@ -331,10 +341,18 @@ const Nutrition = () => {
       setCalendarDays(buildCalendarDays(null));
       setRefreshing(false);
       setShowCalendarLogModal(false);
+      initialLoadUserIdRef.current = null;
       return;
     }
 
-    void loadNutritionData(selectedDate);
+    const isInitialLoadForUser = initialLoadUserIdRef.current !== user.uid;
+    initialLoadUserIdRef.current = user.uid;
+
+    void loadNutritionData(selectedDate, {
+      forceRemote: false,
+      preloadWeek: isInitialLoadForUser,
+      reason: isInitialLoadForUser ? "screen_mount" : "date_switch",
+    });
   }, [loadNutritionData, selectedDate, user?.uid]);
 
   useEffect(() => {
@@ -360,6 +378,8 @@ const Nutrition = () => {
     const nutritionDateKey = toDayLookupKey(normalizedDate);
     const calories = nutritionStats.totalCalories;
     const goal = todayNutrition.calorieGoal || DEFAULT_GOALS.calorie;
+    const isFallbackEmptySnapshot =
+      calories === 0 && isSyntheticEmptyNutritionFallback(todayNutrition);
 
     setDaysData((previousDaysData) => {
       const existingIndex = previousDaysData.findIndex(
@@ -368,6 +388,9 @@ const Nutrition = () => {
 
       if (existingIndex !== -1) {
         const existing = previousDaysData[existingIndex];
+        if (isFallbackEmptySnapshot && existing.calories > 0) {
+          return previousDaysData;
+        }
         if (existing.calories === calories && existing.goal === goal) {
           return previousDaysData;
         }
@@ -377,13 +400,16 @@ const Nutrition = () => {
         return updated;
       }
 
+      if (isFallbackEmptySnapshot) {
+        return previousDaysData;
+      }
+
       return [...previousDaysData, { date: normalizedDate, calories, goal }];
     });
   }, [nutritionStats.totalCalories, todayNutrition]);
 
   useEffect(() => {
     return () => {
-      dataRequestIdRef.current += 1;
       calendarRequestIdRef.current += 1;
     };
   }, []);
@@ -393,7 +419,14 @@ const Nutrition = () => {
 
     void (async () => {
       try {
-        await Promise.all([loadNutritionData(selectedDate), loadCalendarHistory()]);
+        await Promise.all([
+          loadNutritionData(selectedDate, {
+            forceRemote: true,
+            preloadWeek: true,
+            reason: "pull_to_refresh",
+          }),
+          loadCalendarHistory(),
+        ]);
       } finally {
         setRefreshing(false);
       }
@@ -404,7 +437,13 @@ const Nutrition = () => {
     const today = startOfDay(new Date());
     if (day > today) return;
 
-    setSelectedDate(normalizeDate(day));
+    const normalizedDay = normalizeDate(day);
+    setSelectedDate((previousDate) => {
+      if (toDayLookupKey(normalizedDay) === toDayLookupKey(previousDate)) {
+        return previousDate;
+      }
+      return normalizedDay;
+    });
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -424,7 +463,12 @@ const Nutrition = () => {
     if (day > today) return;
 
     const normalizedDate = startOfDay(day);
-    setSelectedDate(normalizedDate);
+    setSelectedDate((previousDate) => {
+      if (toDayLookupKey(normalizedDate) === toDayLookupKey(previousDate)) {
+        return previousDate;
+      }
+      return normalizedDate;
+    });
   }, []);
 
   const handleMealPress = useCallback(
@@ -583,6 +627,7 @@ const Nutrition = () => {
           <NutritionCalendar
             calendarDays={calendarDays}
             daysData={daysData}
+            selectedDate={selectedDate}
             loading={calendarLoading}
             initialIndex={mainCalendarInitialIndex}
             extraDataToken={calendarExtraDataToken}

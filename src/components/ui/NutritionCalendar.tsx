@@ -36,6 +36,7 @@ type DayStatus = {
 type NutritionCalendarProps = {
   calendarDays: Date[];
   daysData: NutritionCalendarDayData[];
+  selectedDate?: Date;
   loading?: boolean;
   initialIndex?: number | null;
   extraDataToken?: string;
@@ -88,11 +89,12 @@ const getStatusForDay = (
 type DayCardProps = {
   date: Date;
   isToday: boolean;
+  isSelected: boolean;
   status: DayStatus;
   onPress: () => void;
 };
 
-const DayCardInner = ({ date, isToday, status, onPress }: DayCardProps) => {
+const DayCardInner = ({ date, isToday, isSelected, status, onPress }: DayCardProps) => {
   const { language } = useLanguage();
   const circumference = 2 * Math.PI * 22;
   const strokeDashoffset = circumference - (status.percentage / 100) * circumference;
@@ -137,9 +139,16 @@ const DayCardInner = ({ date, isToday, status, onPress }: DayCardProps) => {
           </Svg>
 
           <View style={styles.dayNumberContainer}>
-            <Typo size={20} fontWeight="700" color={isToday ? colors.primary : colors.white}>
-              {date.getDate()}
-            </Typo>
+            <View style={styles.dayNumberContent}>
+              <Typo size={20} fontWeight="700" color={isToday ? colors.primary : colors.white}>
+                {date.getDate()}
+              </Typo>
+              {isSelected ? (
+                <View style={styles.selectedIndicator} />
+              ) : isToday ? (
+                <View style={styles.todayIndicator} />
+              ) : null}
+            </View>
           </View>
         </View>
       </View>
@@ -151,6 +160,7 @@ const DayCard = React.memo(
   DayCardInner,
   (prevProps, nextProps) =>
     prevProps.isToday === nextProps.isToday &&
+    prevProps.isSelected === nextProps.isSelected &&
     prevProps.status.percentage === nextProps.status.percentage &&
     prevProps.status.color === nextProps.status.color &&
     prevProps.date.getDate() === nextProps.date.getDate(),
@@ -160,6 +170,7 @@ DayCard.displayName = "DayCard";
 const NutritionCalendar = ({
   calendarDays,
   daysData,
+  selectedDate,
   loading = false,
   initialIndex = null,
   extraDataToken,
@@ -171,6 +182,10 @@ const NutritionCalendar = ({
   const lastReportedIndexRef = useRef<number | null>(null);
 
   const todayKey = useMemo(() => dayKey(new Date()), []);
+  const selectedDayKey = useMemo(
+    () => (selectedDate ? dayKey(selectedDate) : null),
+    [selectedDate],
+  );
 
   const dayDataByKey = useMemo(() => {
     const map = new Map<string, NutritionCalendarDayData>();
@@ -258,12 +273,18 @@ const NutritionCalendar = ({
         <DayCard
           date={item}
           isToday={key === todayKey}
+          isSelected={selectedDayKey === key}
           status={dayStatusByKey.get(key) || STATUS_EMPTY}
           onPress={() => onDayPress(item, index)}
         />
       );
     },
-    [dayStatusByKey, onDayPress, todayKey],
+    [dayStatusByKey, onDayPress, selectedDayKey, todayKey],
+  );
+
+  const listExtraData = useMemo(
+    () => `${extraDataToken || "calendar"}-${selectedDayKey || "none"}`,
+    [extraDataToken, selectedDayKey],
   );
 
   const keyExtractor = useCallback((item: Date, index: number) => {
@@ -306,7 +327,7 @@ const NutritionCalendar = ({
         decelerationRate="fast"
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        extraData={extraDataToken}
+        extraData={listExtraData}
         ItemSeparatorComponent={Separator}
       />
     </View>
@@ -364,5 +385,26 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  dayNumberContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: DAY_WIDTH - 6,
+  },
+  todayIndicator: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: "transparent",
+    marginTop: verticalScale(2),
+  },
+  selectedIndicator: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+    marginTop: verticalScale(2),
   },
 });

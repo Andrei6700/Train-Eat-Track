@@ -13,6 +13,29 @@ import {
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "nutrition";
+const REMOTE_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  operationName: string,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${operationName} timed out after ${REMOTE_TIMEOUT_MS}ms`));
+        }, REMOTE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
@@ -61,7 +84,10 @@ export const getDailyNutrition = async (
       where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getDailyNutrition.getDocs",
+    );
 
     if (!querySnapshot.empty) {
       const firstDoc = querySnapshot.docs[0];
@@ -94,23 +120,29 @@ export const saveDailyNutrition = async (
         localUpdatedAt?: number;
       };
 
-      await updateDoc(docRef, {
-        ...updateData,
-        dateKey,
-        date: Timestamp.fromDate(date),
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyNutrition.updateDoc",
+      );
 
       return { success: true, data: { id: nutrition.id } };
     }
 
-    const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
-      ...nutrition,
-      dateKey,
-      date: Timestamp.fromDate(date),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const docRef = await withTimeout(
+      addDoc(collection(firestore, COLLECTION_NAME), {
+        ...nutrition,
+        dateKey,
+        date: Timestamp.fromDate(date),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+      "saveDailyNutrition.addDoc",
+    );
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
@@ -128,7 +160,10 @@ export const getUserNutritionHistory = async (
       where("userID", "==", userID),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getUserNutritionHistory.getDocs",
+    );
     const nutritionHistory: DailyNutrition[] = [];
 
     querySnapshot.forEach((docSnap) => {
@@ -166,14 +201,20 @@ export const updateNutritionGoals = async (
       where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "updateNutritionGoals.getDocs",
+    );
 
     if (!querySnapshot.empty) {
       const docRef = doc(firestore, COLLECTION_NAME, querySnapshot.docs[0].id);
-      await updateDoc(docRef, {
-        ...goals,
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        updateDoc(docRef, {
+          ...goals,
+          updatedAt: serverTimestamp(),
+        }),
+        "updateNutritionGoals.updateDoc",
+      );
     }
 
     return { success: true, msg: "Goals updated successfully" };

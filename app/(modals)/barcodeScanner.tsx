@@ -350,22 +350,29 @@ const BarcodeScanner = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.quantityScrollContent}
+            >
               {/* Food Info */}
               {scannedFood && (
                 <View style={styles.modalContent}>
                   <View style={styles.foodInfoModal}>
-                    {scannedFood.image && (
+                    {scannedFood.image ? (
                       <Image
                         source={{ uri: scannedFood.image }}
                         style={styles.foodImageLarge}
                         contentFit="cover"
                       />
+                    ) : (
+                      <View style={styles.foodImagePlaceholder} />
                     )}
                     <Typo
                       size={18}
                       fontWeight="700"
-                      style={{ marginTop: spacingY._12, textAlign: "center" }}
+                      style={styles.modalFoodTitle}
+                      textProps={{ numberOfLines: 2 }}
                     >
                       {scannedFood.name}
                     </Typo>
@@ -373,7 +380,8 @@ const BarcodeScanner = () => {
                       <Typo
                         size={14}
                         color={colors.neutral400}
-                        style={{ textAlign: "center" }}
+                        style={styles.modalFoodSubtitle}
+                        textProps={{ numberOfLines: 1 }}
                       >
                         {scannedFood.brands}
                       </Typo>
@@ -632,15 +640,35 @@ const styles = StyleSheet.create({
   modalContent: {
     paddingHorizontal: spacingX._20,
   },
+  quantityScrollContent: {
+    paddingBottom: spacingY._25,
+  },
   foodInfoModal: {
     alignItems: "center",
     marginBottom: spacingY._25,
+  },
+  modalFoodTitle: {
+    marginTop: spacingY._12,
+    textAlign: "center",
+    maxWidth: "96%",
+  },
+  modalFoodSubtitle: {
+    textAlign: "center",
+    maxWidth: "96%",
   },
   foodImageLarge: {
     width: verticalScale(100),
     height: verticalScale(100),
     borderRadius: radius._15,
     backgroundColor: colors.neutral700,
+  },
+  foodImagePlaceholder: {
+    width: verticalScale(100),
+    height: verticalScale(100),
+    borderRadius: radius._15,
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   quantitySection: {
     marginBottom: spacingY._25,

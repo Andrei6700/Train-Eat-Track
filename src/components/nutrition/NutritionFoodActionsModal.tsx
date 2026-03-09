@@ -3,7 +3,14 @@ import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { getMealLabel } from "@/src/i18n/translations";
 import React, { useMemo } from "react";
-import { Modal, StyleSheet, TouchableOpacity, View, ViewStyle } from "react-native";
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from "react-native";
 import * as Icons from "phosphor-react-native";
 import { EditableFoodState } from "./NutritionEditQuantityModal";
 
@@ -30,7 +37,11 @@ const NutritionFoodActionsModal = ({
 }: NutritionFoodActionsModalProps) => {
   const { language, t } = useLanguage();
   const actionsModalStyle = useMemo<ViewStyle>(
-    () => ({ bottom: bottomInset + 20 }),
+    () => ({
+      bottom: spacingY._20,
+      maxHeight: "78%",
+      paddingBottom: bottomInset + spacingY._10,
+    }),
     [bottomInset],
   );
   const availableMeals = useMemo(
@@ -50,63 +61,68 @@ const NutritionFoodActionsModal = ({
                 </Typo>
               </View>
 
-              <View style={styles.actionsList}>
-                <View style={styles.actionGroup}>
-                  <Typo
-                    size={15}
-                    fontWeight="600"
-                    color={colors.neutral400}
-                    style={styles.actionGroupTitle}
-                  >
-                    {t("nutrition_copy_to")}
-                  </Typo>
-                  {availableMeals.map((meal, idx) => (
-                    <TouchableOpacity
-                      key={`copy-${idx}`}
-                      style={styles.actionButton}
-                      onPress={() => onCopy(meal)}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.actionsScrollContent}
+              >
+                <View style={styles.actionsList}>
+                  <View style={styles.actionGroup}>
+                    <Typo
+                      size={15}
+                      fontWeight="600"
+                      color={colors.neutral400}
+                      style={styles.actionGroupTitle}
                     >
-                      <Icons.Copy size={20} color={colors.primary} weight="bold" />
-                      <Typo size={16} fontWeight="500">
-                        {getMealLabel(language, meal)}
-                      </Typo>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                      {t("nutrition_copy_to")}
+                    </Typo>
+                    {availableMeals.map((meal, idx) => (
+                      <TouchableOpacity
+                        key={`copy-${idx}`}
+                        style={styles.actionButton}
+                        onPress={() => onCopy(meal)}
+                      >
+                        <Icons.Copy size={20} color={colors.primary} weight="bold" />
+                        <Typo size={16} fontWeight="500">
+                          {getMealLabel(language, meal)}
+                        </Typo>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-                <View style={styles.actionGroup}>
-                  <Typo
-                    size={15}
-                    fontWeight="600"
-                    color={colors.neutral400}
-                    style={styles.actionGroupTitle}
-                  >
-                    {t("nutrition_move_to")}
-                  </Typo>
-                  {availableMeals.map((meal, idx) => (
-                    <TouchableOpacity
-                      key={`move-${idx}`}
-                      style={styles.actionButton}
-                      onPress={() => onMove(meal)}
+                  <View style={styles.actionGroup}>
+                    <Typo
+                      size={15}
+                      fontWeight="600"
+                      color={colors.neutral400}
+                      style={styles.actionGroupTitle}
                     >
-                      <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
-                      <Typo size={16} fontWeight="500">
-                        {getMealLabel(language, meal)}
-                      </Typo>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                      {t("nutrition_move_to")}
+                    </Typo>
+                    {availableMeals.map((meal, idx) => (
+                      <TouchableOpacity
+                        key={`move-${idx}`}
+                        style={styles.actionButton}
+                        onPress={() => onMove(meal)}
+                      >
+                        <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
+                        <Typo size={16} fontWeight="500">
+                          {getMealLabel(language, meal)}
+                        </Typo>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.deleteAction]}
-                  onPress={onDelete}
-                >
-                  <Icons.Trash size={20} color={colors.rose} weight="bold" />
-                  <Typo size={16} fontWeight="600" color={colors.rose}>
-                    {t("nutrition_delete_food")}
-                  </Typo>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.deleteAction]}
+                    onPress={onDelete}
+                  >
+                    <Icons.Trash size={20} color={colors.rose} weight="bold" />
+                    <Typo size={16} fontWeight="600" color={colors.rose}>
+                      {t("nutrition_delete_food")}
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </>
           )}
         </View>
@@ -140,6 +156,9 @@ const styles = StyleSheet.create({
   },
   actionsList: {
     gap: spacingY._20,
+  },
+  actionsScrollContent: {
+    paddingBottom: spacingY._5,
   },
   actionGroup: {
     gap: spacingY._10,

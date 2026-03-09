@@ -13,6 +13,29 @@ import {
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "waterTracking";
+const REMOTE_TIMEOUT_MS = 8000;
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  operationName: string,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${operationName} timed out after ${REMOTE_TIMEOUT_MS}ms`));
+        }, REMOTE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
@@ -68,7 +91,10 @@ export const getDailyWater = async (
       where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getDailyWater.getDocs",
+    );
 
     if (!querySnapshot.empty) {
       const firstDoc = querySnapshot.docs[0];
@@ -106,25 +132,31 @@ export const saveDailyWater = async (
         localUpdatedAt?: number;
       };
 
-      await updateDoc(docRef, {
-        ...updateData,
-        dateKey,
-        date: Timestamp.fromDate(date),
-        intakes: intakesForFirestore,
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          intakes: intakesForFirestore,
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyWater.updateDoc",
+      );
 
       return { success: true, data: { id: water.id } };
     }
 
-    const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
-      ...water,
-      dateKey,
-      date: Timestamp.fromDate(date),
-      intakes: intakesForFirestore,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const docRef = await withTimeout(
+      addDoc(collection(firestore, COLLECTION_NAME), {
+        ...water,
+        dateKey,
+        date: Timestamp.fromDate(date),
+        intakes: intakesForFirestore,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+      "saveDailyWater.addDoc",
+    );
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {

@@ -1,10 +1,18 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
   addFoodToCache,
+  cacheNutritionDay,
   cacheNutritionWeek,
-  clearAllCache,
+  clearNutritionCache,
   getCachedNutritionForDate,
 } from "@/src/services/cacheService";
+import {
+  clearNutritionMemoryCache,
+  getNutritionMemoryCache,
+  markNutritionWeekPreloaded,
+  setNutritionMemoryCache,
+  shouldPreloadNutritionWeek,
+} from "@/src/services/nutritionCacheService";
 import {
   getDailyNutrition,
   getDateKey,
@@ -23,14 +31,39 @@ import {
   saveDailyWater,
 } from "@/src/services/waterService";
 import { DailyNutrition, DailyWater, Food, WaterIntake } from "@/src/types/index";
+import { startOfDay } from "@/src/utils/dateKey";
 import NetInfo from "@react-native-community/netinfo";
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { InteractionManager } from "react-native";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+export type RefreshNutritionReason =
+  | "screen_mount"
+  | "date_switch"
+  | "pull_to_refresh"
+  | "user_change";
+
+export type RefreshNutritionOptions = {
+  forceRemote?: boolean;
+  preloadWeek?: boolean;
+  reason?: RefreshNutritionReason;
+};
 
 type NutritionContextType = {
   todayNutrition: DailyNutrition | null;
   todayWater: DailyWater | null;
   loading: boolean;
-  refreshNutrition: (date?: Date) => Promise<void>;
+  refreshNutrition: (
+    date?: Date,
+    options?: RefreshNutritionOptions,
+  ) => Promise<void>;
   addFoodToMeal: (mealName: string, food: Food) => Promise<void>;
   removeFoodFromMeal: (mealName: string, foodIndex: number) => Promise<void>;
   updateFoodQuantity: (
@@ -99,6 +132,166 @@ const toMillis = (value: unknown): number | null => {
   return null;
 };
 
+const toDate = (value: unknown, fallback: Date): Date => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? new Date(fallback) : new Date(value);
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date(fallback) : parsed;
+  }
+
+  if (typeof value === "object" && value !== null && "toDate" in value) {
+    const parsed = (value as { toDate?: () => Date }).toDate?.();
+    if (parsed instanceof Date && !Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return new Date(fallback);
+};
+
+const cloneNutrition = (
+  nutrition: DailyNutrition,
+  userID: string,
+  fallbackDate: Date,
+): DailyNutrition => {
+  const normalizedDate = startOfDay(toDate(nutrition.date, fallbackDate));
+
+  return {
+    ...nutrition,
+    userID: nutrition.userID || userID,
+    date: normalizedDate,
+    updatedAt: nutrition.updatedAt
+      ? toDate(nutrition.updatedAt, normalizedDate)
+      : undefined,
+    meals: Array.isArray(nutrition.meals)
+      ? nutrition.meals.map((meal) => ({
+          ...meal,
+          foods: Array.isArray(meal.foods)
+            ? meal.foods.map((food) => ({ ...food }))
+            : [],
+        }))
+      : [],
+  };
+};
+
+const cloneWater = (
+  water: DailyWater,
+  userID: string,
+  fallbackDate: Date,
+): DailyWater => {
+  const normalizedDate = startOfDay(toDate(water.date, fallbackDate));
+
+  return {
+    ...water,
+    userID: water.userID || userID,
+    date: normalizedDate,
+    updatedAt: water.updatedAt
+      ? toDate(water.updatedAt, normalizedDate)
+      : undefined,
+    intakes: Array.isArray(water.intakes)
+      ? water.intakes.map((intake) => ({
+          ...intake,
+          timestamp: toDate(intake.timestamp, normalizedDate),
+        }))
+      : [],
+  };
+};
+
+type WaterMemoryEntry = {
+  data: DailyWater;
+  signature: string;
+  updatedAt: number;
+};
+
+const WATER_DAY_CACHE_TTL_MS = 30 * 1000;
+
+const getWaterCacheKey = (userID: string, date: Date): string =>
+  `${userID}:${getWaterDateKey(date)}`;
+
+const buildWaterSignature = (water: DailyWater): string => {
+  const normalizedDate = toDate(water.date, new Date());
+  return JSON.stringify({
+    ...water,
+    date: normalizedDate.toISOString(),
+    updatedAt: water.updatedAt
+      ? toDate(water.updatedAt, normalizedDate).toISOString()
+      : null,
+    intakes: Array.isArray(water.intakes)
+      ? water.intakes.map((intake) => ({
+          ...intake,
+          timestamp: toDate(intake.timestamp, normalizedDate).toISOString(),
+        }))
+      : [],
+  });
+};
+
+const getWaterMemoryCache = (
+  cache: Map<string, WaterMemoryEntry>,
+  userID: string,
+  date: Date,
+  options?: { allowStale?: boolean },
+): { data: DailyWater | null; isFresh: boolean } => {
+  const entry = cache.get(getWaterCacheKey(userID, date));
+  if (!entry) {
+    return { data: null, isFresh: false };
+  }
+
+  const isFresh = Date.now() - entry.updatedAt < WATER_DAY_CACHE_TTL_MS;
+  if (!isFresh && !options?.allowStale) {
+    return { data: null, isFresh: false };
+  }
+
+  return {
+    data: cloneWater(entry.data, userID, date),
+    isFresh,
+  };
+};
+
+const setWaterMemoryCache = (
+  cache: Map<string, WaterMemoryEntry>,
+  userID: string,
+  date: Date,
+  water: DailyWater,
+): { written: boolean; touched: boolean } => {
+  const normalized = cloneWater(water, userID, date);
+  const key = getWaterCacheKey(userID, date);
+  const signature = buildWaterSignature(normalized);
+  const existing = cache.get(key);
+
+  if (existing && existing.signature === signature) {
+    existing.updatedAt = Date.now();
+    return { written: false, touched: true };
+  }
+
+  cache.set(key, {
+    data: normalized,
+    signature,
+    updatedAt: Date.now(),
+  });
+
+  return { written: true, touched: false };
+};
+
+const clearWaterMemoryCache = (
+  cache: Map<string, WaterMemoryEntry>,
+  userID?: string,
+) => {
+  if (!userID) {
+    cache.clear();
+    return;
+  }
+
+  const prefix = `${userID}:`;
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(prefix)) {
+      cache.delete(key);
+    }
+  }
+};
+
 const ACTIVE_SYNC_STATUSES = new Set<SyncActionStatus>([
   "pending",
   "processing",
@@ -121,9 +314,8 @@ const applyQueuedNutritionState = (
     .filter((action) => isQueueActionActive(action))
     .filter((action) => {
       if (action.type === "UPSERT_NUTRITION") {
-        const payload = (action.data as { userID?: string; dateKey?: string }).userID;
-        const payloadKey = (action.data as { dateKey?: string }).dateKey;
-        return payload === userID && payloadKey === dateKey;
+        const payload = action.data as { userID?: string; dateKey?: string };
+        return payload.userID === userID && payload.dateKey === dateKey;
       }
 
       if (action.type === "UPSERT_GOALS") {
@@ -144,7 +336,7 @@ const applyQueuedNutritionState = (
       nextNutrition = {
         ...nextNutrition,
         ...snapshot,
-        date: new Date(snapshot.date),
+        date: toDate(snapshot.date, date),
       };
       continue;
     }
@@ -193,58 +385,28 @@ const applyQueuedWaterState = (
   return {
     ...water,
     ...snapshot,
-    date: new Date(snapshot.date),
+    date: toDate(snapshot.date, date),
     intakes: Array.isArray(snapshot.intakes)
       ? snapshot.intakes.map((intake) => ({
           ...intake,
-          timestamp: new Date(intake.timestamp),
+          timestamp: toDate(intake.timestamp, date),
         }))
       : [],
   };
 };
 
-const resolveNutritionData = async (
-  userID: string,
-  date: Date,
-  isConnected: boolean,
-): Promise<DailyNutrition> => {
-  if (!isConnected) {
-    return buildDefaultNutrition(userID, date);
-  }
+const runAfterInteractions = (task: () => Promise<void>): Promise<void> =>
+  new Promise((resolve, reject) => {
+    InteractionManager.runAfterInteractions(() => {
+      void task().then(resolve).catch(reject);
+    });
+  });
 
-  const nutritionResult = await getDailyNutrition(userID, date);
-  if (nutritionResult.success && nutritionResult.data) {
-    return nutritionResult.data as DailyNutrition;
-  }
-
-  const defaultNutrition = buildDefaultNutrition(userID, date);
-  const saveResult = await saveDailyNutrition(defaultNutrition);
-  if (saveResult.success && saveResult.data?.id) {
-    defaultNutrition.id = saveResult.data.id;
-  }
-  return defaultNutrition;
-};
-
-const resolveWaterData = async (
-  userID: string,
-  date: Date,
-  isConnected: boolean,
-): Promise<DailyWater> => {
-  if (!isConnected) {
-    return buildDefaultWater(userID, date);
-  }
-
-  const waterResult = await getDailyWater(userID, date);
-  if (waterResult.success && waterResult.data) {
-    return waterResult.data as DailyWater;
-  }
-
-  const defaultWater = buildDefaultWater(userID, date);
-  const saveResult = await saveDailyWater(defaultWater);
-  if (saveResult.success && saveResult.data?.id) {
-    defaultWater.id = saveResult.data.id;
-  }
-  return defaultWater;
+type RemoteDayFetchResult = {
+  nutrition: DailyNutrition | null;
+  water: DailyWater | null;
+  nutritionError: unknown;
+  waterError: unknown;
 };
 
 const NutritionContext = createContext<NutritionContextType | null>(null);
@@ -259,111 +421,382 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const previousUserIdRef = useRef<string | null>(null);
   const loadRequestIdRef = useRef(0);
+  const inFlightDayRequestsRef = useRef<Map<string, Promise<RemoteDayFetchResult>>>(
+    new Map(),
+  );
+  const inFlightWeekPreloadRef = useRef<Map<string, Promise<void>>>(new Map());
+  const waterMemoryCacheRef = useRef<Map<string, WaterMemoryEntry>>(new Map());
 
-  const preloadWeekData = useCallback(async () => {
-    if (!user?.uid) return;
+  const cacheNutritionSnapshot = useCallback(async (nutrition: DailyNutrition) => {
+    const date = startOfDay(toDate(nutrition.date, new Date()));
+    const userID = nutrition.userID;
+    if (!userID) return;
 
-    try {
-      const state = await NetInfo.fetch();
-      if (!state.isConnected) return;
-
-      const today = new Date();
-      const weekDates = Array.from({ length: 7 }, (_, index) => {
-        const date = new Date(today);
-        date.setDate(today.getDate() - index);
-        return date;
-      });
-
-      const results = await Promise.allSettled(
-        weekDates.map((date) => getDailyNutrition(user.uid as string, date)),
-      );
-
-      const weekData: DailyNutrition[] = [];
-      for (const result of results) {
-        if (result.status !== "fulfilled") continue;
-        if (result.value.success && result.value.data) {
-          weekData.push(result.value.data as DailyNutrition);
-        }
-      }
-
-      if (weekData.length > 0) {
-        await cacheNutritionWeek(weekData);
-      }
-    } catch (error) {
-      console.error("[NutritionContext] Error preloading week data:", error);
-    }
-  }, [user?.uid]);
-
-  const loadTodayData = useCallback(async (date: Date = new Date()) => {
-    const userId = user?.uid;
-    const requestId = ++loadRequestIdRef.current;
-
-    if (!userId) {
-      setTodayNutrition(null);
-      setTodayWater(null);
-      setLoading(false);
+    const memoryWrite = setNutritionMemoryCache(userID, date, nutrition);
+    if (!memoryWrite.written) {
       return;
     }
 
-    setLoading(true);
+    await cacheNutritionDay(date, nutrition);
+  }, []);
 
-    try {
-      const [cachedNutrition, state, syncQueue] = await Promise.all([
-        getCachedNutritionForDate(date),
-        NetInfo.fetch(),
-        getSyncQueue(),
-      ]);
-      const isConnected = Boolean(state.isConnected);
+  const cacheWaterSnapshot = useCallback((water: DailyWater) => {
+    const date = startOfDay(toDate(water.date, new Date()));
+    const userID = water.userID;
+    if (!userID) return;
 
-      if (requestId !== loadRequestIdRef.current) return;
+    setWaterMemoryCache(waterMemoryCacheRef.current, userID, date, water);
+  }, []);
 
-      if (cachedNutrition) {
-        setTodayNutrition(cachedNutrition);
-      }
-
-      const [nutritionResult, waterResult] = await Promise.allSettled([
-        resolveNutritionData(userId, date, isConnected),
-        resolveWaterData(userId, date, isConnected),
-      ]);
-
-      if (requestId !== loadRequestIdRef.current) return;
-
-      const nextNutrition =
-        nutritionResult.status === "fulfilled"
-          ? nutritionResult.value
-          : cachedNutrition || buildDefaultNutrition(userId, date);
-      const nextWater =
-        waterResult.status === "fulfilled"
-          ? waterResult.value
-          : buildDefaultWater(userId, date);
-
-      const nutritionWithQueue = applyQueuedNutritionState(
-        nextNutrition,
-        userId,
-        date,
-        syncQueue,
-      );
-      const waterWithQueue = applyQueuedWaterState(
-        nextWater,
-        userId,
-        date,
-        syncQueue,
-      );
-
-      setTodayNutrition(nutritionWithQueue);
-      setTodayWater(waterWithQueue);
-    } catch (error) {
-      console.error("[NutritionContext] Error loading daily data:", error);
-      if (requestId !== loadRequestIdRef.current) return;
-
-      setTodayNutrition((prev) => prev || buildDefaultNutrition(userId, date));
-      setTodayWater((prev) => prev || buildDefaultWater(userId, date));
-    } finally {
-      if (requestId === loadRequestIdRef.current) {
-        setLoading(false);
-      }
+  const resolveNutritionData = useCallback(async (userID: string, date: Date) => {
+    const nutritionResult = await getDailyNutrition(userID, date);
+    if (nutritionResult.success && nutritionResult.data) {
+      return cloneNutrition(nutritionResult.data as DailyNutrition, userID, date);
     }
-  }, [user?.uid]);
+
+    if (!nutritionResult.success) {
+      throw new Error(nutritionResult.msg || "Failed to fetch nutrition");
+    }
+
+    const defaultNutrition = buildDefaultNutrition(userID, date);
+    const saveResult = await saveDailyNutrition(defaultNutrition);
+    if (saveResult.success && saveResult.data?.id) {
+      defaultNutrition.id = saveResult.data.id;
+    }
+
+    return defaultNutrition;
+  }, []);
+
+  const resolveWaterData = useCallback(async (userID: string, date: Date) => {
+    const waterResult = await getDailyWater(userID, date);
+    if (waterResult.success && waterResult.data) {
+      return cloneWater(waterResult.data as DailyWater, userID, date);
+    }
+
+    if (!waterResult.success) {
+      throw new Error(waterResult.msg || "Failed to fetch water");
+    }
+
+    const defaultWater = buildDefaultWater(userID, date);
+    const saveResult = await saveDailyWater(defaultWater);
+    if (saveResult.success && saveResult.data?.id) {
+      defaultWater.id = saveResult.data.id;
+    }
+
+    return defaultWater;
+  }, []);
+
+  const fetchRemoteDayData = useCallback(
+    async (userID: string, date: Date): Promise<RemoteDayFetchResult> => {
+      const key = `${userID}:${getDateKey(date)}`;
+      const existingRequest = inFlightDayRequestsRef.current.get(key);
+      if (existingRequest) {
+        return existingRequest;
+      }
+
+      const request = (async () => {
+        const [nutritionResult, waterResult] = await Promise.allSettled([
+          resolveNutritionData(userID, date),
+          resolveWaterData(userID, date),
+        ]);
+
+        return {
+          nutrition:
+            nutritionResult.status === "fulfilled" ? nutritionResult.value : null,
+          water: waterResult.status === "fulfilled" ? waterResult.value : null,
+          nutritionError:
+            nutritionResult.status === "rejected" ? nutritionResult.reason : null,
+          waterError: waterResult.status === "rejected" ? waterResult.reason : null,
+        } satisfies RemoteDayFetchResult;
+      })().finally(() => {
+        const current = inFlightDayRequestsRef.current.get(key);
+        if (current === request) {
+          inFlightDayRequestsRef.current.delete(key);
+        }
+      });
+
+      inFlightDayRequestsRef.current.set(key, request);
+      return request;
+    },
+    [resolveNutritionData, resolveWaterData],
+  );
+
+  const preloadWeekData = useCallback(
+    async (anchorDate: Date, options?: { forceRemote?: boolean }) => {
+      const userId = user?.uid;
+      if (!userId) return;
+
+      const forceRemote = options?.forceRemote ?? false;
+      if (!shouldPreloadNutritionWeek(userId, forceRemote)) {
+        return;
+      }
+
+      const existing = inFlightWeekPreloadRef.current.get(userId);
+      if (existing) {
+        return existing;
+      }
+
+      const preloadPromise = (async () => {
+        const state = await NetInfo.fetch();
+        if (!state.isConnected) {
+          return;
+        }
+
+        const normalizedAnchorDate = startOfDay(anchorDate);
+        const weekDates = Array.from({ length: 7 }, (_, index) => {
+          const date = new Date(normalizedAnchorDate);
+          date.setDate(normalizedAnchorDate.getDate() - index);
+          return date;
+        });
+
+        const results = await Promise.allSettled(
+          weekDates.map((date) => getDailyNutrition(userId, date)),
+        );
+
+        const weekData: DailyNutrition[] = [];
+        for (let index = 0; index < results.length; index += 1) {
+          const result = results[index];
+          const date = weekDates[index];
+          if (result.status !== "fulfilled") continue;
+          if (!(result.value.success && result.value.data)) continue;
+
+          const nutrition = cloneNutrition(
+            result.value.data as DailyNutrition,
+            userId,
+            date,
+          );
+
+          weekData.push(nutrition);
+          setNutritionMemoryCache(userId, date, nutrition);
+        }
+
+        if (weekData.length > 0) {
+          await cacheNutritionWeek(weekData);
+        }
+
+        markNutritionWeekPreloaded(userId);
+      })()
+        .catch((error) => {
+          console.error("[NutritionContext] Error preloading week data:", error);
+        })
+        .finally(() => {
+          const current = inFlightWeekPreloadRef.current.get(userId);
+          if (current === preloadPromise) {
+            inFlightWeekPreloadRef.current.delete(userId);
+          }
+        });
+
+      inFlightWeekPreloadRef.current.set(userId, preloadPromise);
+      return preloadPromise;
+    },
+    [user?.uid],
+  );
+
+  const logRefreshMetric = useCallback(
+    (reason: RefreshNutritionReason, latencyMs: number) => {
+      if (!__DEV__) return;
+
+      if (reason === "screen_mount" || reason === "user_change") {
+        console.log("nutrition_initial_load_latency_ms", latencyMs);
+        return;
+      }
+
+      if (reason === "date_switch") {
+        console.log("nutrition_date_switch_latency_ms", latencyMs);
+        return;
+      }
+
+      if (reason === "pull_to_refresh") {
+        console.log("nutrition_refresh_latency_ms", latencyMs);
+      }
+    },
+    [],
+  );
+
+  const refreshNutrition = useCallback(
+    async (date: Date = new Date(), options?: RefreshNutritionOptions) => {
+      const userId = user?.uid;
+      const normalizedDate = startOfDay(date);
+      const startedAt = Date.now();
+      const requestId = ++loadRequestIdRef.current;
+      const forceRemote = options?.forceRemote ?? false;
+      const preloadWeek = options?.preloadWeek ?? true;
+      const reason = options?.reason ?? "screen_mount";
+
+      if (!userId) {
+        setTodayNutrition(null);
+        setTodayWater(null);
+        setLoading(false);
+        logRefreshMetric(reason, Date.now() - startedAt);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const [cachedNutritionStorage, state, syncQueue] = await Promise.all([
+          getCachedNutritionForDate(normalizedDate),
+          NetInfo.fetch(),
+          getSyncQueue(),
+        ]);
+
+        if (requestId !== loadRequestIdRef.current) return;
+
+        const memoryNutrition = getNutritionMemoryCache(userId, normalizedDate, {
+          allowStale: true,
+        });
+        const freshMemoryNutrition = getNutritionMemoryCache(userId, normalizedDate);
+        const memoryWater = getWaterMemoryCache(
+          waterMemoryCacheRef.current,
+          userId,
+          normalizedDate,
+          { allowStale: true },
+        );
+
+        const freshMemoryWater = getWaterMemoryCache(
+          waterMemoryCacheRef.current,
+          userId,
+          normalizedDate,
+        );
+
+        const storageNutrition = cachedNutritionStorage
+          ? cloneNutrition(cachedNutritionStorage, userId, normalizedDate)
+          : null;
+
+        const cachedNutrition = memoryNutrition.data || storageNutrition;
+        const cachedWater = memoryWater.data;
+
+        if (cachedNutrition) {
+          const withQueue = applyQueuedNutritionState(
+            cachedNutrition,
+            userId,
+            normalizedDate,
+            syncQueue,
+          );
+          setTodayNutrition(withQueue);
+        }
+
+        if (cachedWater) {
+          const withQueue = applyQueuedWaterState(
+            cachedWater,
+            userId,
+            normalizedDate,
+            syncQueue,
+          );
+          setTodayWater(withQueue);
+        }
+
+        const fallbackNutrition = cachedNutrition || buildDefaultNutrition(userId, normalizedDate);
+        const fallbackWater = cachedWater || buildDefaultWater(userId, normalizedDate);
+
+        const isConnected = Boolean(state.isConnected);
+        if (!isConnected) {
+          setTodayNutrition(
+            applyQueuedNutritionState(
+              fallbackNutrition,
+              userId,
+              normalizedDate,
+              syncQueue,
+            ),
+          );
+          setTodayWater(
+            applyQueuedWaterState(fallbackWater, userId, normalizedDate, syncQueue),
+          );
+          return;
+        }
+
+        const hasCacheForDay = Boolean(cachedNutrition || cachedWater);
+        const hasFreshDayCache = Boolean(
+          freshMemoryNutrition.data || freshMemoryWater.data,
+        );
+
+        const runRemoteFetch = async () => {
+          const remoteResult = await fetchRemoteDayData(userId, normalizedDate);
+          if (requestId !== loadRequestIdRef.current) return;
+
+          if (remoteResult.nutritionError) {
+            console.error(
+              "[NutritionContext] Nutrition fetch failed; using cache/default fallback:",
+              remoteResult.nutritionError,
+            );
+          }
+          if (remoteResult.waterError) {
+            console.error(
+              "[NutritionContext] Water fetch failed; using cache/default fallback:",
+              remoteResult.waterError,
+            );
+          }
+
+          const nextNutrition = remoteResult.nutrition || fallbackNutrition;
+          const nextWater = remoteResult.water || fallbackWater;
+
+          if (remoteResult.nutrition) {
+            void cacheNutritionSnapshot(remoteResult.nutrition);
+          }
+          if (remoteResult.water) {
+            cacheWaterSnapshot(remoteResult.water);
+          }
+
+          const queuedNutrition = applyQueuedNutritionState(
+            nextNutrition,
+            userId,
+            normalizedDate,
+            syncQueue,
+          );
+          const queuedWater = applyQueuedWaterState(
+            nextWater,
+            userId,
+            normalizedDate,
+            syncQueue,
+          );
+
+          setTodayNutrition(queuedNutrition);
+          setTodayWater(queuedWater);
+        };
+
+        if (!forceRemote && hasCacheForDay && hasFreshDayCache) {
+          void runRemoteFetch().catch((error) => {
+            console.error("[NutritionContext] Background revalidation failed:", error);
+          });
+        } else {
+          await runRemoteFetch();
+        }
+
+        if (preloadWeek) {
+          const preloadTask = runAfterInteractions(async () => {
+            await preloadWeekData(normalizedDate, { forceRemote });
+          });
+
+          if (forceRemote) {
+            await preloadTask;
+          } else {
+            void preloadTask.catch((error) => {
+              console.error("[NutritionContext] Deferred week preload failed:", error);
+            });
+          }
+        }
+      } catch (error) {
+        console.error("[NutritionContext] Error loading daily data:", error);
+        if (requestId !== loadRequestIdRef.current) return;
+
+        setTodayNutrition((prev) => prev || buildDefaultNutrition(userId, normalizedDate));
+        setTodayWater((prev) => prev || buildDefaultWater(userId, normalizedDate));
+      } finally {
+        if (requestId === loadRequestIdRef.current) {
+          setLoading(false);
+        }
+        logRefreshMetric(reason, Date.now() - startedAt);
+      }
+    },
+    [
+      cacheNutritionSnapshot,
+      cacheWaterSnapshot,
+      fetchRemoteDayData,
+      logRefreshMetric,
+      preloadWeekData,
+      user?.uid,
+    ],
+  );
 
   const enqueueNutritionSync = useCallback(
     async (nutrition: DailyNutrition, baseUpdatedAt: number | null) => {
@@ -428,6 +861,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
               updatedAt: new Date(),
               localUpdatedAt: undefined,
             };
+
+            await cacheNutritionSnapshot(syncedNutrition);
+
             setTodayNutrition((current) => {
               if (!current) return current;
               const currentDateKey = getDateKey(new Date(current.date));
@@ -445,7 +881,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
 
       await enqueueNutritionSync(nutrition, baseUpdatedAt);
     },
-    [enqueueNutritionSync],
+    [cacheNutritionSnapshot, enqueueNutritionSync],
   );
 
   const persistWater = useCallback(
@@ -461,6 +897,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
               updatedAt: new Date(),
               localUpdatedAt: undefined,
             };
+
+            cacheWaterSnapshot(syncedWater);
+
             setTodayWater((current) => {
               if (!current) return current;
               const currentDateKey = getWaterDateKey(new Date(current.date));
@@ -478,22 +917,38 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
 
       await enqueueWaterSync(water, baseUpdatedAt);
     },
-    [enqueueWaterSync],
+    [cacheWaterSnapshot, enqueueWaterSync],
   );
 
   useEffect(() => {
     const handleUserChange = async () => {
-      if (previousUserIdRef.current !== null && previousUserIdRef.current !== user?.uid) {
-        await clearAllCache();
+      const previousUserId = previousUserIdRef.current;
+      const nextUserId = user?.uid || null;
+
+      if (previousUserId && previousUserId !== nextUserId) {
+        clearNutritionMemoryCache(previousUserId);
+        clearWaterMemoryCache(waterMemoryCacheRef.current, previousUserId);
+        inFlightDayRequestsRef.current.clear();
+        inFlightWeekPreloadRef.current.clear();
+        await clearNutritionCache();
         setTodayNutrition(null);
         setTodayWater(null);
       }
 
-      previousUserIdRef.current = user?.uid || null;
+      previousUserIdRef.current = nextUserId;
 
-      if (user?.uid) {
-        await Promise.allSettled([loadTodayData(), preloadWeekData()]);
+      if (nextUserId) {
+        await refreshNutrition(new Date(), {
+          forceRemote: false,
+          preloadWeek: true,
+          reason: "user_change",
+        });
       } else {
+        clearNutritionMemoryCache();
+        clearWaterMemoryCache(waterMemoryCacheRef.current);
+        inFlightDayRequestsRef.current.clear();
+        inFlightWeekPreloadRef.current.clear();
+        await clearNutritionCache();
         setTodayNutrition(null);
         setTodayWater(null);
         setLoading(false);
@@ -505,285 +960,320 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       loadRequestIdRef.current += 1;
     };
-  }, [loadTodayData, preloadWeekData, user?.uid]);
+  }, [refreshNutrition, user?.uid]);
 
-  const refreshNutrition = async (date: Date = new Date()) => {
-    await loadTodayData(date);
-    await preloadWeekData();
-  };
+  const addFoodToMeal = useCallback(
+    async (mealName: string, food: Food) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const addFoodToMeal = async (mealName: string, food: Food) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const updatedMeals = todayNutrition.meals.map((meal) => {
+        if (meal.mealName === mealName) {
+          return {
+            ...meal,
+            foods: [...meal.foods, food],
+          };
+        }
+        return meal;
+      });
 
-    const updatedMeals = todayNutrition.meals.map((meal) => {
-      if (meal.mealName === mealName) {
-        return {
-          ...meal,
-          foods: [...meal.foods, food],
-        };
-      }
-      return meal;
-    });
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        meals: updatedMeals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      meals: updatedMeals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
 
-    setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
+      await addFoodToCache(food);
+      await addRecentFood(user.uid, mealName, food);
+      await persistNutrition(updatedNutrition, baseUpdatedAt);
+    },
+    [cacheNutritionSnapshot, persistNutrition, todayNutrition, user?.uid],
+  );
 
-    await addFoodToCache(food);
-    await addRecentFood(user.uid, mealName, food);
-    await persistNutrition(updatedNutrition, baseUpdatedAt);
-  };
+  const removeFoodFromMeal = useCallback(
+    async (mealName: string, foodIndex: number) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const removeFoodFromMeal = async (mealName: string, foodIndex: number) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const updatedMeals = todayNutrition.meals.map((meal) => {
+        if (meal.mealName === mealName) {
+          return {
+            ...meal,
+            foods: meal.foods.filter((_, index) => index !== foodIndex),
+          };
+        }
+        return meal;
+      });
 
-    const updatedMeals = todayNutrition.meals.map((meal) => {
-      if (meal.mealName === mealName) {
-        return {
-          ...meal,
-          foods: meal.foods.filter((_, index) => index !== foodIndex),
-        };
-      }
-      return meal;
-    });
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        meals: updatedMeals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      meals: updatedMeals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
+      await persistNutrition(updatedNutrition, baseUpdatedAt);
+    },
+    [cacheNutritionSnapshot, persistNutrition, todayNutrition, user?.uid],
+  );
 
-    setTodayNutrition(updatedNutrition);
-    await persistNutrition(updatedNutrition, baseUpdatedAt);
-  };
+  const updateFoodQuantity = useCallback(
+    async (mealName: string, foodIndex: number, newQuantity: number) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const updateFoodQuantity = async (
-    mealName: string,
-    foodIndex: number,
-    newQuantity: number,
-  ) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const updatedMeals = todayNutrition.meals.map((meal) => {
+        if (meal.mealName === mealName) {
+          const updatedFoods = [...meal.foods];
+          const food = updatedFoods[foodIndex];
+          const oldQuantity = Number.parseFloat(food.servingSize) || 100;
+          const ratio = newQuantity / oldQuantity;
 
-    const updatedMeals = todayNutrition.meals.map((meal) => {
-      if (meal.mealName === mealName) {
-        const updatedFoods = [...meal.foods];
-        const food = updatedFoods[foodIndex];
-        const oldQuantity = Number.parseFloat(food.servingSize) || 100;
-        const ratio = newQuantity / oldQuantity;
+          updatedFoods[foodIndex] = {
+            ...food,
+            calories: Math.round(food.calories * ratio),
+            protein: Math.round(food.protein * ratio * 10) / 10,
+            carbs: Math.round(food.carbs * ratio * 10) / 10,
+            fat: Math.round(food.fat * ratio * 10) / 10,
+            servingSize: `${newQuantity}g`,
+          };
 
-        updatedFoods[foodIndex] = {
-          ...food,
-          calories: Math.round(food.calories * ratio),
-          protein: Math.round(food.protein * ratio * 10) / 10,
-          carbs: Math.round(food.carbs * ratio * 10) / 10,
-          fat: Math.round(food.fat * ratio * 10) / 10,
-          servingSize: `${newQuantity}g`,
-        };
+          return { ...meal, foods: updatedFoods };
+        }
+        return meal;
+      });
 
-        return { ...meal, foods: updatedFoods };
-      }
-      return meal;
-    });
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        meals: updatedMeals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      meals: updatedMeals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
+      await persistNutrition(updatedNutrition, baseUpdatedAt);
+    },
+    [cacheNutritionSnapshot, persistNutrition, todayNutrition, user?.uid],
+  );
 
-    setTodayNutrition(updatedNutrition);
-    await persistNutrition(updatedNutrition, baseUpdatedAt);
-  };
+  const copyFoodToMeal = useCallback(
+    async (fromMeal: string, foodIndex: number, toMeal: string) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const copyFoodToMeal = async (
-    fromMeal: string,
-    foodIndex: number,
-    toMeal: string,
-  ) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const sourceMeal = todayNutrition.meals.find((meal) => meal.mealName === fromMeal);
+      if (!sourceMeal || !sourceMeal.foods[foodIndex]) return;
 
-    const sourceMeal = todayNutrition.meals.find((meal) => meal.mealName === fromMeal);
-    if (!sourceMeal || !sourceMeal.foods[foodIndex]) return;
+      const foodToCopy = { ...sourceMeal.foods[foodIndex] };
+      const updatedMeals = todayNutrition.meals.map((meal) => {
+        if (meal.mealName === toMeal) {
+          return {
+            ...meal,
+            foods: [...meal.foods, foodToCopy],
+          };
+        }
+        return meal;
+      });
 
-    const foodToCopy = { ...sourceMeal.foods[foodIndex] };
-    const updatedMeals = todayNutrition.meals.map((meal) => {
-      if (meal.mealName === toMeal) {
-        return {
-          ...meal,
-          foods: [...meal.foods, foodToCopy],
-        };
-      }
-      return meal;
-    });
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        meals: updatedMeals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      meals: updatedMeals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
+      await addRecentFood(user.uid, toMeal, foodToCopy);
+      await persistNutrition(updatedNutrition, baseUpdatedAt);
+    },
+    [cacheNutritionSnapshot, persistNutrition, todayNutrition, user?.uid],
+  );
 
-    setTodayNutrition(updatedNutrition);
-    await addRecentFood(user.uid, toMeal, foodToCopy);
-    await persistNutrition(updatedNutrition, baseUpdatedAt);
-  };
+  const moveFoodToMeal = useCallback(
+    async (fromMeal: string, foodIndex: number, toMeal: string) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const moveFoodToMeal = async (
-    fromMeal: string,
-    foodIndex: number,
-    toMeal: string,
-  ) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const sourceMeal = todayNutrition.meals.find((meal) => meal.mealName === fromMeal);
+      if (!sourceMeal || !sourceMeal.foods[foodIndex]) return;
 
-    const sourceMeal = todayNutrition.meals.find((meal) => meal.mealName === fromMeal);
-    if (!sourceMeal || !sourceMeal.foods[foodIndex]) return;
+      const foodToMove = { ...sourceMeal.foods[foodIndex] };
+      const updatedMeals = todayNutrition.meals.map((meal) => {
+        if (meal.mealName === fromMeal) {
+          return {
+            ...meal,
+            foods: meal.foods.filter((_, index) => index !== foodIndex),
+          };
+        }
+        if (meal.mealName === toMeal) {
+          return {
+            ...meal,
+            foods: [...meal.foods, foodToMove],
+          };
+        }
+        return meal;
+      });
 
-    const foodToMove = { ...sourceMeal.foods[foodIndex] };
-    const updatedMeals = todayNutrition.meals.map((meal) => {
-      if (meal.mealName === fromMeal) {
-        return {
-          ...meal,
-          foods: meal.foods.filter((_, index) => index !== foodIndex),
-        };
-      }
-      if (meal.mealName === toMeal) {
-        return {
-          ...meal,
-          foods: [...meal.foods, foodToMove],
-        };
-      }
-      return meal;
-    });
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        meals: updatedMeals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      meals: updatedMeals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
+      await addRecentFood(user.uid, toMeal, foodToMove);
+      await persistNutrition(updatedNutrition, baseUpdatedAt);
+    },
+    [cacheNutritionSnapshot, persistNutrition, todayNutrition, user?.uid],
+  );
 
-    setTodayNutrition(updatedNutrition);
-    await addRecentFood(user.uid, toMeal, foodToMove);
-    await persistNutrition(updatedNutrition, baseUpdatedAt);
-  };
+  const updateGoals = useCallback(
+    async (goals: {
+      calorieGoal?: number;
+      proteinGoal?: number;
+      carbsGoal?: number;
+      fatGoal?: number;
+    }) => {
+      if (!todayNutrition || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
 
-  const updateGoals = async (goals: {
-    calorieGoal?: number;
-    proteinGoal?: number;
-    carbsGoal?: number;
-    fatGoal?: number;
-  }) => {
-    if (!todayNutrition || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayNutrition.updatedAt);
+      const updatedNutrition: DailyNutrition = {
+        ...todayNutrition,
+        ...goals,
+        localUpdatedAt: Date.now(),
+      };
 
-    const updatedNutrition: DailyNutrition = {
-      ...todayNutrition,
-      ...goals,
-      localUpdatedAt: Date.now(),
-    };
+      setTodayNutrition(updatedNutrition);
+      await cacheNutritionSnapshot(updatedNutrition);
 
-    setTodayNutrition(updatedNutrition);
-
-    try {
-      const state = await NetInfo.fetch();
-      if (state.isConnected) {
-        const saveResult = await saveDailyNutrition(updatedNutrition);
-        if (saveResult.success) {
-          setTodayNutrition((current) => {
-            if (!current) return current;
-            const currentDateKey = getDateKey(new Date(current.date));
-            if (currentDateKey !== getDateKey(new Date(updatedNutrition.date))) {
-              return current;
-            }
-            return {
+      try {
+        const state = await NetInfo.fetch();
+        if (state.isConnected) {
+          const saveResult = await saveDailyNutrition(updatedNutrition);
+          if (saveResult.success) {
+            const syncedNutrition = {
               ...updatedNutrition,
               id: saveResult.data?.id || updatedNutrition.id,
               updatedAt: new Date(),
               localUpdatedAt: undefined,
             };
-          });
-          return;
+
+            await cacheNutritionSnapshot(syncedNutrition);
+
+            setTodayNutrition((current) => {
+              if (!current) return current;
+              const currentDateKey = getDateKey(new Date(current.date));
+              if (currentDateKey !== getDateKey(new Date(updatedNutrition.date))) {
+                return current;
+              }
+              return syncedNutrition;
+            });
+            return;
+          }
         }
+      } catch (error) {
+        console.error("[NutritionContext] Error updating goals:", error);
       }
-    } catch (error) {
-      console.error("[NutritionContext] Error updating goals:", error);
-    }
 
-    const date = new Date(updatedNutrition.date);
-    const dateKey = getDateKey(date);
-    await enqueueOrMergeAction({
-      type: "UPSERT_GOALS",
-      data: {
-        userID: user.uid,
-        dateKey,
-        date: date.toISOString(),
-        goals,
-      },
-      dedupeKey: `${user.uid}:${dateKey}`,
-      baseUpdatedAt,
-      mergeStrategy: "replace_latest",
-    });
-  };
+      const date = new Date(updatedNutrition.date);
+      const dateKey = getDateKey(date);
+      await enqueueOrMergeAction({
+        type: "UPSERT_GOALS",
+        data: {
+          userID: user.uid,
+          dateKey,
+          date: date.toISOString(),
+          goals,
+        },
+        dedupeKey: `${user.uid}:${dateKey}`,
+        baseUpdatedAt,
+        mergeStrategy: "replace_latest",
+      });
+    },
+    [cacheNutritionSnapshot, todayNutrition, user?.uid],
+  );
 
-  const addWaterIntake = async (amount: number) => {
-    if (!todayWater || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayWater.updatedAt);
+  const addWaterIntake = useCallback(
+    async (amount: number) => {
+      if (!todayWater || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayWater.updatedAt);
 
-    const newIntake: WaterIntake = {
-      amount,
-      timestamp: new Date(),
-    };
+      const newIntake: WaterIntake = {
+        amount,
+        timestamp: new Date(),
+      };
 
-    const updatedWater: DailyWater = {
-      ...todayWater,
-      intakes: [...todayWater.intakes, newIntake],
-      total: todayWater.total + amount,
-      localUpdatedAt: Date.now(),
-    };
+      const updatedWater: DailyWater = {
+        ...todayWater,
+        intakes: [...todayWater.intakes, newIntake],
+        total: todayWater.total + amount,
+        localUpdatedAt: Date.now(),
+      };
 
-    setTodayWater(updatedWater);
-    await persistWater(updatedWater, baseUpdatedAt);
-  };
+      setTodayWater(updatedWater);
+      cacheWaterSnapshot(updatedWater);
+      await persistWater(updatedWater, baseUpdatedAt);
+    },
+    [cacheWaterSnapshot, persistWater, todayWater, user?.uid],
+  );
 
-  const resetWaterIntake = async () => {
-    if (!todayWater || !user?.uid) return;
-    const baseUpdatedAt = toMillis(todayWater.updatedAt);
+  const resetWaterIntake = useCallback(
+    async () => {
+      if (!todayWater || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayWater.updatedAt);
 
-    const updatedWater: DailyWater = {
-      ...todayWater,
-      intakes: [],
-      total: 0,
-      localUpdatedAt: Date.now(),
-    };
+      const updatedWater: DailyWater = {
+        ...todayWater,
+        intakes: [],
+        total: 0,
+        localUpdatedAt: Date.now(),
+      };
 
-    setTodayWater(updatedWater);
-    await persistWater(updatedWater, baseUpdatedAt);
-  };
+      setTodayWater(updatedWater);
+      cacheWaterSnapshot(updatedWater);
+      await persistWater(updatedWater, baseUpdatedAt);
+    },
+    [cacheWaterSnapshot, persistWater, todayWater, user?.uid],
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      todayNutrition,
+      todayWater,
+      loading,
+      refreshNutrition,
+      addFoodToMeal,
+      removeFoodFromMeal,
+      updateFoodQuantity,
+      copyFoodToMeal,
+      moveFoodToMeal,
+      updateGoals,
+      addWaterIntake,
+      resetWaterIntake,
+    }),
+    [
+      addFoodToMeal,
+      addWaterIntake,
+      copyFoodToMeal,
+      loading,
+      moveFoodToMeal,
+      refreshNutrition,
+      removeFoodFromMeal,
+      resetWaterIntake,
+      todayNutrition,
+      todayWater,
+      updateFoodQuantity,
+      updateGoals,
+    ],
+  );
 
   return (
-    <NutritionContext.Provider
-      value={{
-        todayNutrition,
-        todayWater,
-        loading,
-        refreshNutrition,
-        addFoodToMeal,
-        removeFoodFromMeal,
-        updateFoodQuantity,
-        copyFoodToMeal,
-        moveFoodToMeal,
-        updateGoals,
-        addWaterIntake,
-        resetWaterIntake,
-      }}
-    >
+    <NutritionContext.Provider value={contextValue}>
       {children}
     </NutritionContext.Provider>
   );

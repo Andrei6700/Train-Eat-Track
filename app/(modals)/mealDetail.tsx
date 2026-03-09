@@ -742,26 +742,28 @@ const MealDetail = () => {
                 <ScrollView
                   showsVerticalScrollIndicator={false}
                   bounces={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.quantityScrollContent}
                 >
                   {/* Modal Content - for search results */}
                   {selectedFood && (
                     <View style={styles.modalContent}>
                       {/* Food Info */}
                       <View style={styles.foodInfoModal}>
-                        {selectedFood.image && (
+                        {selectedFood.image ? (
                           <Image
                             source={{ uri: selectedFood.image }}
                             style={styles.foodImageLarge}
                             contentFit="cover"
                           />
+                        ) : (
+                          <View style={styles.foodImagePlaceholder} />
                         )}
                         <Typo
                           size={20}
                           fontWeight="700"
-                          style={{
-                            marginTop: spacingY._15,
-                            textAlign: "center",
-                          }}
+                          style={styles.modalFoodTitle}
+                          textProps={{ numberOfLines: 2 }}
                         >
                           {selectedFood.name}
                         </Typo>
@@ -880,10 +882,8 @@ const MealDetail = () => {
                         <Typo
                           size={20}
                           fontWeight="700"
-                          style={{
-                            marginTop: spacingY._15,
-                            textAlign: "center",
-                          }}
+                          style={styles.modalFoodTitle}
+                          textProps={{ numberOfLines: 2 }}
                         >
                           {selectedRecentFood.name}
                         </Typo>
@@ -1232,7 +1232,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral900,
     borderTopLeftRadius: radius._20,
     borderTopRightRadius: radius._20,
-    maxHeight: "70%",
+    maxHeight: "85%",
   },
   handleBar: {
     width: 40,
@@ -1255,15 +1255,31 @@ const styles = StyleSheet.create({
   modalContent: {
     paddingHorizontal: spacingX._20,
   },
+  quantityScrollContent: {
+    paddingBottom: spacingY._25,
+  },
   foodInfoModal: {
     alignItems: "center",
     marginBottom: spacingY._25,
+  },
+  modalFoodTitle: {
+    marginTop: spacingY._15,
+    textAlign: "center",
+    maxWidth: "96%",
   },
   foodImageLarge: {
     width: verticalScale(120),
     height: verticalScale(120),
     borderRadius: radius._15,
     backgroundColor: colors.neutral700,
+  },
+  foodImagePlaceholder: {
+    width: verticalScale(120),
+    height: verticalScale(120),
+    borderRadius: radius._15,
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   nutritionPreview: {
     flexDirection: "row",
