@@ -1,4 +1,4 @@
-import { WorkoutHistory, WorkoutPlan, DailyNutrition, Food } from "@/src/types/index";
+import { DailyNutrition, Food, WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ==================== KEYS ====================
@@ -12,22 +12,59 @@ const CACHE_KEYS = {
 
 const CACHE_EXPIRY = {
   WORKOUT_PLAN: 24 * 60 * 60 * 1000, // 24 hours
-  NUTRITION: 12 * 60 * 60 * 1000, // 12 hours
+  NUTRITION_TODAY: 1 * 60 * 60 * 1000, // 1 hour (today changes frequently)
+  NUTRITION_PAST: 7 * 24 * 60 * 60 * 1000, // 7 days (past dates are immutable)
   LAST_WORKOUT: 7 * 24 * 60 * 60 * 1000, // 7 days
   FOOD_CACHE: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
 
-// ==================== TIMESTAMPS ====================
+const isToday = (date: Date): boolean => {
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+};
+
+const getNutritionCacheExpiry = (date: Date): number =>
+  isToday(date) ? CACHE_EXPIRY.NUTRITION_TODAY : CACHE_EXPIRY.NUTRITION_PAST;
+
+// ==================== TIMESTAMPS (in-memory + AsyncStorage) ====================
 type CacheTimestamps = {
   [key: string]: number;
 };
 
+let memoryTimestamps: CacheTimestamps | null = null;
+let memoryTimestampsLoading: Promise<CacheTimestamps> | null = null;
+
 const getCacheTimestamps = async (): Promise<CacheTimestamps> => {
+  if (memoryTimestamps) return memoryTimestamps;
+
+  if (memoryTimestampsLoading) return memoryTimestampsLoading;
+
+  memoryTimestampsLoading = (async () => {
+    try {
+      const data = await AsyncStorage.getItem(CACHE_KEYS.CACHE_TIMESTAMP);
+      memoryTimestamps = data ? JSON.parse(data) : {};
+    } catch {
+      memoryTimestamps = {};
+    }
+    memoryTimestampsLoading = null;
+    return memoryTimestamps!;
+  })();
+
+  return memoryTimestampsLoading;
+};
+
+const persistTimestamps = async (timestamps: CacheTimestamps): Promise<void> => {
   try {
-    const data = await AsyncStorage.getItem(CACHE_KEYS.CACHE_TIMESTAMP);
-    return data ? JSON.parse(data) : {};
-  } catch {
-    return {};
+    await AsyncStorage.setItem(
+      CACHE_KEYS.CACHE_TIMESTAMP,
+      JSON.stringify(timestamps)
+    );
+  } catch (error) {
+    console.error("[CacheService] Error persisting timestamps:", error);
   }
 };
 
@@ -35,10 +72,8 @@ const setCacheTimestamp = async (key: string): Promise<void> => {
   try {
     const timestamps = await getCacheTimestamps();
     timestamps[key] = Date.now();
-    await AsyncStorage.setItem(
-      CACHE_KEYS.CACHE_TIMESTAMP,
-      JSON.stringify(timestamps)
-    );
+    memoryTimestamps = timestamps;
+    await persistTimestamps(timestamps);
   } catch (error) {
     console.error("[CacheService] Error setting timestamp:", error);
   }
@@ -59,10 +94,8 @@ const removeCacheTimestamps = async (keys: string[]): Promise<void> => {
     }
 
     if (changed) {
-      await AsyncStorage.setItem(
-        CACHE_KEYS.CACHE_TIMESTAMP,
-        JSON.stringify(timestamps)
-      );
+      memoryTimestamps = timestamps;
+      await persistTimestamps(timestamps);
     }
   } catch (error) {
     console.error("[CacheService] Error removing cache timestamps:", error);
@@ -219,17 +252,16 @@ export const getCachedNutritionDay = async (
 ): Promise<DailyNutrition | null> => {
   try {
     const key = getNutritionCacheKey(date);
-    const isValid = await isCacheValid(key, CACHE_EXPIRY.NUTRITION);
+    const expiryMs = getNutritionCacheExpiry(date);
+    const isValid = await isCacheValid(key, expiryMs);
 
     if (!isValid) {
-      console.log("[CacheService] Nutrition cache expired for:", key);
       return null;
     }
 
     const data = await AsyncStorage.getItem(key);
     if (data) {
       const nutrition = JSON.parse(data);
-      // Convert date string back to Date object
       if (nutrition.date) {
         nutrition.date = new Date(nutrition.date);
       }
@@ -277,6 +309,65 @@ export const getCachedNutritionForDate = async (
 ): Promise<DailyNutrition | null> => {
   return getCachedNutritionDay(date);
 };
+
+// ==================== BATCH NUTRITION READ ====================
+export type BatchNutritionResult = Map<string, DailyNutrition | null>;
+
+export const batchGetCachedNutritionDays = async (
+  dates: Date[]
+): Promise<BatchNutritionResult> => {
+  const result: BatchNutritionResult = new Map();
+  if (dates.length === 0) return result;
+
+  try {
+    const timestamps = await getCacheTimestamps();
+    const now = Date.now();
+    const keysToFetch: string[] = [];
+    const keyToDate = new Map<string, Date>();
+
+    for (const date of dates) {
+      const key = getNutritionCacheKey(date);
+      const ts = timestamps[key];
+      const expiryMs = getNutritionCacheExpiry(date);
+
+      if (!ts || now - ts >= expiryMs) {
+        result.set(key, null);
+        continue;
+      }
+
+      keysToFetch.push(key);
+      keyToDate.set(key, date);
+    }
+
+    if (keysToFetch.length === 0) return result;
+
+    const pairs = await AsyncStorage.multiGet(keysToFetch);
+
+    for (const [key, raw] of pairs) {
+      if (!raw) {
+        result.set(key, null);
+        continue;
+      }
+
+      try {
+        const nutrition = JSON.parse(raw);
+        if (nutrition.date) {
+          nutrition.date = new Date(nutrition.date);
+        }
+        result.set(key, nutrition);
+      } catch {
+        result.set(key, null);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[CacheService] Error batch-reading nutrition cache:", error);
+    return result;
+  }
+};
+
+export { getNutritionCacheKey };
 
 // ==================== FOOD CACHE (for quick search) ====================
 type CachedFood = Food & {
@@ -366,7 +457,8 @@ export const clearExpiredCache = async (): Promise<void> => {
     let removedCount = 0;
     const removedKeys: string[] = [];
     for (const key of nutritionKeys) {
-      const isValid = await isCacheValid(key, CACHE_EXPIRY.NUTRITION);
+      // Use past-date TTL for cleanup (most generous)
+      const isValid = await isCacheValid(key, CACHE_EXPIRY.NUTRITION_PAST);
       if (!isValid) {
         await AsyncStorage.removeItem(key);
         removedKeys.push(key);

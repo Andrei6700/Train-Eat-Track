@@ -10,13 +10,20 @@ import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { getHomeDerivedData } from "@/src/features/home/homeSelectors";
+import { prefetchNutritionCalendarSummary } from "@/src/services/nutritionService";
 import { invalidateCache } from "@/src/services/workoutCacheService";
 import { getCachedWorkoutHistory } from "@/src/services/workoutHistoryCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { measureAsync } from "@/src/utils/perf";
 import { verticalScale } from "@/src/utils/styling";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 const Home = React.memo(() => {
@@ -80,7 +87,9 @@ const Home = React.memo(() => {
           () => getUserWorkouts(userId),
           (remoteResult) => ({
             source: remoteResult.success ? "remote" : "fallback",
-            itemCount: Array.isArray(remoteResult.data) ? remoteResult.data.length : 0,
+            itemCount: Array.isArray(remoteResult.data)
+              ? remoteResult.data.length
+              : 0,
             cacheAgeMs: null,
             success: remoteResult.success,
           }),
@@ -130,6 +139,7 @@ const Home = React.memo(() => {
       return;
     }
     void loadWorkouts();
+    void prefetchNutritionCalendarSummary(userId);
   }, [loadWorkouts, userId]);
 
   const onRefresh = useCallback(() => {
@@ -171,7 +181,10 @@ const Home = React.memo(() => {
 
             <WeeklyActivityChart weekData={homeData.weekData} />
 
-            <RecentWorkouts recentWorkouts={homeData.recentWorkouts} loading={loading} />
+            <RecentWorkouts
+              recentWorkouts={homeData.recentWorkouts}
+              loading={loading}
+            />
 
             <LatestScienceCard />
           </ScrollView>

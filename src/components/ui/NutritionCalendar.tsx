@@ -236,7 +236,7 @@ const NutritionCalendar = ({
   calendarDays,
   daysData,
   selectedDate,
-  loading: _loading = false,
+  loading: externalLoading = false,
   initialIndex = null,
   extraDataToken,
   scrollToDate = null,
@@ -416,7 +416,7 @@ const NutritionCalendar = ({
       if (!listRef.current) return;
       listRef.current.scrollToIndex({
         index: targetIndex,
-        animated: false,
+        animated: selectionChanged,
         viewPosition: 0,
       });
       lastReportedIndexRef.current = targetIndex;
@@ -604,9 +604,18 @@ const NutritionCalendar = ({
     return Number.isFinite(timestamp) ? `${timestamp}` : `fallback-${index}`;
   }, []);
 
+  const showList = layoutReady && !externalLoading && weekStartDates.length > 0;
+
+  const overrideItemLayout = useCallback(
+    (layout: { span?: number; size?: number }, _item: Date, _index: number) => {
+      layout.size = safePageWidth;
+    },
+    [safePageWidth],
+  );
+
   return (
     <View style={styles.container} onLayout={handleLayout}>
-      {layoutReady ? (
+      {showList ? (
         <CalendarFlashList
           ref={listRef}
           data={weekStartDates}
@@ -623,11 +632,7 @@ const NutritionCalendar = ({
           style={styles.calendar}
           estimatedItemSize={safePageWidth}
           getItemType={() => "week"}
-          getItemLayout={(_data: Date[] | null, index: number) => ({
-            length: safePageWidth,
-            offset: safePageWidth * index,
-            index,
-          })}
+          overrideItemLayout={overrideItemLayout}
           initialScrollIndex={safeInitialWeekIndex}
           initialNumToRender={Math.min(weekStartDates.length, 3)}
           maxToRenderPerBatch={3}

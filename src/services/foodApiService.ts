@@ -1,5 +1,6 @@
 import { addFoodToCache } from "@/src/services/cacheService";
 import { Food, ResponseType } from "@/src/types/index";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl";
 const PRODUCT_API = "https://world.openfoodfacts.org/api/v2/product";
@@ -26,6 +27,49 @@ type RemoteQueryCacheEntry = {
 };
 
 const remoteQueryCache = new Map<string, RemoteQueryCacheEntry>();
+
+// ==================== BARCODE CACHE ====================
+const BARCODE_MEMORY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const BARCODE_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const BARCODE_CACHE_PREFIX = "barcode_cache_";
+
+type BarcodeCacheEntry = {
+  result: ResponseType;
+  cachedAt: number;
+};
+
+const barcodeMemoryCache = new Map<string, BarcodeCacheEntry>();
+
+const getBarcodeDiskCacheKey = (barcode: string): string =>
+  `${BARCODE_CACHE_PREFIX}${barcode}`;
+
+const readBarcodeDiskCache = async (
+  barcode: string,
+): Promise<ResponseType | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(getBarcodeDiskCacheKey(barcode));
+    if (!raw) return null;
+    const entry: BarcodeCacheEntry = JSON.parse(raw);
+    if (Date.now() - entry.cachedAt >= BARCODE_DISK_TTL_MS) return null;
+    return entry.result;
+  } catch {
+    return null;
+  }
+};
+
+const writeBarcodeDiskCache = (barcode: string, result: ResponseType): void => {
+  void (async () => {
+    try {
+      const entry: BarcodeCacheEntry = { result, cachedAt: Date.now() };
+      await AsyncStorage.setItem(
+        getBarcodeDiskCacheKey(barcode),
+        JSON.stringify(entry),
+      );
+    } catch {
+      // fire-and-forget
+    }
+  })();
+};
 
 export type OpenFoodFactsProduct = {
   code: string;
@@ -454,13 +498,29 @@ export const searchFoodHybrid = async (
 };
 
 /**
- * Get food details by barcode
+ * Get food details by barcode (with in-memory + disk cache)
  */
 export const getFoodByBarcode = async (
   barcode: string,
 ): Promise<ResponseType> => {
+  // Check in-memory cache
+  const memEntry = barcodeMemoryCache.get(barcode);
+  if (memEntry && Date.now() - memEntry.cachedAt < BARCODE_MEMORY_TTL_MS) {
+    return memEntry.result;
+  }
+
+  // Check disk cache
+  const diskResult = await readBarcodeDiskCache(barcode);
+  if (diskResult) {
+    barcodeMemoryCache.set(barcode, {
+      result: diskResult,
+      cachedAt: Date.now(),
+    });
+    return diskResult;
+  }
+
   try {
-    const url = `${PRODUCT_API}/${barcode}`;
+    const url = `${PRODUCT_API}/${encodeURIComponent(barcode)}`;
     console.log("[FoodAPI] Fetching barcode:", url);
 
     const response = await fetchWithRetry(url, {
@@ -498,7 +558,16 @@ export const getFoodByBarcode = async (
       image: product.image_url,
     };
 
-    return { success: true, data: simplifiedFood };
+    const successResult: ResponseType = { success: true, data: simplifiedFood };
+
+    // Populate both caches
+    barcodeMemoryCache.set(barcode, {
+      result: successResult,
+      cachedAt: Date.now(),
+    });
+    writeBarcodeDiskCache(barcode, successResult);
+
+    return successResult;
   } catch (error: any) {
     if (isAbortError(error)) {
       console.error("[FoodAPI] Barcode request timeout");

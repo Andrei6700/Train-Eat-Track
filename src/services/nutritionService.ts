@@ -431,28 +431,52 @@ export const updateNutritionGoals = async (
   }
 };
 
-export const prefetchNutritionCalendarSummary = async (
+let activePrefetchPromise: Promise<void> | null = null;
+let memoryEarliestDate: { userID: string; earliestDate: string | null } | null = null;
+
+export const getMemoryEarliestDate = (userID: string): string | null | undefined => {
+  if (memoryEarliestDate && memoryEarliestDate.userID === userID) {
+    return memoryEarliestDate.earliestDate;
+  }
+  return undefined;
+};
+
+export const prefetchNutritionCalendarSummary = (
   userID: string,
 ): Promise<void> => {
-  try {
-    const cachedSummary = await getCachedNutritionCalendarSummary(userID, {
-      allowStale: true,
-    });
-    const existingEarliest = cachedSummary.data?.earliestDate ?? null;
-    const existingDays = cachedSummary.data?.days ?? [];
+  if (activePrefetchPromise) return activePrefetchPromise;
 
-    if (existingEarliest) {
-      return;
+  activePrefetchPromise = (async () => {
+    try {
+      const cachedSummary = await getCachedNutritionCalendarSummary(userID, {
+        allowStale: true,
+      });
+      const existingEarliest = cachedSummary.data?.earliestDate ?? null;
+      const existingDays = cachedSummary.data?.days ?? [];
+
+      if (existingEarliest) {
+        memoryEarliestDate = { userID, earliestDate: existingEarliest };
+        return;
+      }
+
+      const earliestDate = await getUserNutritionEarliestDate(userID);
+      const earliestIso = earliestDate ? earliestDate.toISOString() : existingEarliest;
+      memoryEarliestDate = { userID, earliestDate: earliestIso };
+
+      await setCachedNutritionCalendarSummary(userID, {
+        earliestDate: earliestIso,
+        days: existingDays,
+      });
+    } catch (error) {
+      console.error("[NutritionService] Error prefetching calendar summary:", error);
+    } finally {
+      activePrefetchPromise = null;
     }
+  })();
 
-    const earliestDate = await getUserNutritionEarliestDate(userID);
-    const earliestIso = earliestDate ? earliestDate.toISOString() : existingEarliest;
+  return activePrefetchPromise;
+};
 
-    await setCachedNutritionCalendarSummary(userID, {
-      earliestDate: earliestIso,
-      days: existingDays,
-    });
-  } catch (error) {
-    console.error("[NutritionService] Error prefetching calendar summary:", error);
-  }
+export const awaitNutritionCalendarPrefetch = async (): Promise<void> => {
+  if (activePrefetchPromise) await activePrefetchPromise;
 };
