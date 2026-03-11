@@ -4,7 +4,13 @@ import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
 import { toDateKey } from "@/src/utils/dateKey";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { FlashList } from "@shopify/flash-list";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   LayoutChangeEvent,
   NativeScrollEvent,
@@ -50,7 +56,6 @@ type NutritionCalendarProps = {
   onScrollToDateHandled?: (date: Date) => void;
   onDayPress: (date: Date, index: number) => void;
   onVisibleDayChange?: (day: Date) => void;
-  onReachStart?: () => void;
 };
 
 const STATUS_EMPTY: DayStatus = {
@@ -84,7 +89,9 @@ const startOfWeekMonday = (date: Date): Date => {
 };
 
 const buildWeekDays = (weekStart: Date): Date[] =>
-  Array.from({ length: WEEK_DAYS_COUNT }, (_, index) => addDays(weekStart, index));
+  Array.from({ length: WEEK_DAYS_COUNT }, (_, index) =>
+    addDays(weekStart, index),
+  );
 
 const getDayLabel = (date: Date, labels: string[]): string =>
   labels[date.getDay() === 0 ? 6 : date.getDay() - 1];
@@ -153,7 +160,9 @@ const DayCardInner = ({
           {getDayLabel(date, WEEK_DAY_SHORT_NAMES[language])}
         </Typo>
 
-        <View style={[styles.ringContainer, { width: dayWidth, height: dayWidth }]}>
+        <View
+          style={[styles.ringContainer, { width: dayWidth, height: dayWidth }]}
+        >
           <Svg
             width={dayWidth}
             height={dayWidth}
@@ -227,7 +236,6 @@ const NutritionCalendar = ({
   calendarDays,
   daysData,
   selectedDate,
-  // `loading` is kept in the API but no longer used to gate rendering.
   loading: _loading = false,
   initialIndex = null,
   extraDataToken,
@@ -236,13 +244,11 @@ const NutritionCalendar = ({
   onScrollToDateHandled,
   onDayPress,
   onVisibleDayChange,
-  onReachStart,
 }: NutritionCalendarProps) => {
   const listRef = useRef<any>(null);
   const [pageWidth, setPageWidth] = useState(FALLBACK_PAGE_WIDTH);
   const [layoutReady, setLayoutReady] = useState(false);
   const lastReportedIndexRef = useRef<number | null>(null);
-  const startReachTriggeredRef = useRef(false);
   const lastHandledScrollKeyRef = useRef<string | null>(null);
   const hasInitialAutoCenterRef = useRef(false);
   const autoCenteredSelectionWeekKeyRef = useRef<string | null>(null);
@@ -320,18 +326,6 @@ const NutritionCalendar = ({
     return Math.max(verticalScale(42), computed);
   }, [safePageWidth]);
 
-  const logScrollDecision = useCallback(
-    (action: string, payload?: Record<string, unknown>) => {
-      if (!__DEV__) return;
-      console.log("nutrition_calendar_scroll_decision", {
-        action,
-        didUserInteract: didUserInteractRef.current,
-        ...(payload || {}),
-      });
-    },
-    [],
-  );
-
   const safeInitialWeekIndex = useMemo(() => {
     if (weekStartDates.length === 0) return 0;
 
@@ -372,12 +366,12 @@ const NutritionCalendar = ({
     }
   }, []);
 
-  // Keep the calendar anchored once on mount, then only when selection changes.
+  // Auto-center on mount and on selection change.
   useEffect(() => {
     if (!layoutReady) return;
     if (!listRef.current) return;
     if (weekStartDates.length === 0) return;
-    if (scrollToDate) return; // Programmatic date selection has priority.
+    if (scrollToDate) return;
 
     const targetIndex = clamp(
       safeInitialWeekIndex,
@@ -400,42 +394,23 @@ const NutritionCalendar = ({
       shouldAutoCenterInitially || selectionChanged || shouldAutoCenterForShift;
 
     if (!shouldAutoCenter) {
-      if (targetIndexShifted && didUserInteractRef.current) {
-        logScrollDecision("skip_post_interaction", {
-          reason: "skip_post_interaction",
-          targetIndex,
-          previousAutoCenteredIndex: lastAutoCenteredIndexRef.current,
-          targetWeekKey,
-          selectedWeekKey: selectedWeekKey ?? "none",
-        });
-        return;
-      }
-
-      logScrollDecision("skip_same_selection", {
-        targetIndex,
-        targetWeekKey,
-        selectedWeekKey: selectedWeekKey ?? "none",
-        previousAutoCenteredIndex: lastAutoCenteredIndexRef.current,
-      });
       return;
     }
 
-    const autoCenterReason = shouldAutoCenterInitially
-      ? "initial"
-      : selectionChanged
-        ? "selection_change"
-        : "index_shift_pre_interaction";
     hasInitialAutoCenterRef.current = true;
     autoCenteredSelectionWeekKeyRef.current = selectedWeekKey ?? targetWeekKey;
-    const previousAutoCenteredIndex = lastAutoCenteredIndexRef.current;
     lastAutoCenteredIndexRef.current = targetIndex;
-    logScrollDecision("auto_center", {
-      reason: autoCenterReason,
-      targetIndex,
-      targetWeekKey,
-      selectedWeekKey: selectedWeekKey ?? "none",
-      previousAutoCenteredIndex,
-    });
+
+    // Skip scrollToIndex if we are already at the correct position.
+    // Calling scrollToIndex when already there causes FlashList to briefly
+    // flash the wrong week for 1-2 frames.
+    const alreadyAtTarget =
+      lastReportedIndexRef.current !== null &&
+      lastReportedIndexRef.current === targetIndex;
+
+    if (alreadyAtTarget) {
+      return;
+    }
 
     requestAnimationFrame(() => {
       if (!listRef.current) return;
@@ -449,7 +424,6 @@ const NutritionCalendar = ({
     });
   }, [
     layoutReady,
-    logScrollDecision,
     onVisibleDayChange,
     safeInitialWeekIndex,
     scrollToDate,
@@ -468,10 +442,6 @@ const NutritionCalendar = ({
 
     const targetWeekKey = dayKey(startOfWeekMonday(scrollToDate));
     if (lastHandledScrollKeyRef.current === targetWeekKey) {
-      logScrollDecision("programmatic_scroll", {
-        status: "skip_duplicate",
-        targetWeekKey,
-      });
       return;
     }
 
@@ -494,12 +464,6 @@ const NutritionCalendar = ({
       lastHandledScrollKeyRef.current = targetWeekKey;
       autoCenteredSelectionWeekKeyRef.current = targetWeekKey;
       lastAutoCenteredIndexRef.current = targetIndex;
-      logScrollDecision("programmatic_scroll", {
-        status: "dispatch",
-        targetWeekKey,
-        targetIndex,
-        animated: scrollToDateAnimated,
-      });
       listRef.current.scrollToIndex({
         index: targetIndex,
         animated: scrollToDateAnimated,
@@ -524,7 +488,6 @@ const NutritionCalendar = ({
 
     requestAnimationFrame(() => attemptScroll(0));
   }, [
-    logScrollDecision,
     onScrollToDateHandled,
     onVisibleDayChange,
     scrollToDate,
@@ -537,43 +500,7 @@ const NutritionCalendar = ({
     if (lastReportedIndexRef.current === null && weekStartDates.length > 0) {
       lastReportedIndexRef.current = safeInitialWeekIndex;
     }
-    startReachTriggeredRef.current = false;
   }, [safeInitialWeekIndex, weekStartDates.length]);
-
-  const getIndexFromOffset = useCallback(
-    (offsetX: number) => {
-      if (weekStartDates.length === 0) return 0;
-      return clamp(
-        Math.round(offsetX / safePageWidth),
-        0,
-        weekStartDates.length - 1,
-      );
-    },
-    [safePageWidth, weekStartDates.length],
-  );
-
-  const updateReachStartFromOffset = useCallback(
-    (offsetX: number) => {
-      if (weekStartDates.length === 0) return;
-
-      if (offsetX <= safePageWidth * 0.35) {
-        if (!startReachTriggeredRef.current) {
-          startReachTriggeredRef.current = true;
-          onReachStart?.();
-        }
-      } else {
-        startReachTriggeredRef.current = false;
-      }
-    },
-    [onReachStart, safePageWidth, weekStartDates.length],
-  );
-
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      updateReachStartFromOffset(event.nativeEvent.contentOffset.x);
-    },
-    [updateReachStartFromOffset],
-  );
 
   const handleScrollBeginDrag = useCallback(() => {
     didUserInteractRef.current = true;
@@ -584,9 +511,14 @@ const NutritionCalendar = ({
       if (weekStartDates.length === 0) return;
 
       const offsetX = event.nativeEvent.contentOffset.x;
-      updateReachStartFromOffset(offsetX);
+      const pageWidth =
+        event.nativeEvent.layoutMeasurement?.width || safePageWidth;
+      const nextIndex = clamp(
+        Math.round(offsetX / pageWidth),
+        0,
+        weekStartDates.length - 1,
+      );
 
-      const nextIndex = getIndexFromOffset(offsetX);
       const previousIndex = lastReportedIndexRef.current;
       const didIndexChange =
         previousIndex === null || previousIndex !== nextIndex;
@@ -595,10 +527,6 @@ const NutritionCalendar = ({
       if (didIndexChange) {
         const visibleWeekStart = weekStartDates[nextIndex];
         if (visibleWeekStart) {
-          logScrollDecision("visible_week_changed", {
-            index: nextIndex,
-            weekKey: dayKey(visibleWeekStart),
-          });
           onVisibleDayChange?.(visibleWeekStart);
         }
       }
@@ -609,14 +537,7 @@ const NutritionCalendar = ({
       pendingScrollToDateRef.current = null;
       onScrollToDateHandled?.(pending.date);
     },
-    [
-      getIndexFromOffset,
-      logScrollDecision,
-      onScrollToDateHandled,
-      onVisibleDayChange,
-      updateReachStartFromOffset,
-      weekStartDates,
-    ],
+    [onScrollToDateHandled, onVisibleDayChange, weekStartDates],
   );
 
   const renderWeek = useCallback(
@@ -632,7 +553,9 @@ const NutritionCalendar = ({
             return (
               <View
                 key={key}
-                style={dayIndex < WEEK_DAYS_COUNT - 1 ? styles.daySpacing : undefined}
+                style={
+                  dayIndex < WEEK_DAYS_COUNT - 1 ? styles.daySpacing : undefined
+                }
               >
                 <DayCard
                   date={date}
@@ -640,7 +563,9 @@ const NutritionCalendar = ({
                   isToday={key === todayKey}
                   isSelected={selectedDayKey === key}
                   status={status}
-                  onPress={() => onDayPress(date, index * WEEK_DAYS_COUNT + dayIndex)}
+                  onPress={() =>
+                    onDayPress(date, index * WEEK_DAYS_COUNT + dayIndex)
+                  }
                 />
               </View>
             );
@@ -659,7 +584,8 @@ const NutritionCalendar = ({
   );
 
   const listExtraData = useMemo(
-    () => `${extraDataToken || "calendar"}-${selectedDayKey || "none"}-${dayWidth}`,
+    () =>
+      `${extraDataToken || "calendar"}-${selectedDayKey || "none"}-${dayWidth}`,
     [dayWidth, extraDataToken, selectedDayKey],
   );
 
@@ -689,6 +615,8 @@ const NutritionCalendar = ({
           horizontal
           pagingEnabled
           disableIntervalMomentum
+          snapToInterval={safePageWidth}
+          snapToAlignment="start"
           bounces={false}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.calendarContainer}
@@ -704,13 +632,9 @@ const NutritionCalendar = ({
           initialNumToRender={Math.min(weekStartDates.length, 3)}
           maxToRenderPerBatch={3}
           windowSize={5}
-          removeClippedSubviews
           decelerationRate="fast"
           onScrollBeginDrag={handleScrollBeginDrag}
-          onScroll={handleScroll}
-          onScrollEndDrag={handleMomentumScrollEnd}
           onMomentumScrollEnd={handleMomentumScrollEnd}
-          scrollEventThrottle={16}
           extraData={listExtraData}
           onScrollToIndexFailed={handleScrollToIndexFailed}
         />

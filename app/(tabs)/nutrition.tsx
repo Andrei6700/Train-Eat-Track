@@ -38,10 +38,9 @@ import {
 } from "@/src/services/nutritionService";
 import { DailyNutrition, Food } from "@/src/types/index";
 import {
-  DAY_IN_MS,
   startOfDay,
   toDateKey,
-  toValidDate,
+  toValidDate
 } from "@/src/utils/dateKey";
 import { measureAsync } from "@/src/utils/perf";
 import { useRouter } from "expo-router";
@@ -74,7 +73,6 @@ const DEFAULT_GOALS = {
 };
 const CALENDAR_FUTURE_DAYS = 7;
 const CALENDAR_INITIAL_BACK_DAYS = 35;
-const CALENDAR_LOAD_CHUNK_DAYS = 7;
 const CALENDAR_PRELOAD_WEEKS_BEFORE = 1;
 const CALENDAR_PRELOAD_WEEKS_AFTER = 1;
 
@@ -167,16 +165,12 @@ const formatMonthYearLabel = (date: Date, language: "en" | "ro"): string => {
   return `${normalizedMonthName} ${normalizedDate.getFullYear()}`;
 };
 
-const buildCalendarDays = (
-  earliestDate: Date | null,
-  options?: { windowDays?: number },
-): Date[] => {
+const buildCalendarDays = (earliestDate: Date | null): Date[] => {
   const today = startOfDay(new Date());
   const endAnchor = new Date(today);
   endAnchor.setDate(endAnchor.getDate() + CALENDAR_FUTURE_DAYS);
   const endDate = endOfCalendarWeek(endAnchor);
 
-  const windowDays = options?.windowDays;
   let startAnchor = earliestDate
     ? new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1)
     : new Date(today);
@@ -184,13 +178,6 @@ const buildCalendarDays = (
   if (!earliestDate) {
     startAnchor.setDate(startAnchor.getDate() - CALENDAR_INITIAL_BACK_DAYS);
     startAnchor.setHours(0, 0, 0, 0);
-  }
-
-  if (typeof windowDays === "number" && windowDays > 0) {
-    const windowStart = new Date(today);
-    windowStart.setDate(windowStart.getDate() - windowDays);
-    windowStart.setHours(0, 0, 0, 0);
-    startAnchor = windowStart;
   }
 
   const startDate = startOfCalendarWeek(startAnchor);
@@ -202,34 +189,6 @@ const buildCalendarDays = (
     day.setDate(day.getDate() + 1)
   ) {
     days.push(new Date(day));
-  }
-
-  return days;
-};
-
-const buildCalendarChunkBeforeDate = (
-  firstLoadedDate: Date,
-  count: number,
-  absoluteStartDate: Date | null,
-): Date[] => {
-  if (count <= 0) return [];
-
-  const normalizedFirstLoadedDate = startOfDay(firstLoadedDate);
-  const minTimestamp = absoluteStartDate
-    ? startOfDay(absoluteStartDate).getTime()
-    : null;
-
-  const days: Date[] = [];
-  for (let offset = count; offset >= 1; offset -= 1) {
-    const day = new Date(normalizedFirstLoadedDate);
-    day.setDate(normalizedFirstLoadedDate.getDate() - offset);
-    day.setHours(0, 0, 0, 0);
-
-    if (minTimestamp !== null && day.getTime() < minTimestamp) {
-      continue;
-    }
-
-    days.push(day);
   }
 
   return days;
@@ -353,19 +312,11 @@ const Nutrition = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [daysData, setDaysData] = useState<DayData[]>([]);
   const [calendarDays, setCalendarDays] = useState<Date[]>(() =>
-    buildCalendarDays(null, { windowDays: CALENDAR_INITIAL_BACK_DAYS }),
+    buildCalendarDays(null),
   );
-  // ─── FIX 1 ───────────────────────────────────────────────────────────────────
-  // Never start in a "loading" state.  The calendar renders immediately with
-  // empty rings that fill in silently.  `calendarLoading` is kept only so the
-  // pull-to-refresh flow can still pass a signal to the log modal.
   const [calendarLoading, setCalendarLoading] = useState(false);
-  // ─────────────────────────────────────────────────────────────────────────────
   const [calendarEarliestDate, setCalendarEarliestDate] = useState<Date | null>(
     null,
-  );
-  const [calendarWindowDays, setCalendarWindowDays] = useState(
-    CALENDAR_INITIAL_BACK_DAYS,
   );
   const [calendarScrollRequest, setCalendarScrollRequest] =
     useState<CalendarScrollRequest | null>(null);
@@ -386,7 +337,6 @@ const Nutrition = () => {
   const lastVisibleCalendarMonthKeyRef = useRef<string | null>(
     toMonthLookupKey(startOfDay(new Date())),
   );
-  const prependInFlightRef = useRef(false);
   const loadedDayKeysRef = useRef<Set<string>>(new Set());
   const pendingDayKeysRef = useRef<Set<string>>(new Set());
   const lastDaysDataChangeReasonRef = useRef<string>("initial");
@@ -398,6 +348,15 @@ const Nutrition = () => {
     calendarDays: calendarDays.length,
     daysData: daysData.length,
   });
+  const loggedWeekKeysRef = useRef<Set<string>>(new Set());
+
+  const devLog = useCallback(
+    (event: string, payload?: Record<string, unknown>) => {
+      if (!__DEV__) return;
+      console.log(event, payload ?? {});
+    },
+    [],
+  );
 
   const mealSummaries = useMemo(
     () => buildMealSummaries(todayNutrition?.meals),
@@ -499,15 +458,21 @@ const Nutrition = () => {
     [calendarDays.length, mainCalendarInitialIndex],
   );
 
-  const logCalendarDayLoaded = useCallback(
-    (dateKey: string, source: "cache" | "remote" | "empty") => {
+  const logCalendarWeekLoaded = useCallback(
+    (date: Date, source: "cache" | "remote" | "empty") => {
       if (!__DEV__) return;
-      console.log("nutrition_calendar_day_loaded", { dateKey, source });
-      console.log(
-        `[NutritionCalendar] s-a incarcat informatiile pentru data ${dateKey} (sursa: ${source})`,
-      );
+      const weekStart = startOfCalendarWeek(date);
+      const weekKey = toDayLookupKey(weekStart);
+      if (loggedWeekKeysRef.current.has(weekKey)) return;
+      loggedWeekKeysRef.current.add(weekKey);
+      const weekEnd = endOfCalendarWeek(weekStart);
+      devLog("calendar_week_loaded", {
+        weekStart: toDateKey(weekStart),
+        weekEnd: toDateKey(weekEnd),
+        source,
+      });
     },
-    [],
+    [devLog],
   );
 
   const upsertCalendarDayData = useCallback(
@@ -549,10 +514,9 @@ const Nutrition = () => {
   );
 
   useEffect(() => {
-    if (!__DEV__) return;
     if (calendarDays.length === 0) return;
 
-    console.log("nutrition_calendar_ready_ms", {
+    devLog("calendar_ready", {
       latencyMs: Date.now() - calendarBootStartedAtRef.current,
       dayCount: calendarDays.length,
       initialIndex: mainCalendarInitialIndex,
@@ -562,22 +526,10 @@ const Nutrition = () => {
   }, [
     calendarDays.length,
     calendarHasFuture2Days,
+    devLog,
     mainCalendarInitialIndex,
     selectedDate,
   ]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (calendarDays.length === 0) return;
-    if (calendarHasFuture2Days) return;
-
-    console.log("nutrition_calendar_future_days_guard", {
-      dayCount: calendarDays.length,
-      targetIndex: mainCalendarInitialIndex,
-      hasFuture2Days: false,
-      success: false,
-    });
-  }, [calendarDays.length, calendarHasFuture2Days, mainCalendarInitialIndex]);
 
   const applyCalendarSummary = useCallback(
     (
@@ -588,18 +540,15 @@ const Nutrition = () => {
         setCalendarEarliestDate(null);
         lastDaysDataChangeReasonRef.current = `summary_${reason}_reset`;
         setDaysData([]);
-        setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
         loadedDayKeysRef.current.clear();
         pendingDayKeysRef.current.clear();
-        if (__DEV__) {
-          console.log("nutrition_calendar_apply_summary", {
-            reason,
-            incomingDays: 0,
-            previousDays: 0,
-            mergedDays: 0,
-            earliestDate: null,
-          });
-        }
+        devLog("calendar_apply_summary", {
+          reason,
+          incomingDays: 0,
+          previousDays: 0,
+          mergedDays: 0,
+          earliestDate: null,
+        });
         return;
       }
 
@@ -616,14 +565,12 @@ const Nutrition = () => {
 
       setDaysData((previousDaysData) => {
         if (mappedDaysData.length === 0) {
-          if (__DEV__) {
-            console.log("nutrition_calendar_apply_summary_metadata_only", {
-              reason,
-              incomingDays: 0,
-              retainedDays: previousDaysData.length,
-              earliestDate: earliestDate ? toDateKey(earliestDate) : null,
-            });
-          }
+          devLog("calendar_apply_summary_metadata_only", {
+            reason,
+            incomingDays: 0,
+            retainedDays: previousDaysData.length,
+            earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+          });
           return previousDaysData;
         }
 
@@ -643,25 +590,21 @@ const Nutrition = () => {
           mergedDaysData.map((day) => toDateKey(day.date)),
         );
 
-        if (__DEV__) {
-          console.log("nutrition_calendar_apply_summary", {
-            reason,
-            incomingDays: mappedDaysData.length,
-            previousDays: previousDaysData.length,
-            mergedDays: mergedDaysData.length,
-            earliestDate: earliestDate ? toDateKey(earliestDate) : null,
-          });
-        }
+        devLog("calendar_apply_summary", {
+          reason,
+          incomingDays: mappedDaysData.length,
+          previousDays: previousDaysData.length,
+          mergedDays: mergedDaysData.length,
+          earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+        });
 
         return mergedDaysData;
       });
     },
-    [],
+    [devLog],
   );
 
   useEffect(() => {
-    if (!__DEV__) return;
-
     const previousCounts = previousCalendarCountsRef.current;
     const nextCounts = {
       calendarDays: calendarDays.length,
@@ -676,7 +619,7 @@ const Nutrition = () => {
       return;
     }
 
-    console.log("nutrition_calendar_state_transition", {
+    devLog("calendar_state_transition", {
       previousCalendarDays: previousCounts.calendarDays,
       nextCalendarDays: nextCounts.calendarDays,
       previousDaysData: previousCounts.daysData,
@@ -684,7 +627,9 @@ const Nutrition = () => {
       calendarDaysReason: calendarDaysChanged
         ? lastCalendarDaysChangeReasonRef.current
         : null,
-      daysDataReason: daysDataChanged ? lastDaysDataChangeReasonRef.current : null,
+      daysDataReason: daysDataChanged
+        ? lastDaysDataChangeReasonRef.current
+        : null,
     });
 
     if (calendarDaysChanged) {
@@ -695,7 +640,7 @@ const Nutrition = () => {
     }
 
     previousCalendarCountsRef.current = nextCounts;
-  }, [calendarDays.length, daysData.length]);
+  }, [calendarDays.length, daysData.length, devLog]);
 
   const loadCalendarDaySummary = useCallback(
     async (
@@ -727,7 +672,7 @@ const Nutrition = () => {
           const calories = sumNutritionCalories(cached);
           const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
           upsertCalendarDayData(normalizedDate, calories, goal);
-          logCalendarDayLoaded(dateKey, "cache");
+          logCalendarWeekLoaded(normalizedDate, "cache");
           if (!forceRemote) {
             return;
           }
@@ -741,13 +686,13 @@ const Nutrition = () => {
 
           upsertCalendarDayData(normalizedDate, calories, goal);
           void cacheNutritionDay(normalizedDate, nutrition);
-          logCalendarDayLoaded(dateKey, "remote");
+          logCalendarWeekLoaded(normalizedDate, "remote");
           return;
         }
 
         if (!hasCachedSnapshot) {
           loadedDayKeysRef.current.add(dateKey);
-          logCalendarDayLoaded(dateKey, "empty");
+          logCalendarWeekLoaded(normalizedDate, "empty");
         }
       } catch (error) {
         console.error("[Nutrition] Error loading calendar day summary:", error);
@@ -755,7 +700,7 @@ const Nutrition = () => {
         pendingDayKeysRef.current.delete(dateKey);
       }
     },
-    [logCalendarDayLoaded, maxPlannableDate, upsertCalendarDayData, user?.uid],
+    [logCalendarWeekLoaded, maxPlannableDate, upsertCalendarDayData, user?.uid],
   );
 
   const preloadCalendarDates = useCallback(
@@ -800,105 +745,9 @@ const Nutrition = () => {
     [maxPlannableDate, preloadCalendarDates],
   );
 
-  const calendarAbsoluteStartDate = useMemo(() => {
-    if (calendarEarliestDate) {
-      return startOfDay(
-        new Date(
-          calendarEarliestDate.getFullYear(),
-          calendarEarliestDate.getMonth(),
-          1,
-        ),
-      );
-    }
-
-    if (daysData.length === 0) {
-      return null;
-    }
-
-    let minTimestamp = Number.POSITIVE_INFINITY;
-    for (const day of daysData) {
-      const normalized = startOfDay(day.date);
-      const timestamp = normalized.getTime();
-      if (timestamp < minTimestamp) {
-        minTimestamp = timestamp;
-      }
-    }
-
-    if (!Number.isFinite(minTimestamp)) {
-      return null;
-    }
-
-    const earliestLoadedDate = new Date(minTimestamp);
-    return startOfDay(
-      new Date(
-        earliestLoadedDate.getFullYear(),
-        earliestLoadedDate.getMonth(),
-        1,
-      ),
-    );
-  }, [calendarEarliestDate, daysData]);
-
-  const canLoadMoreCalendarDays = useMemo(() => {
-    if (!calendarAbsoluteStartDate || calendarDays.length === 0) {
-      return false;
-    }
-
-    const firstLoadedDay = startOfDay(calendarDays[0]);
-    return firstLoadedDay.getTime() > calendarAbsoluteStartDate.getTime();
-  }, [calendarAbsoluteStartDate, calendarDays]);
-
-  const handleCalendarReachStart = useCallback(() => {
-    if (prependInFlightRef.current) {
-      if (__DEV__) {
-        console.log("nutrition_calendar_prepend_skipped", {
-          reason: "inflight",
-        });
-      }
-      return;
-    }
-    if (!canLoadMoreCalendarDays) {
-      if (__DEV__) {
-        console.log("nutrition_calendar_prepend_skipped", {
-          reason: "no_more_days",
-        });
-      }
-      return;
-    }
-
-    const nextChunkDays = buildCalendarChunkBeforeDate(
-      calendarDays[0],
-      CALENDAR_LOAD_CHUNK_DAYS,
-      calendarAbsoluteStartDate,
-    );
-    if (nextChunkDays.length === 0) {
-      if (__DEV__) {
-        console.log("nutrition_calendar_prepend_skipped", {
-          reason: "empty_chunk",
-        });
-      }
-      return;
-    }
-
-    prependInFlightRef.current = true;
-    if (__DEV__) {
-      console.log("nutrition_calendar_prepend_requested", {
-        firstDayKey: toDateKey(startOfDay(calendarDays[0])),
-        chunkDays: nextChunkDays.length,
-      });
-    }
-    preloadCalendarDates(nextChunkDays);
-    setCalendarWindowDays((previous) => previous + nextChunkDays.length);
-  }, [
-    calendarAbsoluteStartDate,
-    calendarDays,
-    canLoadMoreCalendarDays,
-    preloadCalendarDates,
-  ]);
-
+  // Rebuild calendarDays when earliestDate changes (e.g. after loading history).
   useEffect(() => {
-    const nextCalendarDays = buildCalendarDays(calendarEarliestDate, {
-      windowDays: calendarWindowDays,
-    });
+    const nextCalendarDays = buildCalendarDays(calendarEarliestDate);
 
     setCalendarDays((previousDays) => {
       if (areCalendarDaysEqual(previousDays, nextCalendarDays)) {
@@ -906,25 +755,23 @@ const Nutrition = () => {
       }
 
       lastCalendarDaysChangeReasonRef.current = "rebuild_calendar_window";
-      if (__DEV__) {
-        console.log("nutrition_calendar_rebuild_days", {
-          previousCount: previousDays.length,
-          nextCount: nextCalendarDays.length,
-          windowDays: calendarWindowDays,
-          earliestDate: calendarEarliestDate
-            ? toDateKey(startOfDay(calendarEarliestDate))
-            : null,
-        });
-      }
+      devLog("calendar_rebuild_days", {
+        previousCount: previousDays.length,
+        nextCount: nextCalendarDays.length,
+        earliestDate: calendarEarliestDate
+          ? toDateKey(startOfDay(calendarEarliestDate))
+          : null,
+        firstDay: nextCalendarDays[0]
+          ? toDateKey(startOfDay(nextCalendarDays[0]))
+          : null,
+        lastDay: nextCalendarDays[nextCalendarDays.length - 1]
+          ? toDateKey(startOfDay(nextCalendarDays[nextCalendarDays.length - 1]))
+          : null,
+      });
 
       return nextCalendarDays;
     });
-  }, [calendarEarliestDate, calendarWindowDays]);
-
-  useEffect(() => {
-    prependInFlightRef.current = false;
-  }, [calendarDays.length]);
-
+  }, [calendarEarliestDate]);
 
   // Keep nearby weeks warm so rings are already filled when the user swipes.
   useEffect(() => {
@@ -936,23 +783,6 @@ const Nutrition = () => {
     if (!user?.uid) return;
     requestCalendarWindowLoad(visibleCalendarDate);
   }, [requestCalendarWindowLoad, user?.uid, visibleCalendarDate]);
-
-  useEffect(() => {
-    if (calendarDays.length === 0) return;
-    const normalizedSelected = startOfDay(selectedDate);
-    const firstDay = startOfDay(calendarDays[0]);
-    if (normalizedSelected >= firstDay) return;
-
-    const today = startOfDay(new Date());
-    const diffDays = Math.ceil(
-      (today.getTime() - normalizedSelected.getTime()) / DAY_IN_MS,
-    );
-    const requiredWindowDays = Math.max(CALENDAR_INITIAL_BACK_DAYS, diffDays);
-
-    if (requiredWindowDays > calendarWindowDays) {
-      setCalendarWindowDays(requiredWindowDays);
-    }
-  }, [calendarDays, calendarWindowDays, selectedDate]);
 
   const loadNutritionData = useCallback(
     async (date: Date, options?: Parameters<typeof refreshNutrition>[1]) => {
@@ -979,7 +809,6 @@ const Nutrition = () => {
         lastDaysDataChangeReasonRef.current = "history_no_user_reset";
         setDaysData([]);
         setCalendarEarliestDate(null);
-        setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
         return;
       }
 
@@ -998,7 +827,8 @@ const Nutrition = () => {
           hasEarliestDate: Boolean(result.data?.earliestDate),
           cacheAgeMs: result.ageMs ?? null,
           success: Boolean(
-            result.data && (result.data.days.length > 0 || result.data.earliestDate),
+            result.data &&
+            (result.data.days.length > 0 || result.data.earliestDate),
           ),
         }),
       );
@@ -1008,11 +838,6 @@ const Nutrition = () => {
       if (cacheResult.data) {
         cachedSummary = cacheResult.data;
         applyCalendarSummary(cacheResult.data, "hydrate_cache");
-        // ─── FIX 3 ─────────────────────────────────────────────────────────────
-        // Never flip calendarLoading to true.  If there's no cache we simply
-        // start fetching remote data silently in the background without blocking
-        // the calendar UI.
-        // ───────────────────────────────────────────────────────────────────────
       }
 
       const cachedEarliest = cachedSummary?.earliestDate ?? null;
@@ -1059,7 +884,6 @@ const Nutrition = () => {
           lastDaysDataChangeReasonRef.current = "history_remote_empty_reset";
           setDaysData([]);
           setCalendarEarliestDate(null);
-          setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
         }
       } catch (error) {
         console.error("[Nutrition] Error loading calendar seed:", error);
@@ -1069,10 +893,8 @@ const Nutrition = () => {
           lastDaysDataChangeReasonRef.current = "history_seed_error_reset";
           setDaysData([]);
           setCalendarEarliestDate(null);
-          setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
         }
       } finally {
-        // Keep calendarLoading at false — we never set it to true above.
         if (requestId === calendarRequestIdRef.current) {
           setCalendarLoading(false);
         }
@@ -1087,16 +909,9 @@ const Nutrition = () => {
       lastDaysDataChangeReasonRef.current = "user_switch_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
-      setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
-      // ─── FIX 4 ─────────────────────────────────────────────────────────────
-      // Do NOT set calendarLoading to true on user change.  The calendar stays
-      // visible; stale rings from the previous user are replaced as new data
-      // arrives.
-      // ───────────────────────────────────────────────────────────────────────
       setCalendarScrollRequest(null);
       lastVisibleCalendarDayRef.current = null;
       lastVisibleCalendarMonthKeyRef.current = null;
-      prependInFlightRef.current = false;
       loadedDayKeysRef.current.clear();
       pendingDayKeysRef.current.clear();
     }
@@ -1107,14 +922,12 @@ const Nutrition = () => {
       lastDaysDataChangeReasonRef.current = "user_signed_out_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
-      setCalendarWindowDays(CALENDAR_INITIAL_BACK_DAYS);
       setCalendarLoading(false);
       setRefreshing(false);
       setShowCalendarLogModal(false);
       setCalendarScrollRequest(null);
       lastVisibleCalendarDayRef.current = null;
       lastVisibleCalendarMonthKeyRef.current = null;
-      prependInFlightRef.current = false;
       loadedDayKeysRef.current.clear();
       pendingDayKeysRef.current.clear();
       initialLoadUserIdRef.current = null;
@@ -1226,14 +1039,21 @@ const Nutrition = () => {
         setRefreshing(false);
       }
     })();
-  }, [loadCalendarHistory, loadNutritionData, requestCalendarWindowLoad, selectedDate]);
+  }, [
+    loadCalendarHistory,
+    loadNutritionData,
+    requestCalendarWindowLoad,
+    selectedDate,
+  ]);
 
   const updateVisibleCalendarMonth = useCallback((date: Date) => {
     const normalizedDate = startOfDay(date);
     const monthKey = toMonthLookupKey(normalizedDate);
     lastVisibleCalendarMonthKeyRef.current = monthKey;
     setVisibleCalendarDate((previousDate) =>
-      toMonthLookupKey(previousDate) === monthKey ? previousDate : normalizedDate,
+      toMonthLookupKey(previousDate) === monthKey
+        ? previousDate
+        : normalizedDate,
     );
   }, []);
 
@@ -1298,7 +1118,8 @@ const Nutrition = () => {
       const normalizedDay = startOfDay(day);
       if (
         lastVisibleCalendarDayRef.current &&
-        toDateKey(lastVisibleCalendarDayRef.current) === toDateKey(normalizedDay)
+        toDateKey(lastVisibleCalendarDayRef.current) ===
+          toDateKey(normalizedDay)
       ) {
         return;
       }
@@ -1313,7 +1134,9 @@ const Nutrition = () => {
 
       lastVisibleCalendarMonthKeyRef.current = monthKey;
       setVisibleCalendarDate((previousDate) =>
-        toMonthLookupKey(previousDate) === monthKey ? previousDate : normalizedDay,
+        toMonthLookupKey(previousDate) === monthKey
+          ? previousDate
+          : normalizedDay,
       );
     },
     [requestCalendarWindowLoad],
@@ -1496,7 +1319,6 @@ const Nutrition = () => {
             onScrollToDateHandled={handleCalendarScrollHandled}
             onDayPress={handleDayPress}
             onVisibleDayChange={handleCalendarVisibleDayChange}
-            onReachStart={handleCalendarReachStart}
           />
 
           <NutritionObjectiveCard stats={nutritionStats} />
