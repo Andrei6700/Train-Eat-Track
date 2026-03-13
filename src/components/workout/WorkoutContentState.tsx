@@ -3,15 +3,16 @@ import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { DayWorkout, WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
+import * as Icons from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import * as Icons from "phosphor-react-native";
 
 export type WorkoutContentStateProps = {
   selectedWorkout: WorkoutHistory | null;
   selectedPlanDay: DayWorkout | null;
   isSelectedDayRestDay: boolean;
+  isFirstCycleEmptyDay?: boolean;
   workoutPlan: WorkoutPlan | null;
   workoutPlanName: string;
   isSelectedDayToday: boolean;
@@ -27,6 +28,7 @@ const WorkoutContentState = ({
   selectedWorkout,
   selectedPlanDay,
   isSelectedDayRestDay,
+  isFirstCycleEmptyDay: isFirstCycleEmpty,
   workoutPlan,
   workoutPlanName,
   isSelectedDayToday,
@@ -84,7 +86,11 @@ const WorkoutContentState = ({
                 {exercise.sets?.map((set, setIdx) => (
                   <View key={setIdx} style={styles.setRow}>
                     <View style={styles.setNumber}>
-                      <Typo size={12} fontWeight="600" color={colors.neutral400}>
+                      <Typo
+                        size={12}
+                        fontWeight="600"
+                        color={colors.neutral400}
+                      >
                         {setIdx + 1}
                       </Typo>
                     </View>
@@ -121,7 +127,11 @@ const WorkoutContentState = ({
         <Typo size={22} fontWeight="700" style={styles.restDayTitle}>
           {t("workout_rest_day")}
         </Typo>
-        <Typo size={15} color={colors.neutral400} style={styles.restDaySubtitle}>
+        <Typo
+          size={15}
+          color={colors.neutral400}
+          style={styles.restDaySubtitle}
+        >
           {t("workout_rest_day_planned")}
         </Typo>
       </View>
@@ -146,7 +156,11 @@ const WorkoutContentState = ({
         <View style={styles.planCard}>
           <View style={styles.planHeader}>
             <View style={styles.planIconContainer}>
-              <Icons.ListDashes size={24} color={colors.primary} weight="bold" />
+              <Icons.ListDashes
+                size={24}
+                color={colors.primary}
+                weight="bold"
+              />
             </View>
             <View style={styles.planHeaderTextContainer}>
               <Typo size={18} fontWeight="700">
@@ -179,10 +193,16 @@ const WorkoutContentState = ({
           )}
 
           {!hasExercises && (
-            <View style={styles.infoBox}>
-              <Icons.Info size={16} color={colors.primary} weight="fill" />
+            <View style={[styles.infoBox, isFirstCycleEmpty && styles.warningBox]}>
+              <Icons.Info
+                size={16}
+                color={isFirstCycleEmpty ? colors.rose : colors.primary}
+                weight="fill"
+              />
               <Typo size={13} color={colors.neutral300} style={styles.infoText}>
-                {t("workout_auto_load_note")}
+                {isFirstCycleEmpty
+                  ? t("workout_first_cycle_empty_warning")
+                  : t("workout_auto_load_note")}
               </Typo>
             </View>
           )}
@@ -245,7 +265,11 @@ const WorkoutContentState = ({
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
-          <Icons.CalendarBlank size={48} color={colors.neutral500} weight="fill" />
+          <Icons.CalendarBlank
+            size={48}
+            color={colors.neutral500}
+            weight="fill"
+          />
         </View>
         <Typo
           size={18}
@@ -266,7 +290,11 @@ const WorkoutContentState = ({
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
-          <Icons.CalendarBlank size={48} color={colors.neutral500} weight="fill" />
+          <Icons.CalendarBlank
+            size={48}
+            color={colors.neutral500}
+            weight="fill"
+          />
         </View>
         <Typo
           size={18}
@@ -439,6 +467,10 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._20,
     borderWidth: 1,
     borderColor: colors.neutral700,
+  },
+  warningBox: {
+    borderColor: colors.rose,
+    backgroundColor: "rgba(244, 63, 94, 0.08)",
   },
   infoText: {
     flex: 1,

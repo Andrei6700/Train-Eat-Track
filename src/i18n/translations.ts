@@ -105,6 +105,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_continue_cycle: "Continue your training cycle",
     workout_auto_load_note:
       "Your exercises from previous workouts will be loaded automatically",
+    workout_first_cycle_empty_warning:
+      "If you don't add exercises today, this day will become a rest day in future cycles",
     workout_start_workout: "Start Workout",
     workout_no_workout_logged: "No workout logged",
     workout_forgot_log: "Forgot to log your workout that day?",
@@ -553,6 +555,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_continue_cycle: "Continua ciclul de antrenament",
     workout_auto_load_note:
       "Exercitiile din antrenamentele anterioare vor fi incarcate automat",
+    workout_first_cycle_empty_warning:
+      "Daca nu adaugi exercitii astazi, aceasta zi va deveni zi de pauza in ciclurile viitoare",
     workout_start_workout: "Incepe antrenamentul",
     workout_no_workout_logged: "Niciun antrenament inregistrat",
     workout_forgot_log: "Ai uitat sa inregistrezi antrenamentul in ziua respectiva?",
