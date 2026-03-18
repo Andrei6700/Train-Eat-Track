@@ -1,4 +1,4 @@
-import { addFoodToCache } from "@/src/services/cacheService";
+import { addFoodsToCache } from "@/src/services/cacheService";
 import { Food, ResponseType } from "@/src/types/index";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -14,6 +14,7 @@ const DEFAULT_HYBRID_TIMEOUT_MS = 6000;
 const DEFAULT_HYBRID_RETRIES = 0;
 const DEFAULT_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_RESULTS = 20;
+const REMOTE_QUERY_CACHE_MAX_SIZE = 50;
 
 type FetchRetryConfig = {
   retries?: number;
@@ -27,6 +28,18 @@ type RemoteQueryCacheEntry = {
 };
 
 const remoteQueryCache = new Map<string, RemoteQueryCacheEntry>();
+
+// Evict oldest entries when cache exceeds max size
+const evictRemoteQueryCache = () => {
+  if (remoteQueryCache.size <= REMOTE_QUERY_CACHE_MAX_SIZE) return;
+  const entries = [...remoteQueryCache.entries()].sort(
+    (a, b) => a[1].createdAt - b[1].createdAt,
+  );
+  const toRemove = entries.length - REMOTE_QUERY_CACHE_MAX_SIZE;
+  for (let i = 0; i < toRemove; i++) {
+    remoteQueryCache.delete(entries[i][0]);
+  }
+};
 
 // ==================== BARCODE CACHE ====================
 const BARCODE_MEMORY_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -136,8 +149,12 @@ const sleep = (ms: number): Promise<void> =>
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && error.name === "AbortError";
 
+// Strip diacritics (Romanian: ăâîșț etc.) for better matching
+const stripDiacritics = (value: string): string =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 const normalizeText = (value: string): string =>
-  value.trim().toLowerCase();
+  stripDiacritics(value.trim().toLowerCase());
 
 const foodIdentity = (food: SimplifiedFood): string => {
   if (food.code && !food.code.startsWith("local-")) {
@@ -154,13 +171,18 @@ const mergeUniqueFoods = (
   const merged: SimplifiedFood[] = [];
   const seen = new Set<string>();
 
-  for (const item of [...first, ...second]) {
-    const id = foodIdentity(item);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    merged.push(item);
-    if (merged.length >= maxResults) break;
-  }
+  const addItems = (items: SimplifiedFood[]) => {
+    for (const item of items) {
+      if (merged.length >= maxResults) return;
+      const id = foodIdentity(item);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(item);
+    }
+  };
+
+  addItems(first);
+  addItems(second);
 
   return merged;
 };
@@ -202,6 +224,33 @@ const toSimplifiedFromLocalFood = (food: Food): SimplifiedFood => {
   };
 };
 
+// Score a food name against a query using word-based matching.
+// Returns 0 for no match, higher scores for better matches.
+const scoreFoodMatch = (foodName: string, queryWords: string[]): number => {
+  let score = 0;
+  for (const word of queryWords) {
+    if (foodName.includes(word)) {
+      // Exact word inclusion
+      score += word.length * 2;
+      // Bonus for starting with the word
+      if (foodName.startsWith(word)) score += 3;
+    } else {
+      // Check if any word in the food name starts with the query word (prefix match)
+      const foodWords = foodName.split(/\s+/);
+      let prefixMatch = false;
+      for (const fw of foodWords) {
+        if (fw.startsWith(word) && word.length >= 2) {
+          score += word.length;
+          prefixMatch = true;
+          break;
+        }
+      }
+      if (!prefixMatch) return 0; // All query words must match
+    }
+  }
+  return score;
+};
+
 const getLocalMatches = (
   query: string,
   localFoods: Food[],
@@ -210,9 +259,24 @@ const getLocalMatches = (
   const normalizedQuery = normalizeText(query);
   if (!normalizedQuery || localFoods.length === 0) return [];
 
-  const localResults = localFoods
-    .filter((food) => normalizeText(food.name).includes(normalizedQuery))
-    .map((food) => toSimplifiedFromLocalFood(food));
+  const queryWords = normalizedQuery.split(/\s+/).filter((w) => w.length >= 1);
+  if (queryWords.length === 0) return [];
+
+  const scored: { food: Food; score: number }[] = [];
+  for (const food of localFoods) {
+    const normalizedName = normalizeText(food.name);
+    const score = scoreFoodMatch(normalizedName, queryWords);
+    if (score > 0) {
+      scored.push({ food, score });
+    }
+  }
+
+  // Sort by score descending for best matches first
+  scored.sort((a, b) => b.score - a.score);
+
+  const localResults = scored
+    .slice(0, maxResults)
+    .map(({ food }) => toSimplifiedFromLocalFood(food));
 
   return mergeUniqueFoods(localResults, [], maxResults);
 };
@@ -231,9 +295,8 @@ const cacheRemoteFoods = (foods: SimplifiedFood[]) => {
 
   void (async () => {
     try {
-      for (const food of foods.slice(0, 8)) {
-        await addFoodToCache(toFoodCachePayload(food));
-      }
+      const batch = foods.slice(0, 8).map(toFoodCachePayload);
+      await addFoodsToCache(batch);
     } catch (error) {
       console.error("[FoodAPI] Error caching remote foods:", error);
     }
@@ -357,15 +420,16 @@ export const searchFood = async (
       })
       .map((product: OpenFoodFactsProduct) => {
         const nutriments = product.nutriments || {};
+        // Prefer per-100g values for consistency with quantity multiplier
         const calories =
-          nutriments["energy-kcal_serving"] ||
           nutriments["energy-kcal_100g"] ||
+          nutriments["energy-kcal_serving"] ||
           0;
         const protein =
-          nutriments.proteins_serving || nutriments.proteins_100g || 0;
+          nutriments.proteins_100g || nutriments.proteins_serving || 0;
         const carbs =
-          nutriments.carbohydrates_serving || nutriments.carbohydrates_100g || 0;
-        const fat = nutriments.fat_serving || nutriments.fat_100g || 0;
+          nutriments.carbohydrates_100g || nutriments.carbohydrates_serving || 0;
+        const fat = nutriments.fat_100g || nutriments.fat_serving || 0;
 
         let servingSize = "100g";
         if (product.serving_size) {
@@ -479,6 +543,7 @@ export const searchFoodHybrid = async (
     createdAt: Date.now(),
     results: remoteResults,
   });
+  evictRemoteQueryCache();
 
   cacheRemoteFoods(remoteResults);
 

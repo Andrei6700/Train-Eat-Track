@@ -10,8 +10,8 @@ import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel } from "@/src/i18n/translations";
 import { getCachedFoods } from "@/src/services/cacheService";
 import {
-  searchFoodHybrid,
-  SimplifiedFood,
+    searchFoodHybrid,
+    SimplifiedFood,
 } from "@/src/services/foodApiService";
 import { getRecentFoodsByMeal } from "@/src/services/recentFoodsService";
 import { Food } from "@/src/types/index";
@@ -20,19 +20,25 @@ import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  KeyboardAvoidingView,
-  Modal,
-  PanResponder,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -404,7 +410,10 @@ const MealDetail = () => {
           }),
         );
       } catch (error: any) {
-        Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
+        Alert.alert(
+          t("common_error"),
+          error?.message || t("meal_detail_modal_error_add"),
+        );
       }
     },
     [addFoodToMeal, currentMeal.name, currentMealLabel, t],
@@ -467,7 +476,10 @@ const MealDetail = () => {
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("meal_detail_modal_error_add"),
+      );
     }
   };
 
@@ -508,7 +520,10 @@ const MealDetail = () => {
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert(t("common_error"), error?.message || t("meal_detail_modal_error_add"));
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("meal_detail_modal_error_add"),
+      );
     }
   };
 
@@ -749,7 +764,7 @@ const MealDetail = () => {
             <FlashList
               data={searchResults}
               renderItem={renderSearchResultItem}
-              keyExtractor={(item, index) => `search-${index}`}
+              keyExtractor={(item) => `search-${item.code || item.name}`}
               estimatedItemSize={80}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.flashListContent}
@@ -829,7 +844,7 @@ const MealDetail = () => {
                   <FlashList
                     data={recentFoods}
                     renderItem={renderRecentFoodItem}
-                    keyExtractor={(item, index) => `recent-${index}`}
+                    keyExtractor={(item) => `recent-${item.name}`}
                     estimatedItemSize={80}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={RecentFoodsEmptyState}

@@ -374,18 +374,44 @@ type CachedFood = Food & {
   cachedAt: number;
 };
 
+// In-memory mirror of the food cache to avoid repeated AsyncStorage reads
+let foodMemoryCache: CachedFood[] | null = null;
+let foodMemoryCacheLoadingPromise: Promise<CachedFood[]> | null = null;
+
+const loadFoodMemoryCache = async (): Promise<CachedFood[]> => {
+  if (foodMemoryCache) return foodMemoryCache;
+  if (foodMemoryCacheLoadingPromise) return foodMemoryCacheLoadingPromise;
+
+  foodMemoryCacheLoadingPromise = (async () => {
+    try {
+      const data = await AsyncStorage.getItem(CACHE_KEYS.FOOD_CACHE);
+      foodMemoryCache = data ? JSON.parse(data) : [];
+    } catch {
+      foodMemoryCache = [];
+    }
+    foodMemoryCacheLoadingPromise = null;
+    return foodMemoryCache!;
+  })();
+
+  return foodMemoryCacheLoadingPromise;
+};
+
+const persistFoodCache = async (foods: CachedFood[]): Promise<void> => {
+  foodMemoryCache = foods;
+  await AsyncStorage.setItem(CACHE_KEYS.FOOD_CACHE, JSON.stringify(foods));
+};
+
 export const addFoodToCache = async (food: Food): Promise<void> => {
   try {
     if (!food || !food.name) {
       return;
     }
 
-    const existingData = await AsyncStorage.getItem(CACHE_KEYS.FOOD_CACHE);
-    const foods: CachedFood[] = existingData ? JSON.parse(existingData) : [];
+    const foods = [...(await loadFoodMemoryCache())];
+    const lowerName = food.name.toLowerCase();
 
-    // Check if the food already exists
     const existingIndex = foods.findIndex(
-      (f) => f.name.toLowerCase() === food.name.toLowerCase()
+      (f) => f.name.toLowerCase() === lowerName
     );
 
     const cachedFood: CachedFood = {
@@ -394,33 +420,51 @@ export const addFoodToCache = async (food: Food): Promise<void> => {
     };
 
     if (existingIndex >= 0) {
-      // Update existing food
       foods[existingIndex] = cachedFood;
     } else {
-      // Add new food
       foods.unshift(cachedFood);
     }
 
-    // Keep only the last 100 foods
-    const trimmedFoods = foods.slice(0, 100);
-
-    await AsyncStorage.setItem(
-      CACHE_KEYS.FOOD_CACHE,
-      JSON.stringify(trimmedFoods)
-    );
+    await persistFoodCache(foods.slice(0, 100));
   } catch (error) {
     console.error("[CacheService] Error adding food to cache:", error);
   }
 };
 
+// Batch add multiple foods in a single read-modify-write cycle
+export const addFoodsToCache = async (newFoods: Food[]): Promise<void> => {
+  try {
+    const validFoods = newFoods.filter((f) => f && f.name);
+    if (validFoods.length === 0) return;
+
+    const foods = [...(await loadFoodMemoryCache())];
+    const now = Date.now();
+
+    for (const food of validFoods) {
+      const lowerName = food.name.toLowerCase();
+      const existingIndex = foods.findIndex(
+        (f) => f.name.toLowerCase() === lowerName
+      );
+
+      const cachedFood: CachedFood = { ...food, cachedAt: now };
+
+      if (existingIndex >= 0) {
+        foods[existingIndex] = cachedFood;
+      } else {
+        foods.unshift(cachedFood);
+      }
+    }
+
+    await persistFoodCache(foods.slice(0, 100));
+  } catch (error) {
+    console.error("[CacheService] Error batch-adding foods to cache:", error);
+  }
+};
+
 export const getCachedFoods = async (): Promise<Food[]> => {
   try {
-    const data = await AsyncStorage.getItem(CACHE_KEYS.FOOD_CACHE);
-    if (!data) return [];
+    const foods = await loadFoodMemoryCache();
 
-    const foods: CachedFood[] = JSON.parse(data);
-
-    // filtrează alimentele expirate
     const validFoods = foods.filter(
       (f) => Date.now() - f.cachedAt < CACHE_EXPIRY.FOOD_CACHE
     );
@@ -506,6 +550,7 @@ export const clearAllCache = async (): Promise<void> => {
 
     await AsyncStorage.multiRemove(cacheKeys);
     await removeCacheTimestamps(cacheKeys);
+    foodMemoryCache = null;
     console.log("[CacheService] All cache cleared");
   } catch (error) {
     console.error("[CacheService] Error clearing all cache:", error);
