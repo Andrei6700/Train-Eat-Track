@@ -9,6 +9,14 @@ export const uploadFileToCloudinary = async (
     folderName: string
 ): Promise<ResponseType> => {
     try {
+        // Validate folder name to prevent path traversal
+        if (!folderName || typeof folderName !== 'string') {
+            return { success: false, msg: "Invalid folder name" };
+        }
+
+        // Sanitize folder name
+        const sanitizedFolder = folderName.replace(/[^a-zA-Z0-9_-]/g, '');
+
         if (typeof file === "string") {
             return { success: true, data: file }
         }
@@ -22,20 +30,30 @@ export const uploadFileToCloudinary = async (
             } as any);
 
             formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-            formData.append("folder", folderName);
+            formData.append("folder", sanitizedFolder);
 
             const response = await axios.post(CLOUDINARY_API_URL, formData, {
             headers: {
                 "Content-Type": "multipart/form-data",
             },
+            timeout: 30000, // 30 second timeout
         });
 
             return { success: true, data: response?.data?.secure_url };
         }
         return { success: true };
     } catch (error: any) {
-        console.log("Error uploading file to Cloudinary:", error);
-        return { success: false, msg: error?.message || "Could not upload image." };
+        console.error("[ImageService] Error uploading file:", error.code || "upload_failed");
+
+        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+            return { success: false, msg: "Upload timeout. Please try again." };
+        }
+
+        if (error.response?.status === 413) {
+            return { success: false, msg: "Image is too large. Please use a smaller image." };
+        }
+
+        return { success: false, msg: "Could not upload image. Please try again." };
     }
 };
 

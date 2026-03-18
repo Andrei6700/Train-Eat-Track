@@ -2,6 +2,11 @@ import { auth, firestore } from "@/src/config/firebase";
 import { clearNutritionCalendarSummaryCache } from "@/src/services/nutritionCalendarCacheService";
 import { clearWorkoutHistoryCache } from "@/src/services/workoutHistoryCacheService";
 import { AuthContextType, UserType } from '@/src/types/index';
+import {
+  checkAuthRateLimit,
+  recordFailedAuthAttempt,
+  recordSuccessfulAuth
+} from "@/src/utils/rateLimit";
 import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
@@ -42,14 +47,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const login = async (email: string, password: string) => {
     try {
+      // Check rate limiting
+      const rateLimitCheck = await checkAuthRateLimit();
+      if (rateLimitCheck.isLocked) {
+        return { success: false, msg: rateLimitCheck.message || "Too many attempts" };
+      }
+
       await signInWithEmailAndPassword(auth, email, password);
+
+      // Clear rate limit on successful login
+      await recordSuccessfulAuth();
+
       return { success: true };
     } catch (error: any) {
+      // Record failed attempt
+      await recordFailedAuthAttempt();
+
       let msg = error.message;
-      console.log("error message:", msg);
+      // Don't log the full error which may contain sensitive info
+      console.error("[Auth] Login failed:", error.code || "unknown error");
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
       if (msg.includes("(auth/network-request-failed)")) msg = "Network error, please try again";
+      if (msg.includes("(auth/too-many-requests)")) msg = "Too many failed attempts. Please try again later";
       return { success: false, msg };
     }
   };
@@ -69,9 +89,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      console.log("error message:", msg);
+      // Don't log the full error which may contain sensitive info
+      console.error("[Auth] Registration failed:", error.code || "unknown error");
       if (msg.includes("(auth/email-already-in-use)")) msg = "This email is already in use";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/weak-password)")) msg = "Password is too weak";
+      if (msg.includes("(auth/network-request-failed)")) msg = "Network error, please try again";
       return { success: false, msg };
     }
   };
@@ -92,9 +115,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser({ ...userData });
       }
     } catch (error: any) {
-      let msg = error.message;
-      // return { success: false, msg };
-      console.log("error:",error)
+      // Don't log sensitive user data
+      console.error("[Auth] Failed to update user data:", error.code || "unknown error");
     }
   };
 

@@ -107,7 +107,20 @@ export const getWorkoutByUserAndDate = async (
   date: Date | string,
 ): Promise<ResponseType> => {
   try {
+    // Validate inputs
+    if (!userID || typeof userID !== 'string') {
+      return { success: false, msg: "Invalid user ID", code: "INVALID_INPUT" };
+    }
+
+    if (!date) {
+      return { success: false, msg: "Invalid date", code: "INVALID_INPUT" };
+    }
+
     const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      return { success: false, msg: "Invalid date format", code: "INVALID_INPUT" };
+    }
+
     targetDate.setHours(0, 0, 0, 0);
 
     const nextDay = new Date(targetDate);
@@ -131,8 +144,8 @@ export const getWorkoutByUserAndDate = async (
       data: parseWorkoutDoc(firstDoc.id, firstDoc.data()),
     };
   } catch (error: any) {
-    console.error("[workoutService] Error getting workout by date:", error);
-    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+    console.error("[workoutService] Error getting workout by date:", error.code || "unknown error");
+    return { success: false, msg: "Failed to retrieve workout", code: "UNKNOWN_ERROR" };
   }
 };
 
@@ -141,6 +154,19 @@ export const addWorkoutRemote = async (
   options?: { forceOverwrite?: boolean },
 ): Promise<ResponseType> => {
   try {
+    // Validate workout data
+    if (!workout || typeof workout !== 'object') {
+      return { success: false, code: "INVALID_INPUT", msg: "Invalid workout data" };
+    }
+
+    if (!workout.userID || typeof workout.userID !== 'string') {
+      return { success: false, code: "INVALID_INPUT", msg: "Invalid user ID" };
+    }
+
+    if (!workout.date) {
+      return { success: false, code: "INVALID_INPUT", msg: "Invalid workout date" };
+    }
+
     const workoutDate = normalizeWorkoutDate(workout.date);
 
     const existingResult = await getWorkoutByUserAndDate(workout.userID, workoutDate);

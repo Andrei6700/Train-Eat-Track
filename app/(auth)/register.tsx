@@ -7,6 +7,7 @@ import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { translateText } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
+import { validateEmail, validatePassword, validateName, sanitizeInput } from "@/src/utils/validation";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
@@ -27,11 +28,39 @@ const Register = () => {
       Alert.alert(t("auth_register_alert_title"), t("common_validation_fill_all_fields"));
       return;
     }
+
+    // Validate and sanitize name
+    const sanitizedName = sanitizeInput(nameRef.current);
+    const nameValidation = validateName(sanitizedName);
+
+    if (!nameValidation.isValid) {
+      Alert.alert(t("auth_register_alert_title"), nameValidation.error || "Invalid name");
+      return;
+    }
+
+    // Validate and sanitize email
+    const sanitizedEmail = sanitizeInput(emailRef.current).toLowerCase();
+    const emailValidation = validateEmail(sanitizedEmail);
+
+    if (!emailValidation.isValid) {
+      Alert.alert(t("auth_register_alert_title"), emailValidation.error || "Invalid email");
+      return;
+    }
+
+    // Validate password strength
+    const sanitizedPassword = sanitizeInput(passwordRef.current);
+    const passwordValidation = validatePassword(sanitizedPassword);
+
+    if (!passwordValidation.isValid) {
+      Alert.alert(t("auth_register_alert_title"), passwordValidation.error || "Invalid password");
+      return;
+    }
+
     setIsLoading(true);
     const res = await registerUser(
-      emailRef.current,
-      passwordRef.current,
-      nameRef.current
+      sanitizedEmail,
+      sanitizedPassword,
+      sanitizedName
     );
     setIsLoading(false);
     console.log('register result', res);

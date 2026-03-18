@@ -7,6 +7,7 @@ import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { translateText } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
+import { validateEmail, sanitizeInput } from "@/src/utils/validation";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
@@ -26,8 +27,26 @@ const Login = () => {
       Alert.alert(t("auth_login_alert_title"), t("common_validation_fill_all_fields"));
       return;
     }
+
+    // Sanitize and validate email
+    const sanitizedEmail = sanitizeInput(emailRef.current).toLowerCase();
+    const emailValidation = validateEmail(sanitizedEmail);
+
+    if (!emailValidation.isValid) {
+      Alert.alert(t("auth_login_alert_title"), emailValidation.error || "Invalid email");
+      return;
+    }
+
+    // Sanitize password (don't validate format on login, only on registration)
+    const sanitizedPassword = sanitizeInput(passwordRef.current);
+
+    if (sanitizedPassword.length === 0) {
+      Alert.alert(t("auth_login_alert_title"), "Password cannot be empty");
+      return;
+    }
+
     setIsLoading(true);
-    const res = await loginUser(emailRef.current, passwordRef.current);
+    const res = await loginUser(sanitizedEmail, sanitizedPassword);
     setIsLoading(false);
     if (!res.success) {
       Alert.alert(t("auth_login_alert_title"), res.msg);

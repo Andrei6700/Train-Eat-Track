@@ -202,14 +202,19 @@ const getRetryDelayMs = (attemptNumber: number): number => {
 
 const emitQueueSummary = async (): Promise<void> => {
   if (listeners.size === 0) return;
-  const summary = await getSyncSummary();
-  listeners.forEach((listener) => {
-    try {
-      listener(summary);
-    } catch (error) {
-      console.error("[SyncQueueV2] Listener error:", error);
-    }
-  });
+
+  try {
+    const summary = await getSyncSummary();
+    listeners.forEach((listener) => {
+      try {
+        listener(summary);
+      } catch (error) {
+        console.error("[SyncQueueV2] Listener error:", error);
+      }
+    });
+  } catch (error) {
+    console.error("[SyncQueueV2] Error emitting queue summary:", error);
+  }
 };
 
 const sanitizeQueue = (queue: unknown): SyncAction[] => {
