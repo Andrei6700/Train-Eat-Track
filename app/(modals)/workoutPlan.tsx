@@ -7,59 +7,90 @@ import Input from "@/src/components/ui/Input";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import {
   createWorkoutPlan,
   getUserWorkoutPlan,
   updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
+import { importWorkoutPlanFromExcel } from "@/src/services/workoutPlanImportService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
-import { verticalScale, scale } from "@/src/utils/styling";
+import { verticalScale } from "@/src/utils/styling";
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View
 } from "react-native";
+import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from 'expo-haptics'; // ✅ Haptics importat
 
-const DAYS_OF_WEEK = [
-  "Luni",
-  "Marti",
-  "Miercuri",
-  "Joi",
-  "Vineri",
-  "Sambata",
-  "Duminica",
-];
+const SPLIT_OPTIONS = [1, 2, 4, 7, 9, 14];
+const MIN_CUSTOM_SPLIT_DAYS = 1;
+const MAX_CUSTOM_SPLIT_DAYS = 60;
+const FOOTER_BUTTON_HEIGHT = verticalScale(52);
 
 const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const router = useRouter();
-  const { workoutPlan, refreshPlan, deletePlan } = useWorkoutPlan();
+  const {
+    workoutPlan,
+    refreshPlan,
+    deletePlan,
+    setPlanDraft,
+    clearPlanDraft,
+  } = useWorkoutPlan();
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [planName, setPlanName] = useState("");
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
-  const [days, setDays] = useState<DayWorkout[]>(
-    DAYS_OF_WEEK.map((day) => ({
-      day,
-      isRestDay: false,
-      exercises: [],
-    }))
-  );
+  const [splitDays, setSplitDays] = useState(1);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showCustomSplitModal, setShowCustomSplitModal] = useState(false);
+  const [customSplitInput, setCustomSplitInput] = useState("");
+  const [days, setDays] = useState<DayWorkout[]>([]);
+  const footerBottomOffset = insets.bottom + spacingY._12;
+  const footerReserve = footerBottomOffset + FOOTER_BUTTON_HEIGHT + spacingY._15;
+
+  const daysOfWeek = useMemo(() => {
+    return Array.from({ length: splitDays }, (_, i) => `Day ${i + 1}`);
+  }, [splitDays]);
+
+  const availableSplitOptions = useMemo(() => {
+    return Array.from(new Set([...SPLIT_OPTIONS, splitDays])).sort((a, b) => a - b);
+  }, [splitDays]);
+
+  useEffect(() => {
+    setDays((previousDays) => {
+      return daysOfWeek.map((day) => {
+        const existingDay = previousDays.find((d) => d.day === day);
+        if (existingDay) {
+          return existingDay;
+        }
+        return {
+          day,
+          isRestDay: false,
+          exercises: [],
+        };
+      });
+    });
+  }, [daysOfWeek]);
 
   useFocusEffect(
     useCallback(() => {
       loadWorkoutPlan();
-    }, [user?.uid, workoutPlan])
+    }, [user?.uid, workoutPlan?.id])
   );
 
   useEffect(() => {
@@ -70,11 +101,24 @@ const WorkoutPlanScreen = () => {
 
   const loadWorkoutPlan = async () => {
     if (!user?.uid) return;
+
+    if (workoutPlan && !workoutPlan.id) {
+      setExistingPlanId(null);
+      setPlanName(workoutPlan.planName || "");
+      setSplitDays(workoutPlan.splitDays || 1);
+      setDays(workoutPlan.days || []);
+      setLoading(false);
+      return;
+    }
+
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
       setExistingPlanId(result.data.id || null);
       if (result.data.planName && (!planName || planName === "")) {
         setPlanName(result.data.planName);
+      }
+      if (result.data.splitDays) {
+        setSplitDays(result.data.splitDays);
       }
       setDays(result.data.days);
     } else {
@@ -83,8 +127,35 @@ const WorkoutPlanScreen = () => {
     setLoading(false);
   };
 
+  const buildCurrentDraftPlan = (): WorkoutPlan | null => {
+    if (!user?.uid) return null;
+    return {
+      userID: user.uid,
+      planName: planName.trim(),
+      splitDays,
+      days,
+      createdAt: workoutPlan?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+  };
+
+  const handleClose = () => {
+    if (!existingPlanId) {
+      clearPlanDraft();
+    }
+    router.back();
+  };
+
   const handleDayPress = (day: string) => {
-    Haptics.selectionAsync(); // ✅ Feedback tactil
+    Haptics.selectionAsync();
+
+    if (!existingPlanId) {
+      const currentDraft = buildCurrentDraftPlan();
+      if (currentDraft) {
+        setPlanDraft(currentDraft);
+      }
+    }
+
     router.push({
       pathname: "/(modals)/dayWorkout",
       params: { day, planId: existingPlanId || "new" },
@@ -93,7 +164,7 @@ const WorkoutPlanScreen = () => {
 
   const handleSave = async () => {
     if (!planName.trim()) {
-      Alert.alert("Error", "Please add a name for your workout plan");
+      Alert.alert(t("common_error"), t("workout_plan_modal_alert_missing_name"));
       return;
     }
     if (!user?.uid) return;
@@ -104,6 +175,7 @@ const WorkoutPlanScreen = () => {
     const planData: WorkoutPlan = {
       userID: user.uid,
       planName: planName.trim(),
+      splitDays,
       days,
       createdAt: existingPlanId ? workoutPlan?.createdAt || new Date() : new Date(),
       updatedAt: new Date(),
@@ -119,26 +191,109 @@ const WorkoutPlanScreen = () => {
     setSaving(false);
 
     if (result.success) {
+      const queuedOffline =
+        result.code === "SYNC_QUEUED_OFFLINE" ||
+        result.code === "SYNC_RETRY_SCHEDULED";
+
       if (!existingPlanId && result.data?.id) {
         setExistingPlanId(result.data.id);
       }
-      await refreshPlan();
-      Alert.alert("Success", "Workout plan saved successfully!", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+
+      if (!queuedOffline) {
+        await refreshPlan();
+      }
+
+      clearPlanDraft();
+
+      Alert.alert(
+        queuedOffline ? t("common_saved_offline_title") : t("common_success"),
+        queuedOffline
+          ? t("workout_plan_modal_saved_offline_message")
+          : t("workout_plan_modal_saved_success_message"),
+        [
+        { text: t("common_ok"), onPress: () => router.back() },
+        ],
+      );
     } else {
-      Alert.alert("Error", result.msg || "Could not save workout plan");
+      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_save"));
     }
+  };
+
+  const handleImportWorkoutPlan = async () => {
+    if (existingPlanId || importing) return;
+
+    Haptics.selectionAsync();
+    setImporting(true);
+    const result = await importWorkoutPlanFromExcel();
+    setImporting(false);
+
+    if (!result.success) {
+      if (result.code === "PICKER_CANCELLED") {
+        return;
+      }
+
+      const fallbackMsg =
+        result.code === "INVALID_FILE_TYPE"
+          ? t("workout_plan_modal_import_error_invalid_file")
+          : result.code === "UNSUPPORTED_FORMAT"
+            ? t("workout_plan_modal_import_error_unsupported")
+            : t("workout_plan_modal_import_error_generic");
+
+      const details = result.errors?.length
+        ? `\n\n${result.errors.slice(0, 6).join("\n")}`
+        : "";
+      Alert.alert(
+        t("common_error"),
+        `${result.msg || fallbackMsg}${details}`,
+      );
+      return;
+    }
+
+    if (!result.data) {
+      Alert.alert(t("common_error"), t("workout_plan_modal_import_error_generic"));
+      return;
+    }
+
+    const importedPlan = result.data;
+    setPlanName(importedPlan.planName);
+    setSplitDays(importedPlan.splitDays);
+    setDays(importedPlan.days);
+    if (user?.uid) {
+      setPlanDraft({
+        userID: user.uid,
+        planName: importedPlan.planName,
+        splitDays: importedPlan.splitDays,
+        days: importedPlan.days,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    const importedExerciseCount = importedPlan.days.reduce((total, day) => {
+      return total + (day.exercises?.length || 0);
+    }, 0);
+
+    Alert.alert(
+      t("common_success"),
+      t("workout_plan_modal_import_success", {
+        splitDays: importedPlan.splitDays,
+        exercises: importedExerciseCount,
+      }),
+    );
   };
 
   const handleDelete = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
-      "Delete Workout Plan",
-      "Are you sure? This cannot be undone.",
+      t("workout_plan_modal_delete_confirm_title"),
+      t("workout_plan_modal_delete_confirm_message"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: performDelete },
+        { text: t("common_cancel"), style: "cancel" },
+        { 
+          text: t("workout_plan_modal_delete_confirm_action"),
+          style: "destructive", 
+          onPress: performDelete 
+        },
       ]
     );
   };
@@ -147,10 +302,22 @@ const WorkoutPlanScreen = () => {
     setDeleting(true);
     const result = await deletePlan();
     setDeleting(false);
+    
     if (result.success) {
-      router.back();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      clearPlanDraft();
+      Alert.alert(
+        t("workout_plan_modal_delete_success_title"),
+        result.msg || t("workout_plan_modal_delete_success_message"),
+        [
+          { 
+            text: t("common_ok"),
+            onPress: () => router.back() 
+          }
+        ]
+      );
     } else {
-      Alert.alert("Error", result.msg || "Could not delete workout plan");
+      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_delete"));
     }
   };
 
@@ -160,10 +327,55 @@ const WorkoutPlanScreen = () => {
     return dayData;
   };
 
+  const getTotalExercises = () => {
+    return days.reduce((total, day) => {
+      return total + (day.exercises?.length || 0);
+    }, 0);
+  };
+
+  const getRestDaysCount = () => {
+    return days.filter(d => d.isRestDay).length;
+  };
+
+  const getWorkoutDaysCount = () => {
+    return days.filter(d => !d.isRestDay && d.exercises.length > 0).length;
+  };
+
+  const getDisplayDayLabel = (dayValue: string) => {
+    const match = dayValue.match(/^Day\s+(\d+)$/i);
+    if (!match?.[1]) return dayValue;
+    return t("workout_plan_modal_day_label", { count: match[1] });
+  };
+
+  const openCustomSplitModal = () => {
+    setCustomSplitInput(String(splitDays));
+    setShowCustomSplitModal(true);
+  };
+
+  const applyCustomSplitDays = () => {
+    const trimmedValue = customSplitInput.trim();
+    const parsedValue = Number(trimmedValue);
+    const isValidInteger = /^\d+$/.test(trimmedValue);
+
+    if (
+      !isValidInteger ||
+      !Number.isInteger(parsedValue) ||
+      parsedValue < MIN_CUSTOM_SPLIT_DAYS ||
+      parsedValue > MAX_CUSTOM_SPLIT_DAYS
+    ) {
+      Alert.alert(t("common_error"), t("workout_plan_modal_custom_split_invalid"));
+      return;
+    }
+
+    Haptics.selectionAsync();
+    setSplitDays(parsedValue);
+    setShowCustomSplitModal(false);
+  };
+
   if (loading) {
     return (
       <ModalWrapper>
-        <Header title="Workout Plan" leftIcon={<BackButton />} />
+        <Header title={t("workout_plan_modal_title")} leftIcon={<BackButton />} />
         <Loading />
       </ModalWrapper>
     );
@@ -173,120 +385,385 @@ const WorkoutPlanScreen = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title={existingPlanId ? "Edit Plan" : "Create Plan"}
-          leftIcon={<BackButton />}
+          title={
+            existingPlanId
+              ? t("workout_plan_modal_edit_title")
+              : t("workout_plan_modal_create_title")
+          }
+          leftIcon={<BackButton onPress={handleClose} />}
           style={{ marginBottom: spacingY._15 }}
         />
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: footerReserve }]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Plan Name Input */}
-          <View style={styles.inputContainer}>
-            <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._10, marginLeft: spacingX._5 }}>
-              Plan Name
+          <Animated.View 
+            entering={FadeInDown.duration(400)}
+            style={styles.inputContainer}
+          >
+            <Typo size={16} fontWeight="600" style={styles.label}>
+              {t("workout_plan_modal_plan_name_label")}
             </Typo>
             <Input
-              placeholder="e.g., Push Pull Legs"
+              placeholder={t("workout_plan_modal_plan_name_placeholder")}
               value={planName}
               onChangeText={setPlanName}
               containerStyle={styles.input}
             />
-          </View>
+          </Animated.View>
+
+          {!existingPlanId && (
+            <Animated.View
+              entering={FadeInDown.duration(400).delay(40)}
+              style={styles.importContainer}
+            >
+              <TouchableOpacity
+                style={[styles.importButton, importing && styles.importButtonDisabled]}
+                onPress={handleImportWorkoutPlan}
+                disabled={importing}
+                activeOpacity={0.85}
+              >
+                <Icons.FileXls size={20} color={colors.primary} weight="fill" />
+                <View style={{ flex: 1 }}>
+                  <Typo size={15} fontWeight="700" color={colors.white}>
+                    {importing
+                      ? t("workout_plan_modal_import_loading")
+                      : t("workout_plan_modal_import_button")}
+                  </Typo>
+                  <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                    {t("workout_plan_modal_import_caption")}
+                  </Typo>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(50)}
+            style={styles.splitContainer}
+          >
+            <View style={styles.splitHeader}>
+              <Typo size={16} fontWeight="600" style={styles.label}>
+                {t("workout_plan_modal_split_days_label")}
+              </Typo>
+              <TouchableOpacity
+                onPress={() => setShowInfoModal(true)}
+                style={styles.infoButton}
+              >
+                <Icons.Info size={20} color={colors.primary} weight="fill" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.splitOptions}>
+              {availableSplitOptions.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.splitOption,
+                    splitDays === option && styles.splitOptionActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSplitDays(option);
+                  }}
+                >
+                  <Typo
+                    size={15}
+                    fontWeight="600"
+                    color={splitDays === option ? colors.black : colors.white}
+                  >
+                    {option}
+                  </Typo>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.splitOptionCustom}
+                onPress={openCustomSplitModal}
+                activeOpacity={0.85}
+              >
+                <Icons.Plus size={14} color={colors.primary} weight="bold" />
+                <Typo size={14} fontWeight="600" color={colors.primary}>
+                  {t("workout_plan_modal_custom_split_button")}
+                </Typo>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+
+          <Animated.View 
+            entering={FadeInDown.duration(400).delay(100)}
+            style={styles.statsContainer}
+          >
+            <View style={styles.statCard}>
+              <Icons.Barbell size={24} color={colors.primary} weight="fill" />
+              <Typo size={20} fontWeight="700" color={colors.white}>
+                {getWorkoutDaysCount()}
+              </Typo>
+              <Typo size={12} color={colors.neutral400}>
+                {t("workout_plan_modal_stat_workout_days")}
+              </Typo>
+            </View>
+
+            <View style={styles.statCard}>
+              <Icons.Coffee size={24} color="#F59E0B" weight="fill" />
+              <Typo size={20} fontWeight="700" color={colors.white}>
+                {getRestDaysCount()}
+              </Typo>
+              <Typo size={12} color={colors.neutral400}>
+                {t("workout_plan_modal_stat_rest_days")}
+              </Typo>
+            </View>
+
+            <View style={styles.statCard}>
+              <Icons.ListChecks size={24} color="#3B82F6" weight="fill" />
+              <Typo size={20} fontWeight="700" color={colors.white}>
+                {getTotalExercises()}
+              </Typo>
+              <Typo size={12} color={colors.neutral400}>
+                {t("workout_plan_modal_stat_exercises")}
+              </Typo>
+            </View>
+          </Animated.View>
 
           <View style={styles.daysContainer}>
-            {DAYS_OF_WEEK.map((day) => {
+            {daysOfWeek.map((day, index) => {
               const dayData = getDayStatus(day);
               const isRest = dayData?.isRestDay;
               const hasExercises = dayData && dayData.exercises.length > 0;
               const exerciseCount = dayData?.exercises.length || 0;
 
               return (
-                <TouchableOpacity
+                <Animated.View
                   key={day}
-                  style={[
-                    styles.dayCard,
-                    isRest && styles.dayCardRest,
-                    hasExercises && styles.dayCardActive,
-                  ]}
-                  onPress={() => handleDayPress(day)}
-                  activeOpacity={0.9} // Feedback vizual la apasare
+                  entering={FadeInRight.duration(400).delay(index * 50)}
                 >
-                  {/* Card Header */}
-                  <View style={styles.cardHeader}>
-                    <View style={styles.dayTitleRow}>
-                      <Typo size={18} fontWeight="700" color={isRest ? colors.neutral400 : colors.white}>
-                        {day}
-                      </Typo>
-                      {isRest && (
-                        <View style={styles.restBadge}>
-                          <Icons.Coffee size={14} color={colors.neutral400} weight="fill" />
-                          <Typo size={12} color={colors.neutral400} fontWeight="600">Rest</Typo>
-                        </View>
-                      )}
-                      {!isRest && hasExercises && (
-                         <View style={styles.countBadge}>
-                           <Typo size={12} color={colors.black} fontWeight="700">{exerciseCount} exercises</Typo>
-                         </View>
-                      )}
-                    </View>
-                    <Icons.CaretRight size={20} color={colors.neutral500} />
-                  </View>
-
-                  {/* Card Body - Exercise Summary */}
-                  {!isRest && hasExercises && (
-                    <View style={styles.cardBody}>
-                      {dayData.exercises.slice(0, 3).map((ex, idx) => (
-                        <View key={idx} style={styles.exerciseRow}>
-                           <View style={styles.dot} />
-                           <Typo size={14} color={colors.neutral300} numberOfLines={1}>
-                             {ex.exerciseName}
-                           </Typo>
-                           <Typo size={13} color={colors.neutral500}>
-                             ({ex.sets.length} sets)
-                           </Typo>
-                        </View>
-                      ))}
-                      {exerciseCount > 3 && (
-                        <Typo size={13} color={colors.primary} style={{ marginTop: 4, marginLeft: 14 }}>
-                          + {exerciseCount - 3} more...
+                  <TouchableOpacity
+                    style={[
+                      styles.dayCard,
+                      isRest && styles.dayCardRest,
+                      hasExercises && styles.dayCardActive,
+                    ]}
+                    onPress={() => handleDayPress(day)}
+                    activeOpacity={0.9}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View style={styles.dayTitleRow}>
+                        <Typo size={18} fontWeight="700" color={isRest ? colors.neutral400 : colors.white}>
+                          {getDisplayDayLabel(day)}
                         </Typo>
-                      )}
+                        {isRest && (
+                          <View style={styles.restBadge}>
+                            <Icons.Coffee size={14} color={colors.neutral400} weight="fill" />
+                            <Typo size={12} color={colors.neutral400} fontWeight="600">
+                              {t("workout_plan_modal_rest_badge")}
+                            </Typo>
+                          </View>
+                        )}
+                        {!isRest && hasExercises && (
+                           <View style={styles.countBadge}>
+                             <Typo size={12} color={colors.black} fontWeight="700">
+                               {exerciseCount}{" "}
+                               {exerciseCount === 1
+                                 ? t("workout_plan_modal_exercise_singular")
+                                 : t("workout_plan_modal_exercise_plural")}
+                             </Typo>
+                           </View>
+                        )}
+                      </View>
+                      <Icons.CaretRight size={20} color={colors.neutral500} />
                     </View>
-                  )}
 
-                  {!isRest && !hasExercises && (
-                    <Typo size={14} color={colors.neutral500} style={{ marginTop: spacingY._5 }}>
-                      Tap to add exercises...
-                    </Typo>
-                  )}
-                </TouchableOpacity>
+                    {!isRest && hasExercises && (
+                      <View style={styles.cardBody}>
+                        {dayData.exercises.slice(0, 3).map((ex, idx) => (
+                          <View key={idx} style={styles.exerciseRow}>
+                             <View style={styles.dot} />
+                             <Typo size={14} color={colors.neutral300} textProps={{ numberOfLines: 1 }}>
+                               {ex.exerciseName}
+                             </Typo>
+                             <Typo size={13} color={colors.neutral500}>
+                               {t("workout_plan_modal_sets_count", {
+                                 count: ex.sets.length,
+                               })}
+                             </Typo>
+                          </View>
+                        ))}
+                        {exerciseCount > 3 && (
+                          <Typo size={13} color={colors.primary} style={{ marginTop: 4, marginLeft: 14 }}>
+                            {t("workout_plan_modal_more_exercises", {
+                              count: exerciseCount - 3,
+                            })}
+                          </Typo>
+                        )}
+                      </View>
+                    )}
+
+                    {!isRest && !hasExercises && (
+                      <Typo size={14} color={colors.neutral500} style={{ marginTop: spacingY._5 }}>
+                        {t("workout_plan_modal_tap_add_exercises")}
+                      </Typo>
+                    )}
+                  </TouchableOpacity>
+                </Animated.View>
               );
             })}
           </View>
 
           {existingPlanId && (
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={handleDelete}
-              disabled={deleting}
-            >
-              <Icons.Trash size={20} color={colors.rose} />
-              <Typo size={16} fontWeight="600" color={colors.rose}>
-                {deleting ? "Deleting..." : "Delete Plan"}
-              </Typo>
-            </TouchableOpacity>
+            <Animated.View entering={FadeInDown.duration(400).delay(400)}>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                <Icons.Trash size={20} color={colors.rose} weight="fill" />
+                <View style={{ flex: 1 }}>
+                  <Typo size={16} fontWeight="600" color={colors.rose}>
+                    {deleting
+                      ? t("workout_plan_modal_delete_button_loading")
+                      : t("workout_plan_modal_delete_button")}
+                  </Typo>
+                  <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                    {t("workout_plan_modal_delete_caption")}
+                  </Typo>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
           )}
         </ScrollView>
 
-        <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button onPress={handleSave} loading={saving} style={styles.saveButton}>
+        <View style={[styles.footerSticky, { bottom: footerBottomOffset }]}>
+          <Button onPress={handleSave} loading={saving}>
             <Typo color={colors.black} fontWeight="700" size={18}>
-              Save Changes
+              {t("workout_plan_modal_save_changes")}
             </Typo>
           </Button>
         </View>
+
+        <Modal
+          visible={showInfoModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowInfoModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowInfoModal(false)}
+          >
+            <View style={styles.infoModal}>
+              <View style={styles.infoHeader}>
+                <Icons.Info size={24} color={colors.primary} weight="fill" />
+                <Typo size={18} fontWeight="700" style={{ flex: 1, marginLeft: 10 }}>
+                  {t("workout_plan_modal_info_title")}
+                </Typo>
+                <TouchableOpacity onPress={() => setShowInfoModal(false)}>
+                  <Icons.X size={24} color={colors.white} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.infoContent}>
+                <Typo size={15} color={colors.neutral200} style={{ lineHeight: 22 }}>
+                  {t("workout_plan_modal_info_desc")}
+                </Typo>
+
+                <View style={styles.infoExamples}>
+                  <View style={styles.exampleItem}>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_1_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_1_desc")}
+                    </Typo>
+                  </View>
+
+                  <View style={styles.exampleItem}>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_2_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_2_desc")}
+                    </Typo>
+                  </View>
+
+                  <View style={styles.exampleItem}>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_3_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_3_desc")}
+                    </Typo>
+                  </View>
+
+                  <View style={styles.exampleItem}>
+                    <Typo size={14} fontWeight="600" color={colors.primary}>
+                      {t("workout_plan_modal_info_example_4_title")}
+                    </Typo>
+                    <Typo size={13} color={colors.neutral400}>
+                      {t("workout_plan_modal_info_example_4_desc")}
+                    </Typo>
+                  </View>
+                </View>
+
+                <Typo size={13} color={colors.neutral500} style={{ marginTop: 15, fontStyle: 'italic' }}>
+                  {t("workout_plan_modal_info_footer")}
+                </Typo>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        <Modal
+          visible={showCustomSplitModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCustomSplitModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCustomSplitModal(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {}}
+              style={styles.customSplitModal}
+            >
+              <Typo size={18} fontWeight="700" style={styles.customSplitTitle}>
+                {t("workout_plan_modal_custom_split_title")}
+              </Typo>
+              <Typo size={14} color={colors.neutral400}>
+                {t("workout_plan_modal_custom_split_hint")}
+              </Typo>
+
+              <Input
+                value={customSplitInput}
+                onChangeText={setCustomSplitInput}
+                placeholder={t("workout_plan_modal_custom_split_placeholder")}
+                keyboardType="number-pad"
+                containerStyle={styles.customSplitInput}
+                autoFocus
+              />
+
+              <View style={styles.customSplitActions}>
+                <TouchableOpacity
+                  style={styles.customSplitCancelButton}
+                  onPress={() => setShowCustomSplitModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Typo size={15} fontWeight="600" color={colors.neutral300}>
+                    {t("common_cancel")}
+                  </Typo>
+                </TouchableOpacity>
+                <Button onPress={applyCustomSplitDays} style={styles.customSplitApplyButton}>
+                  <Typo size={15} fontWeight="700" color={colors.black}>
+                    {t("workout_plan_modal_custom_split_apply")}
+                  </Typo>
+                </Button>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </View>
     </ModalWrapper>
   );
@@ -303,11 +780,92 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(120),
   },
   inputContainer: {
-    marginBottom: spacingY._25,
+    marginBottom: spacingY._20,
+  },
+  label: {
+    marginBottom: spacingY._10,
+    marginLeft: spacingX._5,
   },
   input: {
     backgroundColor: colors.neutral800,
     borderColor: colors.neutral700,
+  },
+  importContainer: {
+    marginBottom: spacingY._20,
+  },
+  importButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._12,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    paddingVertical: spacingY._12,
+    paddingHorizontal: spacingX._15,
+  },
+  importButtonDisabled: {
+    opacity: 0.6,
+  },
+  splitContainer: {
+    marginBottom: spacingY._25,
+  },
+  splitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacingY._10,
+  },
+  infoButton: {
+    padding: 4,
+  },
+  splitOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacingX._10,
+  },
+  splitOption: {
+    minWidth: verticalScale(52),
+    paddingHorizontal: spacingX._15,
+    paddingVertical: spacingY._12,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  splitOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  splitOptionCustom: {
+    minWidth: verticalScale(98),
+    paddingHorizontal: spacingX._15,
+    paddingVertical: spacingY._12,
+    backgroundColor: colors.neutral900,
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacingX._7,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacingX._10,
+    marginBottom: spacingY._25,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._15,
+    padding: spacingX._15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    gap: verticalScale(4),
   },
   daysContainer: {
     gap: spacingY._15,
@@ -318,22 +876,13 @@ const styles = StyleSheet.create({
     padding: spacingX._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
-    // Shadow for "Visual Polish"
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 4,
   },
   dayCardActive: {
-    borderColor: colors.neutral600, // Slightly lighter border for active days
-    backgroundColor: colors.neutral800,
+    borderColor: colors.neutral600,
   },
   dayCardRest: {
-    backgroundColor: 'rgba(38, 38, 38, 0.5)', // neutral800 with opacity
-    borderColor: 'transparent',
+    backgroundColor: 'rgba(38, 38, 38, 0.5)',
     borderStyle: 'dashed',
-    borderWidth: 1,
   },
   cardHeader: {
     flexDirection: "row",
@@ -381,12 +930,13 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacingX._10,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)', // Rose with opacity
+    gap: spacingX._12,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderRadius: radius._17,
-    padding: spacingY._15,
-    marginTop: spacingY._30,
+    padding: spacingX._20,
+    marginTop: spacingY._15,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   footerSticky: {
     position: "absolute",
@@ -394,11 +944,77 @@ const styles = StyleSheet.create({
     right: spacingX._20,
     zIndex: 30,
   },
-  saveButton: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
-  }
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacingX._20,
+  },
+  infoModal: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._20,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacingX._20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral700,
+  },
+  infoContent: {
+    padding: spacingX._20,
+  },
+  infoExamples: {
+    marginTop: 20,
+    gap: 12,
+  },
+  exampleItem: {
+    backgroundColor: colors.neutral900,
+    padding: spacingX._15,
+    borderRadius: radius._12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  customSplitModal: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._20,
+    width: "100%",
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    padding: spacingX._20,
+    gap: spacingY._12,
+  },
+  customSplitTitle: {
+    marginBottom: spacingY._5,
+  },
+  customSplitInput: {
+    marginTop: spacingY._10,
+    backgroundColor: colors.neutral900,
+    borderColor: colors.neutral700,
+  },
+  customSplitActions: {
+    marginTop: spacingY._7,
+    flexDirection: "row",
+    gap: spacingX._10,
+    alignItems: "center",
+  },
+  customSplitCancelButton: {
+    flex: 1,
+    height: verticalScale(52),
+    borderRadius: radius._17,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    backgroundColor: colors.neutral900,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  customSplitApplyButton: {
+    flex: 1,
+  },
 });

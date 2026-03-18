@@ -1,172 +1,395 @@
 import { firestore } from "@/src/config/firebase";
-import { DailyNutrition, ResponseType } from '@/src/types/index';
+import {
+  getCachedNutritionCalendarSummary,
+  setCachedNutritionCalendarSummary,
+} from "@/src/services/nutritionCalendarCacheService";
+import { DailyNutrition, ResponseType } from "@/src/types/index";
 import {
   addDoc,
   collection,
   doc,
   getDocs,
+  limit,
   orderBy,
   query,
   serverTimestamp,
   Timestamp,
   updateDoc,
-  where
+  where,
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "nutrition";
+const REMOTE_TIMEOUT_MS = 8000;
 
-// ✅ Helper pentru a normaliza data la midnight
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  operationName: string,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${operationName} timed out after ${REMOTE_TIMEOUT_MS}ms`));
+        }, REMOTE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 };
 
-// ✅ Helper pentru a crea document ID consistent
-const getDateKey = (date: Date): string => {
+export const getDateKey = (date: Date): string => {
   const normalized = normalizeDate(date);
-  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}-${String(
+    normalized.getDate(),
+  ).padStart(2, "0")}`;
 };
 
-// Obține datele nutriționale pentru o zi specificată
+const parseFirestoreDate = (value: unknown, fallback: Date): Date => {
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  const parsed = new Date(value as any);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+};
+
+const parseNutritionDoc = (docId: string, payload: any, fallbackDate: Date): DailyNutrition => {
+  const nutritionDate = parseFirestoreDate(payload.date, fallbackDate);
+  const updatedAt = payload.updatedAt ? parseFirestoreDate(payload.updatedAt, nutritionDate) : undefined;
+
+  return {
+    id: docId,
+    ...payload,
+    date: nutritionDate,
+    updatedAt,
+  } as DailyNutrition;
+};
+
+const getDocUpdatedAtMillis = (payload: any, fallbackDate: Date): number => {
+  const candidate =
+    payload.updatedAt ?? payload.createdAt ?? payload.date ?? fallbackDate;
+  return parseFirestoreDate(candidate, fallbackDate).getTime();
+};
+
+const parseDateFromDateKey = (value: unknown): Date | null => {
+  if (typeof value !== "string") return null;
+
+  const [yearRaw, monthRaw, dayRaw] = value.split("-");
+  const year = Number.parseInt(yearRaw ?? "", 10);
+  const month = Number.parseInt(monthRaw ?? "", 10);
+  const day = Number.parseInt(dayRaw ?? "", 10);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const parseDateFromUnknown = (value: unknown): Date | null => {
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+};
+
+const pickLatestNutritionDoc = (
+  docs: { id: string; data: () => any }[],
+  fallbackDate: Date,
+): { id: string; data: () => any } => {
+  let best = docs[0];
+  let bestUpdatedAt = getDocUpdatedAtMillis(best.data(), fallbackDate);
+
+  for (let index = 1; index < docs.length; index += 1) {
+    const current = docs[index];
+    const currentUpdatedAt = getDocUpdatedAtMillis(current.data(), fallbackDate);
+    if (currentUpdatedAt > bestUpdatedAt) {
+      best = current;
+      bestUpdatedAt = currentUpdatedAt;
+    }
+  }
+
+  return best;
+};
+
 export const getDailyNutrition = async (
   userID: string,
-  date: Date
+  date: Date,
 ): Promise<ResponseType> => {
   try {
     const dateKey = getDateKey(date);
 
-    console.log('[NutritionService] Searching for dateKey:', dateKey);
-
-    // ✅ Căutăm după userID și dateKey (nu mai comparăm timestamp-uri)
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      where("dateKey", "==", dateKey)
+      where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getDailyNutrition.getDocs",
+    );
 
     if (!querySnapshot.empty) {
-      const docData = querySnapshot.docs[0];
-      const data = docData.data() as any;
-
-      console.log('[NutritionService] Found existing document:', docData.id);
-
-      // Convertim date field din Timestamp în Date
-      let nutritionDate = date;
-      if (data.date) {
-        nutritionDate = data.date instanceof Timestamp
-          ? data.date.toDate()
-          : new Date(data.date);
-      }
-
+      const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
       return {
         success: true,
-        data: {
-          id: docData.id,
-          ...data,
-          date: nutritionDate,
-        } as DailyNutrition,
+        data: parseNutritionDoc(latestDoc.id, latestDoc.data(), date),
       };
     }
 
-    console.log('[NutritionService] No document found for dateKey:', dateKey);
-
-    // ✅ NU MAI CREĂM DOCUMENT AICI - doar returnăm null
     return {
       success: true,
       data: null,
     };
   } catch (error: any) {
     console.error("[NutritionService] Error fetching daily nutrition:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Salvează sau actualizează datele nutriționale zilnice
 export const saveDailyNutrition = async (
-  nutrition: DailyNutrition
+  nutrition: DailyNutrition,
 ): Promise<ResponseType> => {
   try {
-    const dateKey = getDateKey(new Date(nutrition.date));
+    const date = new Date(nutrition.date);
+    const dateKey = getDateKey(date);
 
     if (nutrition.id) {
-      // ✅ UPDATE - păstrăm ID-ul existent
-      console.log('[NutritionService] Updating document:', nutrition.id);
-
       const docRef = doc(firestore, COLLECTION_NAME, nutrition.id);
-      const { id, ...updateData } = nutrition;
+      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+        localUpdatedAt?: number;
+      };
 
-      await updateDoc(docRef, {
-        ...updateData,
-        dateKey, // ✅ Salvăm și dateKey pentru căutare
-        date: Timestamp.fromDate(new Date(nutrition.date)),
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyNutrition.updateDoc",
+      );
 
-      return { success: true, msg: "Nutrition updated successfully" };
-    } else {
-      // ✅ CREATE - document nou
-      console.log('[NutritionService] Creating new document for dateKey:', dateKey);
+      return { success: true, data: { id: nutrition.id } };
+    }
 
-      const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", nutrition.userID),
+      where("dateKey", "==", dateKey),
+    );
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "saveDailyNutrition.getDocs",
+    );
+
+    if (!querySnapshot.empty) {
+      const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
+      const docRef = doc(firestore, COLLECTION_NAME, latestDoc.id);
+      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+        localUpdatedAt?: number;
+      };
+
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyNutrition.updateDoc",
+      );
+
+      return { success: true, data: { id: latestDoc.id } };
+    }
+
+    const docRef = await withTimeout(
+      addDoc(collection(firestore, COLLECTION_NAME), {
         ...nutrition,
-        dateKey, // ✅ Salvăm dateKey pentru căutare rapidă
-        date: Timestamp.fromDate(new Date(nutrition.date)),
+        dateKey,
+        date: Timestamp.fromDate(date),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }),
+      "saveDailyNutrition.addDoc",
+    );
 
-      console.log('[NutritionService] Document created with ID:', docRef.id);
-
-      return { success: true, data: { id: docRef.id } };
-    }
+    return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
     console.error("[NutritionService] Error saving daily nutrition:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Obține istoricul nutrițional al user-ului
 export const getUserNutritionHistory = async (
-  userID: string
+  userID: string,
 ): Promise<ResponseType> => {
   try {
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      orderBy("dateKey", "desc")
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getUserNutritionHistory.getDocs",
+    );
     const nutritionHistory: DailyNutrition[] = [];
 
     querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as any;
+      nutritionHistory.push(parseNutritionDoc(docSnap.id, docSnap.data(), new Date()));
+    });
 
-      let date = new Date();
-      if (data.date instanceof Timestamp) {
-        date = data.date.toDate();
-      } else if (data.date) {
-        date = new Date(data.date);
+    nutritionHistory.sort((left, right) => {
+      const leftDate = parseFirestoreDate(left.date, new Date(0));
+      const rightDate = parseFirestoreDate(right.date, new Date(0));
+      const leftDay = new Date(
+        leftDate.getFullYear(),
+        leftDate.getMonth(),
+        leftDate.getDate(),
+      ).getTime();
+      const rightDay = new Date(
+        rightDate.getFullYear(),
+        rightDate.getMonth(),
+        rightDate.getDate(),
+      ).getTime();
+
+      if (rightDay !== leftDay) {
+        return rightDay - leftDay;
       }
 
-      nutritionHistory.push({
-        id: docSnap.id,
-        ...data,
-        date,
-      } as DailyNutrition);
+      const leftUpdated = parseFirestoreDate(
+        (left as any).updatedAt ?? (left as any).createdAt ?? left.date,
+        new Date(0),
+      ).getTime();
+      const rightUpdated = parseFirestoreDate(
+        (right as any).updatedAt ?? (right as any).createdAt ?? right.date,
+        new Date(0),
+      ).getTime();
+
+      return rightUpdated - leftUpdated;
     });
 
     return { success: true, data: nutritionHistory };
   } catch (error: any) {
     console.error("[NutritionService] Error fetching nutrition history:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
-// Actualizează obiectivele calorice
+export const getUserNutritionEarliestDate = async (
+  userID: string,
+): Promise<Date | null> => {
+  const getEarliestFromUserOnlyQuery = async (): Promise<Date | null> => {
+    const fallbackQuery = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(fallbackQuery),
+      "getUserNutritionEarliestDate.fallbackGetDocs",
+    );
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    let earliestTimestamp = Number.POSITIVE_INFINITY;
+
+    querySnapshot.forEach((docSnap) => {
+      const payload = docSnap.data();
+      const fromDateKey = parseDateFromDateKey(payload?.dateKey);
+      const fromDate = parseDateFromUnknown(payload?.date);
+      const candidate = fromDateKey ?? fromDate;
+
+      if (!candidate) return;
+      const normalized = normalizeDate(candidate);
+      const timestamp = normalized.getTime();
+      if (timestamp < earliestTimestamp) {
+        earliestTimestamp = timestamp;
+      }
+    });
+
+    if (!Number.isFinite(earliestTimestamp)) {
+      return null;
+    }
+
+    return new Date(earliestTimestamp);
+  };
+
+  try {
+    const q = query(
+      collection(firestore, COLLECTION_NAME),
+      where("userID", "==", userID),
+      orderBy("dateKey", "asc"),
+      limit(1),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getUserNutritionEarliestDate.getDocs",
+    );
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const docSnap = querySnapshot.docs[0];
+    const parsed = parseNutritionDoc(docSnap.id, docSnap.data(), new Date(0));
+    return parsed?.date ? normalizeDate(new Date(parsed.date)) : null;
+  } catch (error: any) {
+    const isMissingIndex =
+      error?.code === "failed-precondition" ||
+      String(error?.message || "").includes("requires an index");
+
+    if (!isMissingIndex) {
+      console.error("[NutritionService] Error fetching earliest nutrition date:", error);
+      return null;
+    }
+
+    try {
+      const fallbackEarliestDate = await getEarliestFromUserOnlyQuery();
+      if (__DEV__) {
+        console.log(
+          "[NutritionService] Earliest nutrition date loaded via fallback query",
+        );
+      }
+      return fallbackEarliestDate;
+    } catch (fallbackError) {
+      console.error(
+        "[NutritionService] Error fetching earliest nutrition date via fallback:",
+        fallbackError,
+      );
+      return null;
+    }
+  }
+};
+
 export const updateNutritionGoals = async (
   userID: string,
   goals: {
@@ -174,7 +397,7 @@ export const updateNutritionGoals = async (
     proteinGoal?: number;
     carbsGoal?: number;
     fatGoal?: number;
-  }
+  },
 ): Promise<ResponseType> => {
   try {
     const dateKey = getDateKey(new Date());
@@ -182,22 +405,78 @@ export const updateNutritionGoals = async (
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      where("dateKey", "==", dateKey)
+      where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "updateNutritionGoals.getDocs",
+    );
 
     if (!querySnapshot.empty) {
       const docRef = doc(firestore, COLLECTION_NAME, querySnapshot.docs[0].id);
-      await updateDoc(docRef, {
-        ...goals,
-        updatedAt: serverTimestamp(),
-      });
+      await withTimeout(
+        updateDoc(docRef, {
+          ...goals,
+          updatedAt: serverTimestamp(),
+        }),
+        "updateNutritionGoals.updateDoc",
+      );
     }
 
     return { success: true, msg: "Goals updated successfully" };
   } catch (error: any) {
     console.error("[NutritionService] Error updating goals:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
+};
+
+let activePrefetchPromise: Promise<void> | null = null;
+let memoryEarliestDate: { userID: string; earliestDate: string | null } | null = null;
+
+export const getMemoryEarliestDate = (userID: string): string | null | undefined => {
+  if (memoryEarliestDate && memoryEarliestDate.userID === userID) {
+    return memoryEarliestDate.earliestDate;
+  }
+  return undefined;
+};
+
+export const prefetchNutritionCalendarSummary = (
+  userID: string,
+): Promise<void> => {
+  if (activePrefetchPromise) return activePrefetchPromise;
+
+  activePrefetchPromise = (async () => {
+    try {
+      const cachedSummary = await getCachedNutritionCalendarSummary(userID, {
+        allowStale: true,
+      });
+      const existingEarliest = cachedSummary.data?.earliestDate ?? null;
+      const existingDays = cachedSummary.data?.days ?? [];
+
+      if (existingEarliest) {
+        memoryEarliestDate = { userID, earliestDate: existingEarliest };
+        return;
+      }
+
+      const earliestDate = await getUserNutritionEarliestDate(userID);
+      const earliestIso = earliestDate ? earliestDate.toISOString() : existingEarliest;
+      memoryEarliestDate = { userID, earliestDate: earliestIso };
+
+      await setCachedNutritionCalendarSummary(userID, {
+        earliestDate: earliestIso,
+        days: existingDays,
+      });
+    } catch (error) {
+      console.error("[NutritionService] Error prefetching calendar summary:", error);
+    } finally {
+      activePrefetchPromise = null;
+    }
+  })();
+
+  return activePrefetchPromise;
+};
+
+export const awaitNutritionCalendarPrefetch = async (): Promise<void> => {
+  if (activePrefetchPromise) await activePrefetchPromise;
 };

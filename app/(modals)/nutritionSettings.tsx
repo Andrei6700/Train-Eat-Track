@@ -5,6 +5,7 @@ import BackButton from "@/src/components/navigation/BackButton";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { verticalScale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
@@ -21,6 +22,7 @@ const NutritionSettings = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { todayNutrition, updateGoals } = useNutrition();
+  const { t } = useLanguage();
 
   const [goals, setGoals] = useState({
     calorieGoal: todayNutrition?.calorieGoal || 2500,
@@ -33,7 +35,10 @@ const NutritionSettings = () => {
 
   const handleSave = async () => {
     if (goals.calorieGoal <= 0) {
-      Alert.alert("Error", "Please enter a valid calorie goal");
+      Alert.alert(
+        t("common_error"),
+        t("nutrition_settings_error_invalid_calorie"),
+      );
       return;
     }
 
@@ -41,9 +46,9 @@ const NutritionSettings = () => {
     await updateGoals(goals);
     setSaving(false);
 
-    Alert.alert("Success", "Goals updated successfully!", [
+    Alert.alert(t("common_success"), t("nutrition_settings_success_goals_updated"), [
       {
-        text: "OK",
+        text: t("common_ok"),
         onPress: () => router.back(),
       },
     ]);
@@ -53,7 +58,7 @@ const NutritionSettings = () => {
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title="Nutrition Settings"
+          title={t("nutrition_settings_title")}
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._20 }}
         />
@@ -64,105 +69,103 @@ const NutritionSettings = () => {
         >
           <View style={styles.section}>
             <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-              Daily Goals
+              {t("nutrition_settings_daily_goals")}
             </Typo>
 
-            {/* Calorie Goal */}
             <View style={styles.inputGroup}>
               <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
-                Calorie Goal
+                {t("nutrition_settings_calorie_goal")}
               </Typo>
               <Input
                 placeholder="2500"
                 keyboardType="numeric"
                 value={goals.calorieGoal > 0 ? goals.calorieGoal.toString() : ""}
                 onChangeText={(text) =>
-                  setGoals({ ...goals, calorieGoal: parseInt(text) || 0 })
+                  setGoals({ ...goals, calorieGoal: parseInt(text, 10) || 0 })
                 }
                 containerStyle={styles.input}
               />
               <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
-                Recommended: 2000-3000 kcal/day
+                {t("nutrition_settings_recommended_calories")}
               </Typo>
             </View>
 
-            {/* Protein Goal */}
             <View style={styles.inputGroup}>
               <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
-                Protein Goal
+                {t("nutrition_settings_protein_goal")}
               </Typo>
               <Input
                 placeholder="150"
                 keyboardType="numeric"
                 value={goals.proteinGoal > 0 ? goals.proteinGoal.toString() : ""}
                 onChangeText={(text) =>
-                  setGoals({ ...goals, proteinGoal: parseInt(text) || 0 })
+                  setGoals({ ...goals, proteinGoal: parseInt(text, 10) || 0 })
                 }
                 containerStyle={styles.input}
               />
               <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
-                Recommended: 1.6-2.2g per kg body weight
+                {t("nutrition_settings_recommended_protein")}
               </Typo>
             </View>
 
-            {/* Carbs Goal */}
             <View style={styles.inputGroup}>
               <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
-                Carbs Goal
+                {t("nutrition_settings_carbs_goal")}
               </Typo>
               <Input
                 placeholder="250"
                 keyboardType="numeric"
                 value={goals.carbsGoal > 0 ? goals.carbsGoal.toString() : ""}
                 onChangeText={(text) =>
-                  setGoals({ ...goals, carbsGoal: parseInt(text) || 0 })
+                  setGoals({ ...goals, carbsGoal: parseInt(text, 10) || 0 })
                 }
                 containerStyle={styles.input}
               />
               <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
-                Recommended: 45-65% of total calories
+                {t("nutrition_settings_recommended_carbs")}
               </Typo>
             </View>
 
-            {/* Fat Goal */}
             <View style={styles.inputGroup}>
               <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
-                Fat Goal
+                {t("nutrition_settings_fat_goal")}
               </Typo>
               <Input
                 placeholder="70"
                 keyboardType="numeric"
                 value={goals.fatGoal > 0 ? goals.fatGoal.toString() : ""}
                 onChangeText={(text) =>
-                  setGoals({ ...goals, fatGoal: parseInt(text) || 0 })
+                  setGoals({ ...goals, fatGoal: parseInt(text, 10) || 0 })
                 }
                 containerStyle={styles.input}
               />
               <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
-                Recommended: 20-35% of total calories
+                {t("nutrition_settings_recommended_fat")}
               </Typo>
             </View>
           </View>
 
-          {/* Info Card */}
           <View style={styles.infoCard}>
             <Typo size={15} fontWeight="600" style={{ marginBottom: spacingY._10 }}>
-              💡 Quick Tips
+              {t("nutrition_settings_quick_tips_title")}
             </Typo>
             <Typo size={14} color={colors.neutral400} style={{ lineHeight: 20 }}>
-              • Adjust goals based on your fitness objectives{"\n"}
-              • For muscle gain: Higher protein & calories{"\n"}
-              • For fat loss: Calorie deficit with adequate protein{"\n"}
-              • Stay hydrated and consistent
+              {"- "}
+              {t("nutrition_settings_tip_adjust_goals")}
+              {"\n- "}
+              {t("nutrition_settings_tip_muscle_gain")}
+              {"\n- "}
+              {t("nutrition_settings_tip_fat_loss")}
+              {"\n- "}
+              {t("nutrition_settings_tip_hydration")}
             </Typo>
           </View>
         </ScrollView>
 
-        {/* Save Button */}
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button onPress={handleSave} loading={saving} style={{ flex: 1 }}>
             <Typo color={colors.black} fontWeight="700" size={18}>
-              Save Goals
+              {t("nutrition_settings_save_goals")}
             </Typo>
           </Button>
         </View>

@@ -1,15 +1,20 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
+import { getCachedWorkoutHistory } from "@/src/services/workoutHistoryCacheService";
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
+import { measureAsync } from "@/src/utils/perf";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
-import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
 import * as Icons from "phosphor-react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { LineChart } from "react-native-gifted-charts";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
 
@@ -24,109 +29,179 @@ type ExerciseStats = {
   totalWeight: number;
   maxWeight: number;
   totalReps: number;
-  averageReps: number;
+  averageTopSetReps: number;
   workoutCount: number;
   dates: Date[];
   weights: number[];
   reps: number[];
 };
 
+const getPeriodStartDate = (period: PeriodType): Date => {
+  const periodStart = new Date();
+  periodStart.setHours(0, 0, 0, 0);
+
+  if (period === "Weekly") {
+    periodStart.setDate(periodStart.getDate() - 7);
+  } else if (period === "Monthly") {
+    periodStart.setMonth(periodStart.getMonth() - 1);
+  } else {
+    periodStart.setFullYear(periodStart.getFullYear() - 1);
+  }
+
+  return periodStart;
+};
+
 const Statistics = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Exercise specific stats
+
   const [availableExercises, setAvailableExercises] = useState<string[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string>("");
-  const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(null);
+  const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(
+    null
+  );
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
-  
-  // Chart data
+
   const [weightChartData, setWeightChartData] = useState<ChartDataPoint[]>([]);
   const [repsChartData, setRepsChartData] = useState<ChartDataPoint[]>([]);
+  const requestIdRef = useRef(0);
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    fetchWorkoutsHistory();
-  }, [user?.uid]);
-
-  useEffect(() => {
-    if (workoutsHistory.length > 0) {
-      extractExercises();
-    }
-  }, [workoutsHistory]);
+    extractExercises();
+  }, [workoutsHistory, selectedPeriod]);
 
   useEffect(() => {
     if (selectedExercise && workoutsHistory.length > 0) {
       generateExerciseStats();
+      return;
     }
-  }, [selectedExercise, selectedPeriod, workoutsHistory]);
 
-  const fetchWorkoutsHistory = async () => {
-    if (!user?.uid) return;
+    setExerciseStats(null);
+    setWeightChartData([]);
+    setRepsChartData([]);
+  }, [language, selectedExercise, selectedPeriod, workoutsHistory]);
+
+  const fetchWorkoutsHistory = useCallback(async () => {
+    const userId = user?.uid;
+    const requestId = ++requestIdRef.current;
+    if (!userId) {
+      setWorkoutsHistory([]);
+      setLoading(false);
+      return;
+    }
+
+    if (previousUserIdRef.current !== userId) {
+      setWorkoutsHistory([]);
+      setLoading(true);
+    }
+    previousUserIdRef.current = userId;
+
+    let hydratedFromCache = false;
+
+    const cacheResult = await measureAsync(
+      "statistics_hydrate_cache_ms",
+      () => getCachedWorkoutHistory(userId, { allowStale: true }),
+      (result) => ({
+        source: result.data ? "cache" : "fallback",
+        itemCount: result.data?.length ?? 0,
+        cacheAgeMs: result.ageMs ?? null,
+        success: Boolean(result.data),
+      }),
+    );
+
+    if (requestId !== requestIdRef.current) return;
+
+    if (cacheResult.data) {
+      hydratedFromCache = true;
+      setWorkoutsHistory(cacheResult.data);
+      setLoading(false);
+    }
 
     try {
-      const result = await getUserWorkouts(user.uid);
+      const result = await measureAsync(
+        "statistics_revalidate_remote_ms",
+        () => getUserWorkouts(userId),
+        (remoteResult) => ({
+          source: remoteResult.success ? "remote" : "fallback",
+          itemCount: Array.isArray(remoteResult.data) ? remoteResult.data.length : 0,
+          cacheAgeMs: null,
+          success: remoteResult.success,
+        }),
+      );
+      if (requestId !== requestIdRef.current) return;
+
       if (result.success) {
         setWorkoutsHistory(result.data || []);
+      } else if (!hydratedFromCache) {
+        setWorkoutsHistory([]);
       }
     } catch (error) {
       console.error("Error fetching workouts:", error);
+      if (!hydratedFromCache && requestId === requestIdRef.current) {
+        setWorkoutsHistory([]);
+      }
     } finally {
+      if (requestId !== requestIdRef.current) return;
       setLoading(false);
     }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    void fetchWorkoutsHistory();
+  }, [fetchWorkoutsHistory]);
+
+  const getFilteredWorkouts = (period: PeriodType): WorkoutHistory[] => {
+    const periodStart = getPeriodStartDate(period);
+
+    return workoutsHistory.filter(
+      (workout) => !workout.isRestDay && new Date(workout.date) >= periodStart
+    );
   };
 
   const extractExercises = () => {
     const exerciseSet = new Set<string>();
-    
-    workoutsHistory.forEach((workout) => {
+    const sourceWorkouts =
+      selectedPeriod === "Weekly"
+        ? getFilteredWorkouts("Weekly")
+        : workoutsHistory.filter((workout) => !workout.isRestDay);
+
+    sourceWorkouts.forEach((workout) => {
       workout.exercises?.forEach((exercise) => {
         if (exercise.exerciseName) {
           exerciseSet.add(exercise.exerciseName);
         }
       });
     });
-    
+
     const exercises = Array.from(exerciseSet).sort();
     setAvailableExercises(exercises);
-    
-    if (exercises.length > 0 && !selectedExercise) {
+
+    if (exercises.length === 0) {
+      setSelectedExercise("");
+      setShowExerciseSelector(false);
+      return;
+    }
+
+    const selectedExerciseExists = exercises.some(
+      (exerciseName) =>
+        exerciseName.toLowerCase() === selectedExercise.toLowerCase()
+    );
+
+    if (!selectedExerciseExists) {
       setSelectedExercise(exercises[0]);
     }
   };
 
   const generateExerciseStats = () => {
     if (!selectedExercise) return;
+    const filteredWorkouts = getFilteredWorkouts(selectedPeriod);
 
-    const now = new Date();
-    let filteredWorkouts: WorkoutHistory[] = [];
-
-    // Filtrare după perioadă
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= weekAgo
-      );
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(now.getMonth() - 1);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= monthAgo
-      );
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(now.getFullYear() - 1);
-      filteredWorkouts = workoutsHistory.filter(
-        (w) => new Date(w.date) >= yearAgo
-      );
-    }
-
-    // Sortare cronologică
-    filteredWorkouts.sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
+    filteredWorkouts.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
     const dates: Date[] = [];
@@ -135,6 +210,7 @@ const Statistics = () => {
     let totalWeight = 0;
     let maxWeight = 0;
     let totalReps = 0;
+    let totalTopSetReps = 0;
     let workoutCount = 0;
 
     filteredWorkouts.forEach((workout) => {
@@ -145,29 +221,35 @@ const Statistics = () => {
       if (exercise) {
         workoutCount++;
         const workoutDate = new Date(workout.date);
-        
-        // Calculăm maximele pentru acest workout
+
         let maxWeightThisWorkout = 0;
-        let totalRepsThisWorkout = 0;
+        let repsAtMaxWeightThisWorkout = 0;
         let totalWeightThisWorkout = 0;
 
         exercise.sets.forEach((set) => {
-          const weight = set.weightUnit === "lbs" ? set.weight * 0.453592 : set.weight;
-          
+          const weight =
+            set.weightUnit === "lbs" ? set.weight * 0.453592 : set.weight;
+
           if (weight > maxWeightThisWorkout) {
             maxWeightThisWorkout = weight;
+            repsAtMaxWeightThisWorkout = set.reps;
+          } else if (
+            weight === maxWeightThisWorkout &&
+            set.reps > repsAtMaxWeightThisWorkout
+          ) {
+            repsAtMaxWeightThisWorkout = set.reps;
           }
-          
-          totalRepsThisWorkout += set.reps;
+
           totalWeightThisWorkout += weight * set.reps;
           totalReps += set.reps;
         });
 
         dates.push(workoutDate);
         weights.push(Math.round(maxWeightThisWorkout * 10) / 10);
-        reps.push(totalRepsThisWorkout);
+        reps.push(repsAtMaxWeightThisWorkout);
         totalWeight += totalWeightThisWorkout;
-        
+        totalTopSetReps += repsAtMaxWeightThisWorkout;
+
         if (maxWeightThisWorkout > maxWeight) {
           maxWeight = maxWeightThisWorkout;
         }
@@ -179,25 +261,29 @@ const Statistics = () => {
       totalWeight: Math.round(totalWeight),
       maxWeight: Math.round(maxWeight * 10) / 10,
       totalReps,
-      averageReps: workoutCount > 0 ? Math.round(totalReps / workoutCount) : 0,
+      averageTopSetReps:
+        workoutCount > 0 ? Math.round(totalTopSetReps / workoutCount) : 0,
       workoutCount,
       dates,
       weights,
       reps,
     });
 
-    // Generare date pentru grafice
     generateChartData(dates, weights, reps);
   };
 
-  const generateChartData = (dates: Date[], weights: number[], reps: number[]) => {
+  const generateChartData = (
+    dates: Date[],
+    weights: number[],
+    reps: number[]
+  ) => {
     const weightData: ChartDataPoint[] = [];
     const repsData: ChartDataPoint[] = [];
 
     dates.forEach((date, index) => {
-      const label = date.toLocaleDateString("en-US", { 
-        month: "short", 
-        day: "numeric" 
+      const label = date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
+        month: "short",
+        day: "numeric",
       });
 
       weightData.push({
@@ -223,61 +309,53 @@ const Statistics = () => {
   };
 
   const getTotalWorkouts = () => {
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return workoutsHistory.filter((w) => new Date(w.date) >= weekAgo).length;
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return workoutsHistory.filter((w) => new Date(w.date) >= monthAgo).length;
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      return workoutsHistory.filter((w) => new Date(w.date) >= yearAgo).length;
-    }
+    return getFilteredWorkouts(selectedPeriod).length;
   };
 
   const getTotalTime = () => {
-    if (selectedPeriod === "Weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= weekAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    } else if (selectedPeriod === "Monthly") {
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= monthAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    } else {
-      const yearAgo = new Date();
-      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      return workoutsHistory
-        .filter((w) => new Date(w.date) >= yearAgo)
-        .reduce((sum, w) => sum + Math.floor(w.duration / 60), 0);
-    }
+    return getFilteredWorkouts(selectedPeriod).reduce(
+      (sum, workout) => sum + Math.floor(workout.duration / 60),
+      0,
+    );
   };
 
+  const hasAnyWorkoutHistory = workoutsHistory.some(
+    (workout) => !workout.isRestDay
+  );
+
   return (
+    <SwipeableScreen>
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.header}>
           <Typo size={28} fontWeight="700">
-            Statistics
+            {t("tab_statistics")}
           </Typo>
         </View>
 
-        {/* Segmented Control */}
+        {loading && workoutsHistory.length === 0 ? (
+          <View style={styles.initialLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : null}
+
         <View style={styles.segmentedContainer}>
           <SegmentedControl
-            values={["Weekly", "Monthly", "Yearly"]}
+            values={[
+              t("statistics_period_weekly"),
+              t("statistics_period_monthly"),
+              t("statistics_period_yearly"),
+            ]}
             selectedIndex={
-              selectedPeriod === "Weekly" ? 0 : selectedPeriod === "Monthly" ? 1 : 2
+              selectedPeriod === "Weekly"
+                ? 0
+                : selectedPeriod === "Monthly"
+                ? 1
+                : 2
             }
-            onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
+            onChange={(event) =>
+              handleSegmentChange(event.nativeEvent.selectedSegmentIndex)
+            }
             style={styles.segmentedControl}
             backgroundColor={colors.neutral800}
             tintColor={colors.primary}
@@ -294,30 +372,38 @@ const Statistics = () => {
           />
         </View>
 
-        {/* General Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
-            <Typo size={28} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+            <Typo
+              size={28}
+              fontWeight="700"
+              color={colors.white}
+              style={{ marginTop: spacingY._7 }}
+            >
               {getTotalWorkouts()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              Workouts
+              {t("statistics_workouts")}
             </Typo>
           </View>
 
           <View style={styles.statCard}>
             <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
-            <Typo size={28} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+            <Typo
+              size={28}
+              fontWeight="700"
+              color={colors.white}
+              style={{ marginTop: spacingY._7 }}
+            >
               {getTotalTime()}
             </Typo>
             <Typo size={13} color={colors.neutral400}>
-              Minutes
+              {t("statistics_minutes")}
             </Typo>
           </View>
         </View>
 
-        {/* Exercise Selector */}
         {availableExercises.length > 0 && (
           <View style={styles.exerciseSelectorContainer}>
             <TouchableOpacity
@@ -325,42 +411,65 @@ const Statistics = () => {
               onPress={() => setShowExerciseSelector(!showExerciseSelector)}
             >
               <View style={styles.exerciseSelectorLeft}>
-                <Icons.ChartLineIcon size={20} color={colors.primary} weight="fill" />
+                <Icons.ChartLineIcon
+                  size={20}
+                  color={colors.primary}
+                  weight="fill"
+                />
                 <Typo size={16} fontWeight="600" color={colors.white}>
-                  {selectedExercise || "Select Exercise"}
+                  {selectedExercise || t("statistics_select_exercise")}
                 </Typo>
               </View>
-              <Icons.CaretDownIcon 
-                size={20} 
-                color={colors.neutral400} 
-                style={{ transform: [{ rotate: showExerciseSelector ? '180deg' : '0deg' }] }}
+              <Icons.CaretDownIcon
+                size={20}
+                color={colors.neutral400}
+                style={{
+                  transform: [
+                    { rotate: showExerciseSelector ? "180deg" : "0deg" },
+                  ],
+                }}
               />
             </TouchableOpacity>
 
             {showExerciseSelector && (
               <View style={styles.exerciseDropdown}>
-                <ScrollView style={styles.exerciseList} nestedScrollEnabled>
+                <ScrollView
+                  style={styles.exerciseList}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
                   {availableExercises.map((exercise, index) => (
                     <TouchableOpacity
-                      key={index}
+                      key={`${exercise}-${index}`}
                       style={[
                         styles.exerciseItem,
-                        selectedExercise === exercise && styles.exerciseItemSelected,
+                        selectedExercise === exercise &&
+                          styles.exerciseItemSelected,
                       ]}
                       onPress={() => {
                         setSelectedExercise(exercise);
                         setShowExerciseSelector(false);
                       }}
                     >
-                      <Typo 
-                        size={15} 
-                        fontWeight={selectedExercise === exercise ? "600" : "400"}
-                        color={selectedExercise === exercise ? colors.primary : colors.white}
+                      <Typo
+                        size={15}
+                        fontWeight={
+                          selectedExercise === exercise ? "600" : "400"
+                        }
+                        color={
+                          selectedExercise === exercise
+                            ? colors.primary
+                            : colors.white
+                        }
                       >
                         {exercise}
                       </Typo>
                       {selectedExercise === exercise && (
-                        <Icons.CheckIcon size={18} color={colors.primary} weight="bold" />
+                        <Icons.CheckIcon
+                          size={18}
+                          color={colors.primary}
+                          weight="bold"
+                        />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -370,55 +479,74 @@ const Statistics = () => {
           </View>
         )}
 
-        {/* Exercise Stats Cards */}
         {exerciseStats && exerciseStats.workoutCount > 0 && (
           <>
             <View style={styles.exerciseStatsContainer}>
               <View style={styles.exerciseStatCard}>
-                <Icons.TrendUpIcon size={24} color={colors.primary} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Icons.TrendUpIcon
+                  size={24}
+                  color={colors.primary}
+                  weight="fill"
+                />
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.maxWeight} kg
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Max Weight
+                  {t("statistics_max_weight")}
                 </Typo>
               </View>
 
               <View style={styles.exerciseStatCard}>
                 <Icons.HashIcon size={24} color={colors.green} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.totalReps}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Total Reps
+                  {t("statistics_total_reps")}
                 </Typo>
               </View>
 
               <View style={styles.exerciseStatCard}>
                 <Icons.ScalesIcon size={24} color={"#B413BF"} weight="fill" />
-                <Typo size={24} fontWeight="700" color={colors.white} style={{ marginTop: spacingY._7 }}>
+                <Typo
+                  size={24}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={{ marginTop: spacingY._7 }}
+                >
                   {exerciseStats.totalWeight}
                 </Typo>
                 <Typo size={13} color={colors.neutral400}>
-                  Total KG
+                  {t("statistics_total_kg")}
                 </Typo>
               </View>
             </View>
 
-            {/* Weight Progress Chart */}
             {weightChartData.length > 0 && (
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
                   <Typo size={18} fontWeight="600">
-                    Weight Progress
+                    {t("statistics_weight_progress")}
                   </Typo>
                   <View style={styles.chartBadge}>
                     <Typo size={13} color={colors.white}>
-                      {exerciseStats.workoutCount} sessions
+                      {t("statistics_sessions_count", {
+                        count: exerciseStats.workoutCount,
+                      })}
                     </Typo>
                   </View>
                 </View>
-                
+
                 <LineChart
                   data={weightChartData}
                   width={scale(320)}
@@ -432,8 +560,14 @@ const Statistics = () => {
                   endOpacity={0.1}
                   initialSpacing={20}
                   noOfSections={4}
-                  yAxisTextStyle={{ color: colors.neutral400, fontSize: verticalScale(12) }}
-                  xAxisLabelTextStyle={{ color: colors.neutral400, fontSize: verticalScale(11) }}
+                  yAxisTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(12),
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(11),
+                  }}
                   hideRules
                   curved
                   areaChart
@@ -448,20 +582,21 @@ const Statistics = () => {
               </View>
             )}
 
-            {/* Reps Progress Chart */}
             {repsChartData.length > 0 && (
               <View style={styles.chartContainer}>
                 <View style={styles.chartHeader}>
                   <Typo size={18} fontWeight="600">
-                    Reps Progress
+                    {t("statistics_reps_progress")}
                   </Typo>
                   <View style={styles.chartBadge}>
                     <Typo size={13} color={colors.white}>
-                      Avg: {exerciseStats.averageReps} reps
+                      {t("statistics_avg_max_kg_reps", {
+                        count: exerciseStats.averageTopSetReps,
+                      })}
                     </Typo>
                   </View>
                 </View>
-                
+
                 <LineChart
                   data={repsChartData}
                   width={scale(320)}
@@ -475,8 +610,14 @@ const Statistics = () => {
                   endOpacity={0.1}
                   initialSpacing={20}
                   noOfSections={4}
-                  yAxisTextStyle={{ color: colors.neutral400, fontSize: verticalScale(12) }}
-                  xAxisLabelTextStyle={{ color: colors.neutral400, fontSize: verticalScale(11) }}
+                  yAxisTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(12),
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: colors.neutral400,
+                    fontSize: verticalScale(11),
+                  }}
                   hideRules
                   curved
                   areaChart
@@ -495,29 +636,60 @@ const Statistics = () => {
 
         {exerciseStats && exerciseStats.workoutCount === 0 && (
           <View style={styles.emptyState}>
-            <Icons.ChartLineIcon size={48} color={colors.neutral500} weight="fill" />
-            <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15 }}>
-              No data for this period
+            <Icons.ChartLineIcon
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+            <Typo
+              size={18}
+              fontWeight="600"
+              color={colors.neutral200}
+              style={{ marginTop: spacingY._15 }}
+            >
+              {t("statistics_no_data_period")}
             </Typo>
-            <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7, textAlign: "center" }}>
-              Train "{selectedExercise}" to see your progress
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={{ marginTop: spacingY._7, textAlign: "center" }}
+            >
+              {t("statistics_train_exercise", { exercise: selectedExercise })}
             </Typo>
           </View>
         )}
 
         {availableExercises.length === 0 && (
           <View style={styles.emptyState}>
-            <Icons.BarbellIcon size={48} color={colors.neutral500} weight="fill" />
-            <Typo size={18} fontWeight="600" color={colors.neutral200} style={{ marginTop: spacingY._15 }}>
-              No workouts yet
+            <Icons.BarbellIcon
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+            <Typo
+              size={18}
+              fontWeight="600"
+              color={colors.neutral200}
+              style={{ marginTop: spacingY._15 }}
+            >
+              {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? t("statistics_no_workouts_this_week")
+                : t("statistics_no_workouts_yet")}
             </Typo>
-            <Typo size={14} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
-              Start training to see your statistics
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={{ marginTop: spacingY._7, textAlign: "center" }}
+            >
+              {selectedPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? t("statistics_log_weekly")
+                : t("statistics_start_training")}
             </Typo>
           </View>
         )}
       </ScrollView>
     </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 
@@ -531,6 +703,12 @@ const styles = StyleSheet.create({
   header: {
     paddingVertical: spacingY._15,
     alignItems: "center",
+  },
+  initialLoadingContainer: {
+    marginBottom: spacingY._12,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: verticalScale(28),
   },
   segmentedContainer: {
     marginBottom: spacingY._20,
@@ -577,9 +755,11 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     borderWidth: 1,
     borderColor: colors.neutral700,
-    maxHeight: verticalScale(250),
+    maxHeight: verticalScale(300),
+    overflow: "hidden",
   },
   exerciseList: {
+    maxHeight: verticalScale(300),
     padding: spacingX._10,
   },
   exerciseItem: {

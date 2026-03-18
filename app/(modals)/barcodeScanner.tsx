@@ -2,7 +2,9 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import {
   getFoodByBarcode,
   SimplifiedFood,
@@ -33,6 +35,8 @@ const BarcodeScanner = () => {
   const { mealName } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
+  const mealLabel = getMealLabel(language, mealName as string);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
@@ -77,19 +81,19 @@ const BarcodeScanner = () => {
       setShowQuantityModal(true);
     } else {
       Alert.alert(
-        "Nu s-a găsit",
-        "Alimentul nu a fost găsit în baza de date. Vrei să încerci din nou?",
+        t("barcode_scanner_modal_not_found_title"),
+        t("barcode_scanner_modal_not_found_message"),
         [
-          { text: "Anulează", onPress: () => router.back() },
-          { text: "Încearcă din nou", onPress: () => setScanned(false) },
-        ]
+          { text: t("common_cancel"), onPress: () => router.back() },
+          { text: t("barcode_scanner_modal_try_again"), onPress: () => setScanned(false) },
+        ],
       );
     }
   };
 
   const handleAddWithQuantity = async () => {
     if (!scannedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
@@ -108,7 +112,7 @@ const BarcodeScanner = () => {
     };
 
     try {
-      // ✅ SALVARE ÎN FIREBASE prin context
+      // saved in firebase by context
       await addFoodToMeal(mealName as string, adjustedFood);
 
       setAddingFood(false);
@@ -116,18 +120,21 @@ const BarcodeScanner = () => {
       setScannedFood(null);
 
       Alert.alert(
-        "Success",
-        `${adjustedFood.name} a fost adăugat la ${mealName}! 🎉`,
+        t("common_success"),
+        t("barcode_scanner_modal_success_added_to_meal", {
+          name: adjustedFood.name,
+          meal: mealLabel,
+        }),
         [
           {
-            text: "OK",
+            text: t("common_ok"),
             onPress: () => router.back(),
           },
-        ]
+        ],
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
+      Alert.alert(t("common_error"), error?.message || t("barcode_scanner_modal_error_add"));
     }
   };
 
@@ -147,7 +154,7 @@ const BarcodeScanner = () => {
             color={colors.neutral400}
             style={{ marginTop: spacingY._15 }}
           >
-            Se verifică permisiunile camerei...
+            {t("barcode_scanner_modal_checking_permissions")}
           </Typo>
         </View>
       </View>
@@ -167,22 +174,21 @@ const BarcodeScanner = () => {
             fontWeight="700"
             style={{ marginTop: spacingY._20, textAlign: "center" }}
           >
-            Acces Cameră Refuzat
+            {t("barcode_scanner_modal_camera_access_denied_title")}
           </Typo>
           <Typo
             size={15}
             color={colors.neutral400}
             style={{ marginTop: spacingY._10, textAlign: "center" }}
           >
-            Aplicația are nevoie de acces la cameră pentru a scana codurile de
-            bare.
+            {t("barcode_scanner_modal_camera_access_denied_message")}
           </Typo>
           <Button
             onPress={() => Linking.openSettings()}
             style={{ marginTop: spacingY._30, width: "80%" }}
           >
             <Typo size={16} fontWeight="700" color={colors.black}>
-              Deschide Setări
+              {t("barcode_scanner_modal_open_settings")}
             </Typo>
           </Button>
           <TouchableOpacity
@@ -190,7 +196,7 @@ const BarcodeScanner = () => {
             style={{ marginTop: spacingY._15 }}
           >
             <Typo size={15} color={colors.primary}>
-              Înapoi
+              {t("barcode_scanner_modal_back")}
             </Typo>
           </TouchableOpacity>
         </Animated.View>
@@ -216,90 +222,92 @@ const BarcodeScanner = () => {
             "qr",
           ],
         }}
+      />
+
+      {/* Header */}
+      <Animated.View
+        entering={FadeInDown.delay(100).duration(400)}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
-        {/* Header */}
-        <Animated.View
-          entering={FadeInDown.delay(100).duration(400)}
-          style={[styles.header, { paddingTop: insets.top + 10 }]}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.headerButton}
         >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.headerButton}
-          >
-            <Icons.XIcon size={24} color={colors.white} weight="bold" />
-          </TouchableOpacity>
+          <Icons.XIcon size={24} color={colors.white} weight="bold" />
+        </TouchableOpacity>
 
-          <Typo size={18} fontWeight="700" color={colors.white}>
-            Scanează Codul de Bare
+        <Typo size={18} fontWeight="700" color={colors.white}>
+          {t("barcode_scanner_modal_title")}
+        </Typo>
+
+        <TouchableOpacity
+          onPress={() => setFlashEnabled(!flashEnabled)}
+          style={styles.headerButton}
+        >
+          {flashEnabled ? (
+            <Icons.FlashlightIcon
+              size={24}
+              color={colors.primary}
+              weight="fill"
+            />
+          ) : (
+            <Icons.FlashlightIcon
+              size={24}
+              color={colors.white}
+              weight="regular"
+            />
+          )}
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Scanner Frame */}
+      {!scanned && (
+        <Animated.View
+          entering={FadeIn.delay(300).duration(600)}
+          style={styles.scannerFrame}
+          pointerEvents="none"
+        >
+          <View style={styles.scannerBox}>
+            {/* Corners */}
+            <View style={[styles.corner, styles.topLeft]} />
+            <View style={[styles.corner, styles.topRight]} />
+            <View style={[styles.corner, styles.bottomLeft]} />
+            <View style={[styles.corner, styles.bottomRight]} />
+          </View>
+
+          <Typo
+            size={16}
+            fontWeight="600"
+            color={colors.white}
+            style={styles.scannerText}
+          >
+            {t("barcode_scanner_modal_position_hint")}
           </Typo>
-
-          <TouchableOpacity
-            onPress={() => setFlashEnabled(!flashEnabled)}
-            style={styles.headerButton}
-          >
-            {flashEnabled ? (
-              <Icons.FlashlightIcon
-                size={24}
-                color={colors.primary}
-                weight="fill"
-              />
-            ) : (
-              <Icons.FlashlightIcon
-                size={24}
-                color={colors.white}
-                weight="regular"
-              />
-            )}
-          </TouchableOpacity>
         </Animated.View>
+      )}
 
-        {/* Scanner Frame */}
-        {!scanned && (
-          <Animated.View
-            entering={FadeIn.delay(300).duration(600)}
-            style={styles.scannerFrame}
-          >
-            <View style={styles.scannerBox}>
-              {/* Corners */}
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-            </View>
-
+      {/* Loading Overlay */}
+      {loading && (
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(300)}
+          style={styles.loadingOverlay}
+          pointerEvents="none"
+        >
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
             <Typo
               size={16}
               fontWeight="600"
-              color={colors.white}
-              style={styles.scannerText}
+              style={{ marginTop: spacingY._15 }}
             >
-              Poziționează codul de bare în cadru
+              {t("barcode_scanner_modal_searching_food")}
             </Typo>
-          </Animated.View>
-        )}
+          </View>
+        </Animated.View>
+      )}
 
-        {/* Loading Overlay */}
-        {loading && (
-          <Animated.View
-            entering={FadeIn.duration(300)}
-            exiting={FadeOut.duration(300)}
-            style={styles.loadingOverlay}
-          >
-            <View style={styles.loadingCard}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Typo
-                size={16}
-                fontWeight="600"
-                style={{ marginTop: spacingY._15 }}
-              >
-                Se caută alimentul...
-              </Typo>
-            </View>
-          </Animated.View>
-        )}
-      </CameraView>
-
-      {/* ✅ MODAL PENTRU CANTITATE */}
+      {/* Quantity Modal */}
       <Modal
         visible={showQuantityModal}
         transparent
@@ -335,29 +343,36 @@ const BarcodeScanner = () => {
                 />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
-                Adaugă aliment
+                {t("barcode_scanner_modal_add_food_title")}
               </Typo>
               <TouchableOpacity onPress={() => setShowQuantityModal(false)}>
                 <Icons.XIcon size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.quantityScrollContent}
+            >
               {/* Food Info */}
               {scannedFood && (
                 <View style={styles.modalContent}>
                   <View style={styles.foodInfoModal}>
-                    {scannedFood.image && (
+                    {scannedFood.image ? (
                       <Image
                         source={{ uri: scannedFood.image }}
                         style={styles.foodImageLarge}
                         contentFit="cover"
                       />
+                    ) : (
+                      <View style={styles.foodImagePlaceholder} />
                     )}
                     <Typo
                       size={18}
                       fontWeight="700"
-                      style={{ marginTop: spacingY._12, textAlign: "center" }}
+                      style={styles.modalFoodTitle}
+                      textProps={{ numberOfLines: 2 }}
                     >
                       {scannedFood.name}
                     </Typo>
@@ -365,7 +380,8 @@ const BarcodeScanner = () => {
                       <Typo
                         size={14}
                         color={colors.neutral400}
-                        style={{ textAlign: "center" }}
+                        style={styles.modalFoodSubtitle}
+                        textProps={{ numberOfLines: 1 }}
                       >
                         {scannedFood.brands}
                       </Typo>
@@ -379,7 +395,7 @@ const BarcodeScanner = () => {
                       fontWeight="600"
                       style={{ marginBottom: spacingY._12 }}
                     >
-                      Cantitate (grame)
+                      {t("nutrition_quantity_grams")}
                     </Typo>
                     <Input
                       placeholder="100"
@@ -391,9 +407,9 @@ const BarcodeScanner = () => {
                     <Typo
                       size={13}
                       color={colors.neutral400}
-                      style={{ marginTop: spacingY._8 }}
+                      style={{ marginTop: spacingY._7 }}
                     >
-                      Valorile nutriționale sunt calculate pentru 100g
+                      {t("barcode_scanner_modal_values_per_100g")}
                     </Typo>
                   </View>
 
@@ -404,7 +420,7 @@ const BarcodeScanner = () => {
                       fontWeight="600"
                       style={{ marginBottom: spacingY._12 }}
                     >
-                      Valori calculate pentru {quantity || "0"}g:
+                      {t("nutrition_calculated_values_for", { value: quantity || "0" })}
                     </Typo>
 
                     <View style={styles.nutritionGrid}>
@@ -432,7 +448,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Proteine
+                          {t("nutrition_protein")}
                         </Typo>
                       </View>
 
@@ -446,7 +462,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Carbohidrați
+                          {t("nutrition_carbs")}
                         </Typo>
                       </View>
 
@@ -460,7 +476,7 @@ const BarcodeScanner = () => {
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
-                          Grăsimi
+                          {t("nutrition_fat")}
                         </Typo>
                       </View>
                     </View>
@@ -473,7 +489,7 @@ const BarcodeScanner = () => {
                     style={{ marginTop: spacingY._20 }}
                   >
                     <Typo size={18} fontWeight="700" color={colors.black}>
-                      Adaugă la {mealName}
+                      {t("barcode_scanner_modal_add_to_meal", { meal: mealLabel || t("barcode_scanner_modal_meal_fallback") })}
                     </Typo>
                   </Button>
                 </View>
@@ -504,6 +520,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral900,
   },
   header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -520,7 +541,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scannerFrame: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -573,6 +595,7 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
     backgroundColor: "rgba(0, 0, 0, 0.8)",
     alignItems: "center",
     justifyContent: "center",
@@ -617,15 +640,35 @@ const styles = StyleSheet.create({
   modalContent: {
     paddingHorizontal: spacingX._20,
   },
+  quantityScrollContent: {
+    paddingBottom: spacingY._25,
+  },
   foodInfoModal: {
     alignItems: "center",
     marginBottom: spacingY._25,
+  },
+  modalFoodTitle: {
+    marginTop: spacingY._12,
+    textAlign: "center",
+    maxWidth: "96%",
+  },
+  modalFoodSubtitle: {
+    textAlign: "center",
+    maxWidth: "96%",
   },
   foodImageLarge: {
     width: verticalScale(100),
     height: verticalScale(100),
     borderRadius: radius._15,
     backgroundColor: colors.neutral700,
+  },
+  foodImagePlaceholder: {
+    width: verticalScale(100),
+    height: verticalScale(100),
+    borderRadius: radius._15,
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   quantitySection: {
     marginBottom: spacingY._25,
@@ -654,3 +697,4 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
   },
 });
+

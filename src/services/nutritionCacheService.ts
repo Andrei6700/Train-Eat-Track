@@ -1,61 +1,145 @@
-import { getDailyNutrition } from "./nutritionService";
+import { DailyNutrition } from "@/src/types/index";
+import { getDateKey } from "./nutritionService";
 
-type CachedNutrition = {
-  calories: number;
-  goal: number;
-  date: Date;
+type NutritionMemoryEntry = {
+  data: DailyNutrition;
+  signature: string;
+  updatedAt: number;
 };
 
-const cache = new Map<string, CachedNutrition>();
-
-const getCacheKey = (date: Date): string => {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+type NutritionMemoryResult = {
+  data: DailyNutrition | null;
+  isFresh: boolean;
 };
 
-export const preloadWeekNutrition = async (
-  userID: string,
-  weekDates: Date[]
-): Promise<Map<string, CachedNutrition>> => {
-  const promises = weekDates.map(async (date) => {
-    const key = getCacheKey(date);
-    
-    if (cache.has(key)) {
-      return { key, data: cache.get(key)! };
-    }
+const DAY_CACHE_TTL_MS = 30 * 1000;
+const WEEK_PRELOAD_COOLDOWN_MS = 120 * 1000;
 
-    const result = await getDailyNutrition(userID, date);
-    
-    let calories = 0;
-    let goal = 2500;
+const dayCache = new Map<string, NutritionMemoryEntry>();
+const weekPreloadAtByUser = new Map<string, number>();
 
-    if (result.success && result.data) {
-      goal = result.data.calorieGoal || 2500;
-      calories = result.data.meals.reduce((total, meal) => {
-        return total + meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
-      }, 0);
-    }
+const toDate = (value: Date | string, fallback: Date): Date => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date(fallback) : parsed;
+};
 
-    const cached: CachedNutrition = { calories, goal, date };
-    cache.set(key, cached);
+const cloneNutrition = (nutrition: DailyNutrition, fallbackDate: Date): DailyNutrition => {
+  const normalizedDate = toDate(nutrition.date, fallbackDate);
+  return {
+    ...nutrition,
+    date: normalizedDate,
+    updatedAt: nutrition.updatedAt
+      ? toDate(nutrition.updatedAt, normalizedDate)
+      : undefined,
+    meals: Array.isArray(nutrition.meals)
+      ? nutrition.meals.map((meal) => ({
+          ...meal,
+          foods: Array.isArray(meal.foods)
+            ? meal.foods.map((food) => ({ ...food }))
+            : [],
+        }))
+      : [],
+  };
+};
 
-    return { key, data: cached };
+const buildSignature = (nutrition: DailyNutrition): string => {
+  const normalizedDate = toDate(nutrition.date, new Date());
+  return JSON.stringify({
+    ...nutrition,
+    date: normalizedDate.toISOString(),
+    updatedAt: nutrition.updatedAt
+      ? toDate(nutrition.updatedAt, normalizedDate).toISOString()
+      : null,
   });
-
-  const results = await Promise.all(promises);
-  
-  return new Map(results.map(r => [r.key, r.data]));
 };
 
-export const getCachedNutrition = (date: Date): CachedNutrition | null => {
-  const key = getCacheKey(date);
-  return cache.get(key) || null;
+const getCacheKey = (userID: string, date: Date): string =>
+  `${userID}:${getDateKey(date)}`;
+
+const isFresh = (entry: NutritionMemoryEntry): boolean =>
+  Date.now() - entry.updatedAt < DAY_CACHE_TTL_MS;
+
+export const NUTRITION_MEMORY_DAY_TTL_MS = DAY_CACHE_TTL_MS;
+export const NUTRITION_WEEK_PRELOAD_COOLDOWN_MS = WEEK_PRELOAD_COOLDOWN_MS;
+
+export const getNutritionMemoryCache = (
+  userID: string,
+  date: Date,
+  options?: { allowStale?: boolean },
+): NutritionMemoryResult => {
+  const cacheEntry = dayCache.get(getCacheKey(userID, date));
+  if (!cacheEntry) {
+    return { data: null, isFresh: false };
+  }
+
+  const fresh = isFresh(cacheEntry);
+  if (!fresh && !options?.allowStale) {
+    return { data: null, isFresh: false };
+  }
+
+  return {
+    data: cloneNutrition(cacheEntry.data, date),
+    isFresh: fresh,
+  };
 };
 
-export const clearCache = () => {
-  cache.clear();
+export const setNutritionMemoryCache = (
+  userID: string,
+  date: Date,
+  nutrition: DailyNutrition,
+): { written: boolean; touched: boolean } => {
+  const key = getCacheKey(userID, date);
+  const normalized = cloneNutrition(nutrition, date);
+  const signature = buildSignature(normalized);
+  const existing = dayCache.get(key);
+
+  if (existing && existing.signature === signature) {
+    existing.updatedAt = Date.now();
+    return { written: false, touched: true };
+  }
+
+  dayCache.set(key, {
+    data: normalized,
+    signature,
+    updatedAt: Date.now(),
+  });
+  return { written: true, touched: false };
 };
 
-export const invalidateDayCache = (date: Date) => {
-  const key = getCacheKey(date);
-  cache.delete(key);
+export const invalidateNutritionMemoryDay = (userID: string, date: Date) => {
+  dayCache.delete(getCacheKey(userID, date));
+};
+
+export const clearNutritionMemoryCache = (userID?: string) => {
+  if (!userID) {
+    dayCache.clear();
+    weekPreloadAtByUser.clear();
+    return;
+  }
+
+  const prefix = `${userID}:`;
+  for (const key of [...dayCache.keys()]) {
+    if (key.startsWith(prefix)) {
+      dayCache.delete(key);
+    }
+  }
+
+  weekPreloadAtByUser.delete(userID);
+};
+
+export const shouldPreloadNutritionWeek = (
+  userID: string,
+  forceRemote = false,
+): boolean => {
+  if (forceRemote) return true;
+  const lastPreloadAt = weekPreloadAtByUser.get(userID);
+  if (!lastPreloadAt) return true;
+  return Date.now() - lastPreloadAt >= WEEK_PRELOAD_COOLDOWN_MS;
+};
+
+export const markNutritionWeekPreloaded = (
+  userID: string,
+  timestamp: number = Date.now(),
+) => {
+  weekPreloadAtByUser.set(userID, timestamp);
 };

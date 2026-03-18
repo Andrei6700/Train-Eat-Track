@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, Text } from "react-native";
 import Animated, {
   Easing,
   useAnimatedProps,
@@ -15,7 +15,6 @@ import Svg, {
   LinearGradient,
   Path,
   Stop,
-  Text as SvgText,
 } from "react-native-svg";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -113,36 +112,13 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
           stroke="#60a5fa"
           strokeWidth="4"
         />
-
-        <G>
-          {/* Percentage Text */}
-          <SvgText
-            x="100"
-            y="90" 
-            textAnchor="middle"
-            alignmentBaseline="middle"
-            fontSize="24"
-            fontWeight="700"
-            fill="white"
-          >
-            {Math.round(percentage)}%
-          </SvgText>
-
-          {/* Water amount text  */}
-          <SvgText
-            x="100"
-            y="115" 
-            textAnchor="middle"
-            alignmentBaseline="middle"
-            fontSize="16"
-            fontWeight="600"
-            fill="#9ca3af"
-            letterSpacing="0.2"
-          >
-            {formatWaterText()}
-          </SvgText>  
-        </G>
       </Svg>
+
+      {/* Text overlay  */}
+      <View style={styles.textOverlay}>
+        <Text style={styles.percentageText}>{Math.round(percentage)}%</Text>
+        <Text style={styles.waterText}>{formatWaterText()}</Text>
+      </View>
     </View>
   );
 };
@@ -151,7 +127,31 @@ export default WaterWave;
 
 const styles = StyleSheet.create({
   container: {
+    width: 200,
+    height: 200,
     alignItems: "center",
     justifyContent: "center",
+  },
+  textOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  percentageText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "white",
+    textAlign: "center",
+  },
+  waterText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 4,
   },
 });

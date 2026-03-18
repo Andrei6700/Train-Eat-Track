@@ -1,261 +1,351 @@
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { colors, spacingX, spacingY } from "@/constants/theme";
+import HistoryCalendarStrip from "@/src/components/history/HistoryCalendarStrip";
+import HistoryContentState from "@/src/components/history/HistoryContentState";
 import Header from "@/src/components/layout/Header";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
-import WorkoutCard from "@/src/components/ui/WorkoutCard";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import { getUserWorkouts } from "@/src/services/workoutService";
-import { WorkoutHistory } from "@/src/types/index";
-import { scale, verticalScale } from "@/src/utils/styling";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  FlatList,
-} from "react-native";
+  clearWorkoutHistoryMemoryCache,
+  getWorkoutHistoryMemoryCache,
+  setWorkoutHistoryMemoryCache,
+} from "@/src/services/workoutHistoryMemoryCache";
+import { getUserWorkouts } from "@/src/services/workoutService";
+import { DayWorkout, WorkoutHistory } from "@/src/types/index";
+import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { MONTH_NAMES } from "@/src/i18n/translations";
+import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
+import { verticalScale } from "@/src/utils/styling";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
+const CACHE_MAX_AGE_MS = 60_000;
 
-const DAYS_FULL = ["Luni", "Marti", "Miercuri", "Joi", "Vineri", "Sambata", "Duminica"];
+const normalizeWorkoutHistory = (data: unknown): WorkoutHistory[] => {
+  if (!Array.isArray(data)) return [];
+  return data as WorkoutHistory[];
+};
 
-const DAY_WIDTH = scale(50);
+const getSafeParamDate = (value: string | string[] | undefined): Date | null => {
+  const rawDate = Array.isArray(value) ? value[0] : value;
+  const parsedDate = toValidDate(rawDate);
+  if (!parsedDate) return null;
 
-const ITEM_SPACING = spacingX._10 ?? 8;
-const ITEM_WIDTH = DAY_WIDTH + ITEM_SPACING;
+  const normalizedDate = startOfDay(parsedDate);
+  const today = startOfDay(new Date());
+  return normalizedDate > today ? today : normalizedDate;
+};
+
+const getInitialIndex = (calendarDays: Date[], targetDateKey: string): number | null => {
+  if (calendarDays.length === 0) return null;
+
+  const selectedIndex = calendarDays.findIndex(
+    (day) => toDateKey(day) === targetDateKey,
+  );
+  if (selectedIndex !== -1) return selectedIndex;
+
+  const todayKey = toDateKey(startOfDay(new Date()));
+  const todayIndex = calendarDays.findIndex((day) => toDateKey(day) === todayKey);
+
+  if (todayIndex !== -1) return todayIndex;
+  return Math.max(calendarDays.length - 2, 0);
+};
 
 const History = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
-  const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
+
+  const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [calendarDays, setCalendarDays] = useState<Date[]>([]);
-  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
-  const [initialIndex, setInitialIndex] = useState<number | null>(null);
-  const flatListRef = useRef<FlatList>(null);
-  const didInitialScrollRef = useRef(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [currentMonth, setCurrentMonth] = useState<Date>(startOfDay(new Date()));
+
+  const requestIdRef = useRef(0);
+  const lastVisibleIndexRef = useRef<number | null>(null);
+  const initialDateKeyRef = useRef(toDateKey(startOfDay(new Date())));
 
   const { refresh, selectedDate: paramDate } = useLocalSearchParams();
+  const isRefreshRequested = Array.isArray(refresh)
+    ? refresh[0] === "true"
+    : refresh === "true";
 
-  const fetchWorkoutsHistory = async () => {
-    if (!user?.uid) return;
+  const loadHistory = useCallback(
+    async ({ isPullToRefresh = false }: { isPullToRefresh?: boolean } = {}) => {
+      const userId = user?.uid;
+      requestIdRef.current += 1;
+      const requestId = requestIdRef.current;
 
-    try {
-      const result = await getUserWorkouts(user.uid);
-      if (result.success) {
-        setWorkoutsHistory(result.data || []);
-      } else {
-        console.error("Error fetching workouts:", result.msg);
-      }
-    } catch (error) {
-      console.error("Error fetching workouts history:", error);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
-  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-
-  const generateCalendarDays = () => {
-    const today = new Date();
-
-    if (workoutsHistory.length === 0) {
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-      const days: Date[] = [];
-      for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-        days.push(new Date(d));
+      if (!userId) {
+        clearWorkoutHistoryMemoryCache();
+        setWorkoutsHistory([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
       }
 
-      setCalendarDays(days);
+      const cachedHistory = getWorkoutHistoryMemoryCache(userId, CACHE_MAX_AGE_MS);
+      if (cachedHistory) {
+        setWorkoutsHistory(cachedHistory);
+        setIsLoading(false);
+      } else if (!isPullToRefresh) {
+        setIsLoading(true);
+      }
 
-      const targetDate = paramDate ? new Date(paramDate as string) : today;
-      const found = days.findIndex(d => d.toDateString() === targetDate.toDateString());
-      const safeIndex = found !== -1 ? found : clamp(days.length - 1, 0, days.length - 1);
-      setInitialIndex(safeIndex);
-      setSelectedDate(days[safeIndex]);
-      setCurrentMonth(days[safeIndex]);
-      return;
-    }
+      try {
+        const result = await getUserWorkouts(userId);
+        if (requestId !== requestIdRef.current) return;
 
-    const workoutDates = workoutsHistory.map(w => new Date(w.date));
-    const firstWorkoutDate = new Date(Math.min(...workoutDates.map(d => d.getTime())));
-    const startDate = new Date(firstWorkoutDate.getFullYear(), firstWorkoutDate.getMonth(), 1);
-
-    const days: Date[] = [];
-    for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
-      days.push(new Date(d));
-    }
-
-    setCalendarDays(days);
-
-    const targetDate = paramDate ? new Date(paramDate as string) : today;
-    let foundIndex = days.findIndex(d => d.toDateString() === targetDate.toDateString());
-    if (foundIndex === -1) {
-      foundIndex = days.length - 1;
-    }
-    const safeIndex = clamp(foundIndex, 0, days.length - 1);
-    setInitialIndex(safeIndex);
-    setSelectedDate(days[safeIndex]);
-    setCurrentMonth(days[safeIndex]);
-  };
+        if (result.success) {
+          const nextHistory = normalizeWorkoutHistory(result.data);
+          setWorkoutsHistory(nextHistory);
+          setWorkoutHistoryMemoryCache(userId, nextHistory);
+        } else if (!cachedHistory) {
+          setWorkoutsHistory([]);
+          console.error("Error fetching workouts:", result.msg);
+        }
+      } catch (error) {
+        console.error("Error fetching workouts history:", error);
+        if (!cachedHistory && requestId === requestIdRef.current) {
+          setWorkoutsHistory([]);
+        }
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [user?.uid],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      if (refresh === "true") {
-        setIsRefreshing(true);
-        fetchWorkoutsHistory();
+      const parsedParamDate = getSafeParamDate(paramDate);
+      if (parsedParamDate) {
+        initialDateKeyRef.current = toDateKey(parsedParamDate);
+        setSelectedDate(parsedParamDate);
+        setCurrentMonth(parsedParamDate);
+        lastVisibleIndexRef.current = null;
+      } else if (isRefreshRequested) {
+        const today = startOfDay(new Date());
+        initialDateKeyRef.current = toDateKey(today);
+        setSelectedDate(today);
+        setCurrentMonth(today);
+        lastVisibleIndexRef.current = null;
       }
 
-      if (paramDate) {
-        const dateFromParam = new Date(paramDate as string);
-        setSelectedDate(dateFromParam);
-        setCurrentMonth(dateFromParam);
+      if (isRefreshRequested) {
+        setIsRefreshing(true);
       }
-    }, [refresh, paramDate])
+
+      void loadHistory({ isPullToRefresh: isRefreshRequested });
+
+      return () => {
+        requestIdRef.current += 1;
+      };
+    }, [isRefreshRequested, loadHistory, paramDate]),
   );
 
-  useEffect(() => {
-    fetchWorkoutsHistory();
-  }, [user?.uid]);
+  const {
+    historyByDateKey,
+    historyDateSet,
+    loggedRestDayDateSet,
+    earliestWorkoutDate,
+    historySignature,
+  } = useMemo(() => {
+    const byDateKey = new Map<string, WorkoutHistory[]>();
+    const workoutDateSet = new Set<string>();
+    const restDateSet = new Set<string>();
+    let earliestTimestamp: number | null = null;
 
-  useEffect(() => {
-    if (!isLoading) {
-      didInitialScrollRef.current = false;
-      generateCalendarDays();
-    }
-  }, [workoutsHistory, isLoading]);
+    for (const workout of workoutsHistory) {
+      const parsedDate = toValidDate(workout.date);
+      if (!parsedDate) continue;
 
-  const handleContentSizeChange = () => {
-    if (initialIndex === null || didInitialScrollRef.current) return;
-    if (!flatListRef.current) return;
+      const normalizedDate = startOfDay(parsedDate);
+      const dayKey = toDateKey(normalizedDate);
+      const dayTimestamp = normalizedDate.getTime();
 
-    const idx = clamp(initialIndex, 0, Math.max(0, calendarDays.length - 1));
-    requestAnimationFrame(() => {
-      try {
-        flatListRef.current?.scrollToIndex({
-          index: idx,
-          animated: true,
-          viewPosition: 0.5,
-        });
-        didInitialScrollRef.current = true;
-      } catch (err) {
-        try {
-          flatListRef.current?.scrollToOffset({
-            offset: Math.max(0, idx * ITEM_WIDTH),
-            animated: true,
-          });
-          didInitialScrollRef.current = true;
-        } catch (e) {
-          console.warn("Couldn't perform initial scroll:", e);
-        }
+      const workoutsForDay = byDateKey.get(dayKey) || [];
+      workoutsForDay.push(workout);
+      byDateKey.set(dayKey, workoutsForDay);
+
+      if (workout.isRestDay) {
+        restDateSet.add(dayKey);
+      } else {
+        workoutDateSet.add(dayKey);
       }
-    });
-  };
 
-  const onRefresh = () => {
+      if (earliestTimestamp === null || dayTimestamp < earliestTimestamp) {
+        earliestTimestamp = dayTimestamp;
+      }
+    }
+
+    let keyHash = 0;
+    const sortedKeys = [...byDateKey.keys()].sort();
+    for (const key of sortedKeys) {
+      for (let idx = 0; idx < key.length; idx += 1) {
+        keyHash = (keyHash * 31 + key.charCodeAt(idx)) | 0;
+      }
+    }
+
+    return {
+      historyByDateKey: byDateKey,
+      historyDateSet: workoutDateSet,
+      loggedRestDayDateSet: restDateSet,
+      earliestWorkoutDate:
+        earliestTimestamp !== null ? new Date(earliestTimestamp) : null,
+      historySignature: `${sortedKeys.length}-${keyHash}`,
+    };
+  }, [workoutsHistory]);
+
+  const calendarDays = useMemo(() => {
+    const today = startOfDay(new Date());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    const startDate = earliestWorkoutDate
+      ? new Date(earliestWorkoutDate)
+      : new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const firstDayOfMonth = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      1,
+    );
+
+    const days: Date[] = [];
+    for (
+      let day = new Date(firstDayOfMonth);
+      day <= tomorrow;
+      day.setDate(day.getDate() + 1)
+    ) {
+      days.push(new Date(day));
+    }
+
+    return days;
+  }, [earliestWorkoutDate]);
+
+  const initialIndex = getInitialIndex(
+    calendarDays,
+    initialDateKeyRef.current,
+  );
+
+  const workoutPlanByDayName = useMemo(() => {
+    const map = new Map<string, DayWorkout>();
+    for (const day of workoutPlan?.days || []) {
+      map.set(day.day, day);
+    }
+    return map;
+  }, [workoutPlan]);
+
+  const restDayDateSet = useMemo(() => {
+    const set = new Set<string>(loggedRestDayDateSet);
+    if (!workoutPlan || calendarDays.length === 0) return set;
+
+    for (const day of calendarDays) {
+      const dayName = getCycleDayNameFromDate(day, workoutPlan);
+      if (workoutPlanByDayName.get(dayName)?.isRestDay) {
+        set.add(toDateKey(day));
+      }
+    }
+
+    return set;
+  }, [calendarDays, loggedRestDayDateSet, workoutPlan, workoutPlanByDayName]);
+
+  const onRefresh = useCallback(() => {
+    const today = startOfDay(new Date());
+    initialDateKeyRef.current = toDateKey(today);
+    setSelectedDate(today);
+    setCurrentMonth(today);
+    lastVisibleIndexRef.current = null;
     setIsRefreshing(true);
-    fetchWorkoutsHistory();
-  };
+    void loadHistory({ isPullToRefresh: true });
+  }, [loadHistory]);
 
-  const hasWorkoutOnDate = (date: Date) => {
-    return workoutsHistory.some(
-      w => new Date(w.date).toDateString() === date.toDateString()
-    );
-  };
+  const selectedDateKey = toDateKey(selectedDate);
+  const selectedDayWorkouts = historyByDateKey.get(selectedDateKey) ?? [];
+  const selectedWorkout =
+    selectedDayWorkouts.find((workout) => !workout.isRestDay) ?? null;
+  const hasLoggedRestDay = selectedDayWorkouts.some(
+    (workout) => workout.isRestDay,
+  );
 
-  const getWorkoutForDate = (date: Date): WorkoutHistory | null => {
-    return workoutsHistory.find(
-      w => new Date(w.date).toDateString() === date.toDateString()
-    ) || null;
-  };
+  const selectedPlanDay = useMemo(() => {
+    if (!workoutPlan) return null;
+    const dayName = getCycleDayNameFromDate(selectedDate, workoutPlan);
+    return workoutPlanByDayName.get(dayName) ?? null;
+  }, [selectedDate, workoutPlan, workoutPlanByDayName]);
 
-  const isRestDay = (date: Date): boolean => {
-    if (!workoutPlan) return false;
+  const isSelectedDayRestDay = hasLoggedRestDay || Boolean(selectedPlanDay?.isRestDay);
 
-    const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
-    const dayName = DAYS_FULL[dayIndex];
-    const planDay = workoutPlan.days?.find(d => d.day === dayName);
+  const calendarIndexByDateKey = useMemo(() => {
+    const map = new Map<string, number>();
+    calendarDays.forEach((day, index) => {
+      map.set(toDateKey(day), index);
+    });
+    return map;
+  }, [calendarDays]);
 
-    return planDay?.isRestDay || false;
-  };
+  const handleVisibleMonthChange = useCallback(
+    (visibleDay: Date) => {
+      const dayKey = toDateKey(visibleDay);
+      const nextIndex = calendarIndexByDateKey.get(dayKey);
+      if (nextIndex === undefined) return;
 
-  const handleDayPress = (date: Date) => {
-    setSelectedDate(date);
-    setCurrentMonth(date);
-  };
+      if (lastVisibleIndexRef.current === nextIndex) return;
+      lastVisibleIndexRef.current = nextIndex;
 
-  const selectedWorkout = getWorkoutForDate(selectedDate);
+      setCurrentMonth((previousMonth) => {
+        const isSameMonth =
+          previousMonth.getMonth() === visibleDay.getMonth() &&
+          previousMonth.getFullYear() === visibleDay.getFullYear();
 
-  const renderDay = ({ item: date, index }: { item: Date; index: number }) => {
-    const isSelected = date.toDateString() === selectedDate.toDateString();
-    const isToday = date.toDateString() === new Date().toDateString();
-    const hasWorkout = hasWorkoutOnDate(date);
-    const isRest = isRestDay(date);
+        return isSameMonth ? previousMonth : visibleDay;
+      });
+    },
+    [calendarIndexByDateKey],
+  );
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.dayCard,
-          isToday && styles.dayCardToday,
-          isSelected && styles.dayCardSelected,
-          isRest && styles.dayCardRest,
-          { marginRight: index === calendarDays.length - 1 ? 0 : ITEM_SPACING },
-        ]}
-        onPress={() => handleDayPress(date)}
-        activeOpacity={0.7}
-      >
-        <Typo
-          size={12}
-          color={
-            isRest
-              ? colors.rose
-              : isToday || isSelected
-                ? colors.white
-                : colors.neutral400
-          }
-          style={{ marginBottom: verticalScale(4) }}
-        >
-          {date.toLocaleDateString("en-US", { weekday: "short" })}
-        </Typo>
-        <Typo
-          size={16}
-          fontWeight="600"
-          color={
-            isRest
-              ? colors.rose
-              : isToday || isSelected
-                ? colors.white
-                : colors.text
-          }
-        >
-          {date.getDate()}
-        </Typo>
-        {hasWorkout && (
-          <View style={styles.workoutIndicator} />
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const hasAnyWorkouts = workoutsHistory.length > 0;
+
+  const handleDayPress = useCallback((day: Date) => {
+    const today = startOfDay(new Date());
+    if (day > today) return;
+
+    setSelectedDate(day);
+
+    setCurrentMonth((previousMonth) => {
+      const isSameMonth =
+        previousMonth.getMonth() === day.getMonth() &&
+        previousMonth.getFullYear() === day.getFullYear();
+
+      return isSameMonth ? previousMonth : day;
+    });
+  }, []);
+
+  const workoutPlanUpdatedAt = toValidDate(workoutPlan?.updatedAt)?.getTime() ?? 0;
+
+  const calendarExtraDataToken = useMemo(
+    () =>
+      `${selectedDateKey}-${historySignature}-${restDayDateSet.size}-${workoutPlanUpdatedAt}`,
+    [historySignature, restDayDateSet.size, selectedDateKey, workoutPlanUpdatedAt],
+  );
 
   if (isLoading) {
     return (
       <ScreenWrapper>
         <View style={styles.container}>
-          <Header title="History" style={{ marginVertical: spacingY._10 }} />
+          <Header title={t("tab_history")} style={styles.header} />
         </View>
         <Loading />
       </ScreenWrapper>
@@ -263,158 +353,60 @@ const History = () => {
   }
 
   return (
-    <ScreenWrapper>
-      <View style={styles.container}>
-        <Header title="History" style={{ marginVertical: spacingY._10 }} />
+    <SwipeableScreen>
+      <ScreenWrapper>
+        <View style={styles.container}>
+          <Header title={t("tab_history")} style={styles.header} />
 
-        {/* Month/Year Header */}
-        <View style={styles.monthHeader}>
-          <Typo size={20} fontWeight="600" color={colors.white}>
-            {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </Typo>
-          <View style={styles.statsRow}>
-            <Typo size={14} color={colors.neutral400}>
-              {workoutsHistory.length} workout
-              {workoutsHistory.length !== 1 ? "s" : ""}
+          <View style={styles.monthHeader}>
+            <Typo size={20} fontWeight="600" color={colors.white}>
+              {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Typo>
+            <View style={styles.statsRow}>
+              <Typo size={14} color={colors.neutral400}>
+                {workoutsHistory.length}{" "}
+                {workoutsHistory.length === 1
+                  ? t("common_workout_singular")
+                  : t("common_workout_plural")}
+              </Typo>
+            </View>
+          </View>
+
+          {calendarDays.length > 0 && (
+            <HistoryCalendarStrip
+              calendarDays={calendarDays}
+              selectedDateKey={selectedDateKey}
+              initialIndex={initialIndex}
+              historyDateSet={historyDateSet}
+              restDayDateSet={restDayDateSet}
+              extraDataToken={calendarExtraDataToken}
+              onDayPress={handleDayPress}
+              onVisibleMonthChange={handleVisibleMonthChange}
+            />
+          )}
+
+          <View style={styles.contentSection}>
+            <ScrollView
+              contentContainerStyle={styles.scrollViewContent}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.primary}
+                />
+              }
+            >
+              <HistoryContentState
+                selectedWorkout={selectedWorkout}
+                hasAnyWorkouts={hasAnyWorkouts}
+                isSelectedDayRestDay={isSelectedDayRestDay}
+              />
+            </ScrollView>
           </View>
         </View>
-
-        {/* Scrollable Calendar */}
-        {calendarDays.length > 0 && (
-          <FlatList
-            ref={flatListRef}
-            data={calendarDays}
-            renderItem={renderDay}
-            keyExtractor={(item) => item.toISOString()}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.calendarContainer}
-            style={styles.calendar}
-            getItemLayout={(data, index) => ({
-              length: ITEM_WIDTH,
-              offset: ITEM_WIDTH * index,
-              index,
-            })}
-            onScroll={(e) => {
-              const offsetX = e.nativeEvent.contentOffset.x;
-              const index = Math.round(offsetX / ITEM_WIDTH);
-              if (calendarDays[index]) {
-                setCurrentMonth(calendarDays[index]);
-              }
-            }}
-            scrollEventThrottle={16}
-            initialNumToRender={14}
-            onContentSizeChange={handleContentSizeChange}
-            snapToInterval={ITEM_WIDTH}
-            decelerationRate="fast"
-            showsVerticalScrollIndicator={false}
-          />
-        )}
-
-        {/* ✅ ELIMINAT COMPLET BUTONUL + */}
-
-        <ScrollView
-          contentContainerStyle={styles.scrollViewContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          {selectedWorkout ? (
-            <View style={styles.selectedWorkoutSection}>
-              <Typo size={18} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-                Workout on {selectedDate.toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </Typo>
-              <WorkoutCard workout={selectedWorkout} />
-            </View>
-          ) : isRestDay(selectedDate) ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <Icons.BedIcon
-                  size={48}
-                  color={colors.rose}
-                  weight="fill"
-                />
-              </View>
-              <Typo
-                size={20}
-                fontWeight="600"
-                color={colors.neutral200}
-                style={{ textAlign: "center", marginTop: spacingY._15 }}
-              >
-                Rest Day
-              </Typo>
-              <Typo
-                size={15}
-                color={colors.neutral400}
-                style={{ textAlign: "center", marginTop: spacingY._10 }}
-              >
-                Recovery is just as important as training
-              </Typo>
-            </View>
-          ) : calendarDays.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <Icons.BarbellIcon
-                  size={64}
-                  color={colors.neutral500}
-                  weight="fill"
-                />
-              </View>
-              <Typo
-                size={20}
-                fontWeight="600"
-                color={colors.neutral200}
-                style={{ textAlign: "center", marginTop: spacingY._15 }}
-              >
-                No workouts logged yet
-              </Typo>
-              <Typo
-                size={15}
-                color={colors.neutral400}
-                style={{ textAlign: "center", marginTop: spacingY._10 }}
-              >
-                Start training to see your history here!
-              </Typo>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <Icons.CalendarBlankIcon
-                  size={48}
-                  color={colors.neutral500}
-                  weight="fill"
-                />
-              </View>
-              <Typo
-                size={18}
-                fontWeight="600"
-                color={colors.neutral200}
-                style={{ textAlign: "center", marginTop: spacingY._15 }}
-              >
-                No workout on this day
-              </Typo>
-              <Typo
-                size={15}
-                color={colors.neutral400}
-                style={{ textAlign: "center", marginTop: spacingY._10 }}
-              >
-                Select another day or add a new workout
-              </Typo>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    </ScreenWrapper>
+      </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
 
@@ -425,70 +417,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
+  header: {
+    marginVertical: spacingY._10,
+  },
   monthHeader: {
-    marginBottom: spacingY._10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: spacingY._15,
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._10,
   },
-  calendar: {
-    marginBottom: spacingY._15,
-  },
-  calendarContainer: {
-    paddingVertical: spacingY._10,
-    paddingLeft: 0,
-  },
-  dayCard: {
-    alignItems: "center",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(8),
-    borderRadius: radius._12,
-    backgroundColor: colors.neutral800,
-    minWidth: DAY_WIDTH,
-    height: verticalScale(75),
-    justifyContent: "center",
-    position: "relative",
-  },
-  dayCardToday: {
-    backgroundColor: colors.primary,
-  },
-  dayCardSelected: {
-    backgroundColor: colors.neutral700,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  dayCardRest: {
-    borderWidth: 2,
-    borderColor: colors.rose,
-  },
-  workoutIndicator: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.green,
-  },
-  scrollViewContent: {
-    paddingBottom: scale(120), // ✅ Redus de la 300 la 120
-  },
-  selectedWorkoutSection: {
+  contentSection: {
+    flex: 1,
     marginTop: spacingY._10,
   },
-  emptyState: {
-    marginTop: verticalScale(60),
-    alignItems: "center",
-    paddingHorizontal: spacingX._30,
-  },
-  emptyIconContainer: {
-    backgroundColor: colors.neutral800,
-    padding: spacingX._25,
-    borderRadius: 100,
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: verticalScale(20),
   },
 });

@@ -2,7 +2,9 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import { getMealLabel } from "@/src/i18n/translations";
 import { verticalScale } from "@/src/utils/styling";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -30,6 +32,8 @@ const ManualCalories = () => {
   const { mealName } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
+  const mealLabel = getMealLabel(language, mealName as string);
 
   const [foodName, setFoodName] = useState("");
   const [calories, setCalories] = useState("");
@@ -42,15 +46,13 @@ const ManualCalories = () => {
   const [servingAmount, setServingAmount] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Calculează automat caloriile bazat pe macronutrienți
   const calculateCalories = () => {
     const p = parseFloat(proteins) || 0;
     const c = parseFloat(carbs) || 0;
     const f = parseFloat(fats) || 0;
 
-    // Proteine: 4 kcal/g, Carbohidrați: 4 kcal/g, Grăsimi: 9 kcal/g
-    const totalCal = p * 4 + c * 4 + f * 9;
-    setCalories(Math.round(totalCal).toString());
+    const totalCalories = p * 4 + c * 4 + f * 9;
+    setCalories(Math.round(totalCalories).toString());
   };
 
   React.useEffect(() => {
@@ -61,16 +63,15 @@ const ManualCalories = () => {
 
   const handleSave = async () => {
     if (!foodName.trim()) {
-      Alert.alert("Eroare", "Te rog introdu numele alimentului");
+      Alert.alert(t("common_error"), t("manual_calories_modal_error_food_name"));
       return;
     }
 
     if (!calories || parseFloat(calories) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu un număr valid de calorii");
+      Alert.alert(t("common_error"), t("manual_calories_modal_error_calories"));
       return;
     }
 
-    // Dacă este per 100g și user-ul a introdus cantitate
     let finalCalories = parseFloat(calories);
     let finalProteins = parseFloat(proteins) || 0;
     let finalCarbs = parseFloat(carbs) || 0;
@@ -101,18 +102,20 @@ const ManualCalories = () => {
     try {
       await addFoodToMeal(mealName as string, foodData);
       setSaving(false);
-      Alert.alert("Success", "Alimentul a fost adăugat!", [
+      Alert.alert(t("common_success"), t("manual_calories_modal_success_added"), [
         {
-          text: "OK",
+          text: t("common_ok"),
           onPress: () => router.back(),
         },
       ]);
     } catch (error: any) {
       setSaving(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("manual_calories_modal_error_add"),
+      );
     }
   };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -134,7 +137,7 @@ const ManualCalories = () => {
                 <Icons.X size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
-                Introdu Calorii
+                {t("manual_calories_modal_title")}
               </Typo>
               <View style={{ width: 24 }} />
             </View>
@@ -149,9 +152,7 @@ const ManualCalories = () => {
                 style={styles.infoCard}
               >
                 <Typo size={14} color={colors.neutral400}>
-                  Folosește formularul de mai jos dacă vrei să adaugi rapid o
-                  intrare în jurnal cu un anumit număr de calorii, grăsimi,
-                  proteine sau carbohidrați.
+                  {t("manual_calories_modal_info")}
                 </Typo>
               </Animated.View>
 
@@ -166,7 +167,7 @@ const ManualCalories = () => {
                   weight="fill"
                 />
                 <Typo size={15} fontWeight="600">
-                  {mealName || "Masă"}
+                  {mealLabel || t("manual_calories_modal_meal_fallback")}
                 </Typo>
               </Animated.View>
 
@@ -176,10 +177,10 @@ const ManualCalories = () => {
                 style={styles.inputGroup}
               >
                 <Typo size={15} fontWeight="600" style={styles.label}>
-                  Numele alimentului*
+                  {t("manual_calories_modal_food_name_label")}
                 </Typo>
                 <Input
-                  placeholder="ex. Piept de pui"
+                  placeholder={t("manual_calories_modal_food_name_placeholder")}
                   value={foodName}
                   onChangeText={setFoodName}
                   containerStyle={styles.input}
@@ -192,7 +193,7 @@ const ManualCalories = () => {
                 style={styles.inputGroup}
               >
                 <Typo size={15} fontWeight="600" style={styles.label}>
-                  Calorii (kCal) *
+                  {t("manual_calories_modal_calories_label")}
                 </Typo>
                 <Input
                   placeholder="0"
@@ -201,7 +202,7 @@ const ManualCalories = () => {
                   keyboardType="numeric"
                   containerStyle={styles.input}
                   editable={!autoCalculate}
-                  inputStyle={autoCalculate && styles.disabledInput}
+                  inputStyle={autoCalculate ? styles.disabledInput : undefined}
                 />
               </Animated.View>
 
@@ -211,8 +212,7 @@ const ManualCalories = () => {
                 style={styles.macrosSection}
               >
                 <Typo size={16} fontWeight="600" style={styles.sectionTitle}>
-                  Macronutrienți (opțional)
-                </Typo>
+                  {t("manual_calories_modal_macros_optional")}</Typo>
 
                 {/* Proteins */}
                 <View style={styles.macroRow}>
@@ -223,7 +223,7 @@ const ManualCalories = () => {
                   </View>
                   <View style={styles.macroInputContainer}>
                     <Typo size={14} color={colors.neutral400}>
-                      Proteine (g)
+                      {t("manual_calories_modal_protein_label")}
                     </Typo>
                     <Input
                       placeholder="0"
@@ -244,7 +244,7 @@ const ManualCalories = () => {
                   </View>
                   <View style={styles.macroInputContainer}>
                     <Typo size={14} color={colors.neutral400}>
-                      Carbohidrați (g)
+                      {t("manual_calories_modal_carbs_label")}
                     </Typo>
                     <Input
                       placeholder="0"
@@ -265,7 +265,7 @@ const ManualCalories = () => {
                   </View>
                   <View style={styles.macroInputContainer}>
                     <Typo size={14} color={colors.neutral400}>
-                      Grăsimi (g)
+                      {t("manual_calories_modal_fat_label")}
                     </Typo>
                     <Input
                       placeholder="0"
@@ -293,11 +293,10 @@ const ManualCalories = () => {
                     />
                     <View style={styles.toggleText}>
                       <Typo size={15} fontWeight="600">
-                        Calculează automat caloriile
+                        {t("manual_calories_modal_auto_calc_title")}
                       </Typo>
                       <Typo size={12} color={colors.neutral400}>
-                        Calculul se va face în funcție de valorile introduse la
-                        grăsimi, carbohidrați și proteine.
+                        {t("manual_calories_modal_auto_calc_description")}
                       </Typo>
                     </View>
                   </View>
@@ -332,12 +331,10 @@ const ManualCalories = () => {
                     />
                     <View style={styles.toggleText}>
                       <Typo size={15} fontWeight="600">
-                        Valorile sunt pentru 100 de grame
+                        {t("manual_calories_modal_per_100_title")}
                       </Typo>
                       <Typo size={12} color={colors.neutral400}>
-                        Dacă valorile introduse sunt pentru 100 de grame,
-                        bifează acest câmp și introdu cantitatea consumată
-                        pentru a calcula valorile nutriționale
+                        {t("manual_calories_modal_per_100_description")}
                       </Typo>
                     </View>
                   </View>
@@ -361,10 +358,10 @@ const ManualCalories = () => {
                   style={styles.inputGroup}
                 >
                   <Typo size={15} fontWeight="600" style={styles.label}>
-                    Cantitate consumată (g)
+                    {t("manual_calories_modal_serving_amount_label")}
                   </Typo>
                   <Input
-                    placeholder="ex. 150"
+                    placeholder={t("manual_calories_modal_serving_amount_placeholder")}
                     value={servingAmount}
                     onChangeText={setServingAmount}
                     keyboardType="numeric"
@@ -379,10 +376,10 @@ const ManualCalories = () => {
                 style={styles.inputGroup}
               >
                 <Typo size={15} fontWeight="600" style={styles.label}>
-                  Descriere (opțional)
+                  {t("manual_calories_modal_description_label")}
                 </Typo>
                 <Input
-                  placeholder="Adaugă o descriere..."
+                  placeholder={t("manual_calories_modal_description_placeholder")}
                   value={description}
                   onChangeText={setDescription}
                   containerStyle={styles.textAreaInput}
@@ -399,8 +396,7 @@ const ManualCalories = () => {
               >
                 <Icons.Info size={20} color={colors.primary} weight="fill" />
                 <Typo size={13} color={colors.neutral400} style={{ flex: 1 }}>
-                  Notă: Trebuie să introduci o valoare pentru cel puțin unul din
-                  câmpuri
+                  {t("manual_calories_modal_note")}
                 </Typo>
               </Animated.View>
             </ScrollView>
@@ -412,7 +408,7 @@ const ManualCalories = () => {
             >
               <Button onPress={handleSave} loading={saving}>
                 <Typo size={18} fontWeight="700" color={colors.black}>
-                  Adaugă la {mealName}
+                  {t("manual_calories_modal_add_to_meal", { meal: mealLabel || t("manual_calories_modal_meal_fallback") })}
                 </Typo>
               </Button>
             </Animated.View>

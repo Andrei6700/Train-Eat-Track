@@ -5,25 +5,40 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
-import { searchFood, SimplifiedFood } from "@/src/services/foodApiService";
+import { getMealLabel } from "@/src/i18n/translations";
+import { getCachedFoods } from "@/src/services/cacheService";
+import {
+    searchFoodHybrid,
+    SimplifiedFood,
+} from "@/src/services/foodApiService";
 import { getRecentFoodsByMeal } from "@/src/services/recentFoodsService";
 import { Food } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
+import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,19 +49,30 @@ const MEALS = [
   { id: "snacks", name: "Gustari" },
 ];
 
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_PAGE_SIZE = 12;
+const SEARCH_TIMEOUT_MS = 6000;
+const SEARCH_RETRIES = 0;
+const SEARCH_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError";
+
 const MealDetail = () => {
   const { mealName } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
+  const { language, t } = useLanguage();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMeal, setSelectedMeal] = useState(
-    (mealName as string) || "Mic Dejun"
+    (mealName as string) || "Mic Dejun",
   );
   const [showMealDropdown, setShowMealDropdown] = useState(false);
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
+  const [cachedFoods, setCachedFoods] = useState<Food[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [dropdownPosition, setDropdownPosition] = useState({
     x: 0,
@@ -57,11 +83,68 @@ const MealDetail = () => {
   const [searchResults, setSearchResults] = useState<SimplifiedFood[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const activeSearchControllerRef = useRef<AbortController | null>(null);
+  const latestSearchTokenRef = useRef(0);
 
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [selectedFood, setSelectedFood] = useState<SimplifiedFood | null>(null);
   const [quantity, setQuantity] = useState("100");
   const [addingFood, setAddingFood] = useState(false);
+
+  // State for showing success toast message
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  // State for recent food quantity modal
+  const [selectedRecentFood, setSelectedRecentFood] = useState<Food | null>(
+    null,
+  );
+  const [recentFoodQuantity, setRecentFoodQuantity] = useState("100");
+
+  // Swipe to dismiss modal gesture handling
+  const modalTranslateY = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only activate on vertical movement
+        return (
+          Math.abs(gestureState.dy) > 10 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+        );
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow downward swipe
+        if (gestureState.dy > 0) {
+          modalTranslateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // If swiped down more than 150px, dismiss the modal
+        if (gestureState.dy > 150) {
+          Animated.timing(modalTranslateY, {
+            toValue: 500,
+            duration: 250,
+            useNativeDriver: true,
+          }).start(() => {
+            setShowQuantityModal(false);
+            setSelectedFood(null);
+            setSelectedRecentFood(null);
+            modalTranslateY.setValue(0);
+          });
+        } else {
+          // Otherwise, spring back to original position
+          Animated.spring(modalTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 8,
+          }).start();
+        }
+      },
+    }),
+  ).current;
 
   const mealDropdownRef = useRef<TouchableOpacity>(null);
 
@@ -69,11 +152,45 @@ const MealDetail = () => {
     MEALS.find((meal) => meal.name === selectedMeal) ||
     MEALS.find((meal) => meal.name === mealName) ||
     MEALS[0];
+  const currentMealLabel = getMealLabel(language, currentMeal.name);
 
-  // ✅ ÎNCARCĂ ALIMENTELE RECENTE PENTRU MASA CURENTĂ
+  const localSearchFoods = useMemo(
+    () => [...recentFoods, ...cachedFoods],
+    [cachedFoods, recentFoods],
+  );
+
+  // Load recent foods when meal changes
   useEffect(() => {
     loadRecentFoods();
   }, [currentMeal.name, user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const localCachedFoods = await getCachedFoods();
+        if (!cancelled) {
+          setCachedFoods(localCachedFoods);
+        }
+      } catch (error) {
+        console.error("[MealDetail] Error loading cached foods:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      activeSearchControllerRef.current?.abort();
+    };
+  }, []);
 
   const loadRecentFoods = async () => {
     if (!user?.uid) {
@@ -83,10 +200,12 @@ const MealDetail = () => {
 
     setLoadingRecent(true);
     const result = await getRecentFoodsByMeal(user.uid, currentMeal.name, 10);
-    
+
     if (result.success && result.data) {
       setRecentFoods(result.data);
-      console.log(`✅ Loaded ${result.data.length} recent foods for ${currentMeal.name}`);
+      console.log(
+        ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`,
+      );
     } else {
       setRecentFoods([]);
     }
@@ -114,62 +233,259 @@ const MealDetail = () => {
     setShowMealDropdown(false);
   };
 
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
+  const handleSearch = useCallback(
+    (text: string) => {
+      setSearchQuery(text);
+      const normalizedQuery = text.trim();
 
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
 
-    if (text.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
+      if (activeSearchControllerRef.current) {
+        activeSearchControllerRef.current.abort();
+        activeSearchControllerRef.current = null;
+      }
 
-    setIsSearching(true);
-    searchTimeoutRef.current = setTimeout(async () => {
-      const results = await searchFood(text.trim(), 1, 20);
-      setSearchResults(results);
-      setIsSearching(false);
-    }, 500);
-  };
+      if (normalizedQuery.length < 2) {
+        latestSearchTokenRef.current += 1;
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
 
-  const handleFoodPress = (food: SimplifiedFood) => {
+      const searchToken = ++latestSearchTokenRef.current;
+      const totalStartedAt = Date.now();
+
+      void (async () => {
+        const localStartedAt = Date.now();
+        const localResult = await searchFoodHybrid(normalizedQuery, {
+          localFoods: localSearchFoods,
+          includeRemote: false,
+          maxResults: SEARCH_PAGE_SIZE,
+        });
+
+        if (searchToken !== latestSearchTokenRef.current) return;
+
+        setSearchResults(localResult.foods);
+
+        if (__DEV__) {
+          console.log("food_search_local_ms", {
+            latencyMs: Date.now() - localStartedAt,
+            queryLength: normalizedQuery.length,
+            source: "local",
+            cancelled: false,
+            resultCount: localResult.foods.length,
+            success: true,
+          });
+        }
+
+        setIsSearching(true);
+      })();
+
+      searchTimeoutRef.current = setTimeout(() => {
+        const controller = new AbortController();
+        activeSearchControllerRef.current = controller;
+        const remoteStartedAt = Date.now();
+
+        void (async () => {
+          try {
+            const remoteResult = await searchFoodHybrid(normalizedQuery, {
+              localFoods: localSearchFoods,
+              includeRemote: true,
+              signal: controller.signal,
+              queryCacheTtlMs: SEARCH_QUERY_CACHE_TTL_MS,
+              maxResults: 20,
+              remoteOptions: {
+                page: 1,
+                pageSize: SEARCH_PAGE_SIZE,
+                timeoutMs: SEARCH_TIMEOUT_MS,
+                retries: SEARCH_RETRIES,
+                signal: controller.signal,
+              },
+            });
+
+            if (searchToken !== latestSearchTokenRef.current) return;
+
+            setSearchResults(remoteResult.foods);
+            setIsSearching(false);
+
+            if (__DEV__) {
+              console.log("food_search_remote_ms", {
+                latencyMs: Date.now() - remoteStartedAt,
+                queryLength: normalizedQuery.length,
+                source: remoteResult.fromQueryCache ? "cache" : "remote",
+                cancelled: false,
+                resultCount: remoteResult.foods.length,
+                success: true,
+              });
+              console.log("food_search_total_ms", {
+                latencyMs: Date.now() - totalStartedAt,
+                queryLength: normalizedQuery.length,
+                source: remoteResult.source,
+                cancelled: false,
+                resultCount: remoteResult.foods.length,
+                success: true,
+              });
+            }
+          } catch (error) {
+            const cancelled = isAbortError(error);
+
+            if (searchToken !== latestSearchTokenRef.current) return;
+
+            if (!cancelled) {
+              console.error("[MealDetail] Food search failed:", error);
+            }
+
+            setIsSearching(false);
+
+            if (__DEV__) {
+              console.log("food_search_remote_ms", {
+                latencyMs: Date.now() - remoteStartedAt,
+                queryLength: normalizedQuery.length,
+                source: "remote",
+                cancelled,
+                resultCount: 0,
+                success: false,
+              });
+              console.log("food_search_total_ms", {
+                latencyMs: Date.now() - totalStartedAt,
+                queryLength: normalizedQuery.length,
+                source: "local",
+                cancelled,
+                resultCount: 0,
+                success: false,
+              });
+            }
+          } finally {
+            if (activeSearchControllerRef.current === controller) {
+              activeSearchControllerRef.current = null;
+            }
+          }
+        })();
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [localSearchFoods],
+  );
+
+  const handleFoodPress = useCallback((food: SimplifiedFood) => {
+    modalTranslateY.setValue(0);
     setSelectedFood(food);
     setQuantity("100");
     setShowQuantityModal(true);
+  }, []);
+
+  // Show success toast animation
+  const showSuccessToastMessage = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessToast(true);
+
+    // Fade in
+    Animated.sequence([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(2000),
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSuccessToast(false);
+    });
   };
 
-  // ✅ ADAUGĂ ALIMENT DIN LISTA RECENTĂ
-  const handleRecentFoodPress = (food: Food) => {
-    Alert.alert(
-      "Adaugă aliment",
-      `Vrei să adaugi "${food.name}" la ${currentMeal.name}?`,
-      [
-        { text: "Anulează", style: "cancel" },
-        {
-          text: "Adaugă",
-          onPress: async () => {
-            try {
-              await addFoodToMeal(currentMeal.name, food);
-              Alert.alert("Success", `${food.name} a fost adăugat la ${currentMeal.name}! 🎉`, [
-                {
-                  text: "OK",
-                  onPress: () => router.back(),
-                },
-              ]);
-            } catch (error: any) {
-              Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
-            }
-          },
-        },
-      ]
-    );
+  // Quick add from recent foods with same quantity (no confirmation)
+  const handleQuickAddRecentFood = useCallback(
+    async (food: Food) => {
+      try {
+        await addFoodToMeal(currentMeal.name, food);
+        showSuccessToastMessage(
+          t("meal_detail_modal_food_added_to_meal", {
+            name: food.name,
+            meal: currentMealLabel,
+          }),
+        );
+      } catch (error: any) {
+        Alert.alert(
+          t("common_error"),
+          error?.message || t("meal_detail_modal_error_add"),
+        );
+      }
+    },
+    [addFoodToMeal, currentMeal.name, currentMealLabel, t],
+  );
+
+  // Show quantity modal for recent food when clicking on food body
+  const handleRecentFoodBodyPress = useCallback((food: Food) => {
+    modalTranslateY.setValue(0);
+    setSelectedRecentFood(food);
+    // Extract quantity from servingSize if available, otherwise default to 100
+    const servingMatch = food.servingSize?.match(/(\d+)/);
+    const defaultQuantity = servingMatch ? servingMatch[1] : "100";
+    setRecentFoodQuantity(defaultQuantity);
+    setShowQuantityModal(true);
+  }, []);
+
+  // Add recent food with custom quantity
+  const handleAddRecentFoodWithQuantity = async () => {
+    if (
+      !selectedRecentFood ||
+      !recentFoodQuantity ||
+      parseFloat(recentFoodQuantity) <= 0
+    ) {
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
+      return;
+    }
+
+    setAddingFood(true);
+
+    // Extract original quantity from servingSize
+    const originalServingMatch = selectedRecentFood.servingSize?.match(/(\d+)/);
+    const originalQuantity = originalServingMatch
+      ? parseFloat(originalServingMatch[1])
+      : 100;
+
+    const qty = parseFloat(recentFoodQuantity);
+    const multiplier = qty / originalQuantity;
+
+    const adjustedFood: Food = {
+      name: selectedRecentFood.name,
+      calories: Math.round(selectedRecentFood.calories * multiplier),
+      protein: Math.round(selectedRecentFood.protein * multiplier * 10) / 10,
+      carbs: Math.round(selectedRecentFood.carbs * multiplier * 10) / 10,
+      fat: Math.round(selectedRecentFood.fat * multiplier * 10) / 10,
+      servingSize: `${qty}g`,
+    };
+
+    try {
+      await addFoodToMeal(currentMeal.name, adjustedFood);
+
+      setAddingFood(false);
+      setShowQuantityModal(false);
+      setSelectedRecentFood(null);
+
+      showSuccessToastMessage(
+        t("meal_detail_modal_food_added_to_meal", {
+          name: adjustedFood.name,
+          meal: currentMealLabel,
+        }),
+      );
+    } catch (error: any) {
+      setAddingFood(false);
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("meal_detail_modal_error_add"),
+      );
+    }
   };
 
   const handleAddWithQuantity = async () => {
     if (!selectedFood || !quantity || parseFloat(quantity) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
@@ -196,19 +512,18 @@ const MealDetail = () => {
       setSearchQuery("");
       setSearchResults([]);
 
-      Alert.alert(
-        "Success",
-        `${adjustedFood.name} a fost adăugat la ${currentMeal.name}! 🎉`,
-        [
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ]
+      showSuccessToastMessage(
+        t("meal_detail_modal_food_added_to_meal", {
+          name: adjustedFood.name,
+          meal: currentMealLabel,
+        }),
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert("Eroare", error?.message || "Nu s-a putut adăuga alimentul");
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("meal_detail_modal_error_add"),
+      );
     }
   };
 
@@ -226,27 +541,145 @@ const MealDetail = () => {
     });
   };
 
+  // Render item for search results - FlashList
+  const renderSearchResultItem = useCallback(
+    ({ item: food }: { item: SimplifiedFood }) => (
+      <TouchableOpacity
+        style={styles.searchResultItem}
+        onPress={() => handleFoodPress(food)}
+      >
+        {food.image && (
+          <Image
+            source={{ uri: food.image }}
+            style={styles.foodImage}
+            contentFit="cover"
+          />
+        )}
+        <View style={styles.foodInfo}>
+          <Typo size={16} fontWeight="600" numberOfLines={2}>
+            {food.name}
+          </Typo>
+          <View style={styles.nutritionRow}>
+            <Typo size={13} color={colors.neutral400}>
+              {food.calories} kcal
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              •
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              {t("nutrition_short_protein")}: {food.protein}g
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              •
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              {t("nutrition_short_carbs")}: {food.carbs}g
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              •
+            </Typo>
+            <Typo size={13} color={colors.neutral400}>
+              {t("nutrition_short_fat")}: {food.fat}g
+            </Typo>
+          </View>
+        </View>
+      </TouchableOpacity>
+    ),
+    [handleFoodPress, t],
+  );
+
+  const renderRecentFoodItem = useCallback(
+    ({ item: food }: { item: Food }) => (
+      <View style={styles.recentFoodItem}>
+        {/* Main touchable area - clicking here opens quantity modal */}
+        <TouchableOpacity
+          style={styles.recentFoodBodyArea}
+          onPress={() => handleRecentFoodBodyPress(food)}
+        >
+          <View style={styles.foodInfo}>
+            <Typo size={16} fontWeight="600" numberOfLines={2}>
+              {food.name}
+            </Typo>
+            <View style={styles.nutritionRow}>
+              <Typo size={13} color={colors.neutral400}>
+                {food.calories} kcal
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                •
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                {t("nutrition_short_protein")}: {food.protein}g
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                •
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                {t("nutrition_short_carbs")}: {food.carbs}g
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                •
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                {t("nutrition_short_fat")}: {food.fat}g
+              </Typo>
+            </View>
+            <Typo size={12} color={colors.neutral500}>
+              {food.servingSize}
+            </Typo>
+          </View>
+        </TouchableOpacity>
+
+        {/* Quick add button with plus icon */}
+        <TouchableOpacity
+          style={styles.quickAddButton}
+          onPress={() => handleQuickAddRecentFood(food)}
+        >
+          <Icons.Plus size={24} color={colors.primary} weight="bold" />
+        </TouchableOpacity>
+      </View>
+    ),
+    [handleQuickAddRecentFood, handleRecentFoodBodyPress, t],
+  );
+
+  const RecentFoodsEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyState}>
+        <Icons.ForkKnife size={48} color={colors.neutral600} weight="light" />
+        <Typo
+          size={16}
+          color={colors.neutral500}
+          style={{ marginTop: spacingY._15, textAlign: "center" }}
+        >
+          {t("meal_detail_modal_recent_empty", { meal: currentMealLabel })}
+        </Typo>
+      </View>
+    ),
+    [currentMealLabel, t],
+  );
+
   return (
     <ModalWrapper>
       <View style={styles.container}>
-        {/* Custom Header with Dropdown */}
+        {/* Header */}
         <View style={styles.header}>
-          <BackButton />
+          <BackButton iconSize={26} />
+
           <TouchableOpacity
             ref={mealDropdownRef}
             style={styles.mealDropdown}
             onPress={measureDropdown}
           >
-            <Typo size={18} fontWeight="700" style={styles.mealTitle}>
-              {currentMeal.name}
+            <Typo size={24} fontWeight="700" style={styles.mealTitle}>
+              {currentMealLabel}
             </Typo>
             <Icons.CaretDown
-              size={16}
-              color={colors.neutral400}
+              size={verticalScale(20)}
+              color={colors.primary}
               weight="bold"
             />
           </TouchableOpacity>
-          <View style={{ width: 24 }} />
+
+          <View style={{ width: verticalScale(28) }} />
         </View>
 
         {/* Meal Dropdown Modal */}
@@ -257,8 +690,8 @@ const MealDetail = () => {
           onRequestClose={() => setShowMealDropdown(false)}
         >
           <TouchableOpacity
-            style={styles.dropdownOverlay}
             activeOpacity={1}
+            style={styles.dropdownOverlay}
             onPress={() => setShowMealDropdown(false)}
           >
             <View
@@ -277,22 +710,19 @@ const MealDetail = () => {
                   key={meal.id}
                   style={[
                     styles.dropdownItem,
-                    selectedMeal === meal.name && styles.dropdownItemActive,
+                    meal.name === currentMeal.name && styles.dropdownItemActive,
                   ]}
                   onPress={() => handleMealSelect(meal.id)}
                 >
                   <Typo
                     size={16}
-                    fontWeight="600"
-                    color={
-                      selectedMeal === meal.name ? colors.primary : colors.text
-                    }
+                    fontWeight={meal.name === currentMeal.name ? "600" : "500"}
                   >
-                    {meal.name}
+                    {getMealLabel(language, meal.name)}
                   </Typo>
-                  {selectedMeal === meal.name && (
+                  {meal.name === currentMeal.name && (
                     <Icons.Check
-                      size={16}
+                      size={20}
                       color={colors.primary}
                       weight="bold"
                     />
@@ -306,148 +736,72 @@ const MealDetail = () => {
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
-            <Icons.MagnifyingGlass
-              size={20}
-              color={colors.neutral400}
-              style={styles.searchIcon}
-            />
+            <View style={styles.searchIcon}>
+              <Icons.MagnifyingGlass
+                size={20}
+                color={colors.neutral400}
+                weight="bold"
+              />
+            </View>
             <Input
-              placeholder="Caută alimente (ex. Piept de pui)"
+              placeholder={t("meal_detail_modal_search_placeholder")}
               value={searchQuery}
               onChangeText={handleSearch}
               containerStyle={styles.searchInput}
               inputStyle={styles.searchInputText}
             />
             {isSearching && (
-              <ActivityIndicator
-                size="small"
-                color={colors.primary}
-                style={styles.searchLoader}
-              />
+              <View style={styles.searchLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
             )}
           </View>
         </View>
 
         {/* Search Results */}
-        {searchResults.length > 0 && (
-          <ScrollView
-            style={styles.searchResultsContainer}
-            contentContainerStyle={styles.searchResultsContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Typo
-              size={16}
-              fontWeight="600"
-              style={{ marginBottom: spacingY._10 }}
-            >
-              Rezultate căutare ({searchResults.length})
-            </Typo>
-            {searchResults.map((food, index) => (
-              <TouchableOpacity
-                key={`${food.code}-${index}`}
-                style={styles.searchResultItem}
-                onPress={() => handleFoodPress(food)}
-              >
-                {food.image && (
-                  <Image
-                    source={{ uri: food.image }}
-                    style={styles.foodImage}
-                    contentFit="cover"
-                  />
-                )}
-                <View style={styles.foodInfo}>
-                  <Typo size={15} fontWeight="600" numberOfLines={2}>
-                    {food.name}
-                  </Typo>
-                  {food.brands && (
-                    <Typo size={12} color={colors.neutral400} numberOfLines={1}>
-                      {food.brands}
-                    </Typo>
-                  )}
-                  <View style={styles.nutritionRow}>
-                    <Typo size={13} color={colors.primary}>
-                      {food.calories} kcal
-                    </Typo>
-                    <Typo size={12} color={colors.neutral400}>
-                      P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
+        {searchQuery.trim().length >= 2 && (
+          <View style={styles.searchResultsContainer}>
+            <FlashList
+              data={searchResults}
+              renderItem={renderSearchResultItem}
+              keyExtractor={(item) => `search-${item.code || item.name}`}
+              estimatedItemSize={80}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flashListContent}
+              ListEmptyComponent={
+                !isSearching ? (
+                  <View style={styles.emptyState}>
+                    <Typo size={16} color={colors.neutral500}>
+                      {t("meal_detail_modal_no_results")}
                     </Typo>
                   </View>
-                  <Typo size={11} color={colors.neutral500}>
-                    {food.servingSize}
-                  </Typo>
-                </View>
-                <Icons.PlusCircle
-                  size={24}
-                  color={colors.primary}
-                  weight="fill"
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                ) : null
+              }
+            />
+          </View>
         )}
 
-        {/* Action Buttons */}
-        {searchResults.length === 0 && (
+        {/* Action Buttons & Recent Foods */}
+        {searchQuery.trim().length < 2 && (
           <>
+            {/* Action Buttons */}
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={handleManualCalories}
               >
                 <View style={styles.actionButtonContent}>
-                  <Icons.Calculator
-                    size={24}
+                  <Icons.PencilSimple
+                    size={28}
                     color={colors.primary}
-                    weight="fill"
+                    weight="bold"
                   />
                   <View style={styles.actionTextContainer}>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      Introdu
+                    <Typo size={13} style={styles.actionButtonText}>
+                      {t("meal_detail_modal_manual_button_line1")}
                     </Typo>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      calorii manual
-                    </Typo>
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(modals)/createFood",
-                    params: { mealName },
-                  })
-                }
-              >
-                <View style={styles.actionButtonContent}>
-                  <Icons.PlusCircle
-                    size={24}
-                    color={colors.primary}
-                    weight="fill"
-                  />
-                  <View style={styles.actionTextContainer}>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      Creează
-                    </Typo>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      aliment/rețetă
+                    <Typo size={13} style={styles.actionButtonText}>
+                      {t("meal_detail_modal_manual_button_line2")}
                     </Typo>
                   </View>
                 </View>
@@ -459,284 +813,405 @@ const MealDetail = () => {
               >
                 <View style={styles.actionButtonContent}>
                   <Icons.Barcode
-                    size={24}
+                    size={28}
                     color={colors.primary}
-                    weight="fill"
+                    weight="bold"
                   />
                   <View style={styles.actionTextContainer}>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      Caută după
+                    <Typo size={13} style={styles.actionButtonText}>
+                      {t("meal_detail_modal_barcode_button_line1")}
                     </Typo>
-                    <Typo
-                      size={13}
-                      fontWeight="700"
-                      style={styles.actionButtonText}
-                    >
-                      cod de bare
+                    <Typo size={13} style={styles.actionButtonText}>
+                      {t("meal_detail_modal_barcode_button_line2")}
                     </Typo>
                   </View>
                 </View>
               </TouchableOpacity>
             </View>
 
-            {/* ✅ RECENT FOODS SECTION */}
+            {/* Recent Foods Section */}
             <View style={styles.recentFoodsSection}>
               <Typo size={18} fontWeight="700" style={styles.sectionTitle}>
-                Alimente recente
+                {t("meal_detail_modal_recent_title")}
               </Typo>
 
               {loadingRecent ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="large" color={colors.primary} />
                 </View>
               ) : (
-                <ScrollView
-                  style={styles.foodsList}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={[
-                    styles.foodsListContent,
-                    recentFoods.length === 0 && styles.emptyFoodsListContent,
-                  ]}
-                >
-                  {recentFoods.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <Icons.ForkKnife
-                        size={48}
-                        color={colors.neutral500}
-                        weight="fill"
-                      />
-                      <Typo
-                        size={16}
-                        fontWeight="600"
-                        color={colors.neutral400}
-                        style={{ marginTop: spacingY._15, textAlign: "center" }}
-                      >
-                        Nu ai alimente recente pentru {currentMeal.name}
-                      </Typo>
-                      <Typo
-                        size={14}
-                        color={colors.neutral500}
-                        style={{ marginTop: spacingY._7, textAlign: "center" }}
-                      >
-                        Alimentele pe care le adaugi la această masă vor apărea aici
-                      </Typo>
-                    </View>
-                  ) : (
-                    <>
-                      {recentFoods.map((food, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.recentFoodItem}
-                          onPress={() => handleRecentFoodPress(food)}
-                        >
-                          <View style={styles.foodInfo}>
-                            <Typo size={15} fontWeight="600" numberOfLines={1}>
-                              {food.name}
-                            </Typo>
-                            <View style={styles.nutritionRow}>
-                              <Typo size={13} color={colors.primary}>
-                                {food.calories} kcal
-                              </Typo>
-                              <Typo size={12} color={colors.neutral400}>
-                                P: {food.protein}g • C: {food.carbs}g • F: {food.fat}g
-                              </Typo>
-                            </View>
-                            <Typo size={11} color={colors.neutral500}>
-                              {food.servingSize}
-                            </Typo>
-                          </View>
-                          <Icons.PlusCircle
-                            size={24}
-                            color={colors.primary}
-                            weight="fill"
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </>
-                  )}
-                </ScrollView>
+                <View style={styles.recentFoodsListContainer}>
+                  <FlashList
+                    data={recentFoods}
+                    renderItem={renderRecentFoodItem}
+                    keyExtractor={(item) => `recent-${item.name}`}
+                    estimatedItemSize={80}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={RecentFoodsEmptyState}
+                  />
+                </View>
               )}
             </View>
           </>
         )}
 
-        {/* ✅ MODAL PENTRU CANTITATE */}
+        {/* Quantity Modal - for both search results and recent foods */}
         <Modal
           visible={showQuantityModal}
-          transparent
           animationType="slide"
-          onRequestClose={() => setShowQuantityModal(false)}
+          transparent
+          onRequestClose={() => {
+            setShowQuantityModal(false);
+            setSelectedFood(null);
+            setSelectedRecentFood(null);
+          }}
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.modalOverlay}
+            style={{ flex: 1 }}
           >
-            <TouchableOpacity
-              style={styles.modalBackdrop}
-              activeOpacity={1}
-              onPress={() => setShowQuantityModal(false)}
-            />
+            <View style={styles.modalOverlay}>
+              <TouchableOpacity
+                activeOpacity={1}
+                style={styles.modalBackdrop}
+                onPress={() => {
+                  setShowQuantityModal(false);
+                  setSelectedFood(null);
+                  setSelectedRecentFood(null);
+                }}
+              />
 
-            <View
-              style={[
-                styles.quantityModal,
-                { paddingBottom: insets.bottom + 20 },
-              ]}
-            >
-              <View style={styles.handleBar} />
+              <Animated.View
+                style={[
+                  styles.quantityModal,
+                  {
+                    transform: [{ translateY: modalTranslateY }],
+                    paddingBottom: insets.bottom + spacingY._20,
+                  },
+                ]}
+              >
+                <View
+                  {...panResponder.panHandlers}
+                  style={styles.modalHeaderContainer}
+                >
+                  {/* Handle Bar */}
+                  <View style={styles.handleBar} />
 
-              <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setShowQuantityModal(false)}>
-                  <Icons.X size={24} color={colors.white} weight="bold" />
-                </TouchableOpacity>
-                <Typo size={20} fontWeight="700">
-                  Adaugă aliment
-                </Typo>
-                <View style={{ width: 24 }} />
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {selectedFood && (
-                  <View style={styles.modalContent}>
-                    <View style={styles.foodInfoModal}>
-                      {selectedFood.image && (
-                        <Image
-                          source={{ uri: selectedFood.image }}
-                          style={styles.foodImageLarge}
-                          contentFit="cover"
-                        />
-                      )}
-                      <Typo
-                        size={18}
-                        fontWeight="700"
-                        style={{ marginTop: spacingY._12 }}
-                      >
-                        {selectedFood.name}
-                      </Typo>
-                      {selectedFood.brands && (
-                        <Typo size={14} color={colors.neutral400}>
-                          {selectedFood.brands}
-                        </Typo>
-                      )}
-                    </View>
-
-                    <View style={styles.quantitySection}>
-                      <Typo
-                        size={16}
-                        fontWeight="600"
-                        style={{ marginBottom: spacingY._12 }}
-                      >
-                        Cantitate (grame)
-                      </Typo>
-                      <Input
-                        placeholder="100"
-                        value={quantity}
-                        onChangeText={setQuantity}
-                        keyboardType="numeric"
-                        containerStyle={styles.quantityInput}
-                      />
-                      <Typo
-                        size={13}
+                  {/* Modal Header */}
+                  <View style={styles.modalHeader}>
+                    <Typo size={20} fontWeight="700">
+                      {t("nutrition_edit_quantity")}
+                    </Typo>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowQuantityModal(false);
+                        setSelectedFood(null);
+                        setSelectedRecentFood(null);
+                      }}
+                    >
+                      <Icons.X
+                        size={24}
                         color={colors.neutral400}
-                        style={{ marginTop: spacingY._8 }}
-                      >
-                        Valorile nutriționale sunt calculate pentru 100g
-                      </Typo>
-                    </View>
+                        weight="bold"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-                    <View style={styles.adjustedNutrition}>
-                      <Typo
-                        size={15}
-                        fontWeight="600"
-                        style={{ marginBottom: spacingY._12 }}
-                      >
-                        Valori calculate pentru {quantity || "0"}g:
-                      </Typo>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.quantityScrollContent}
+                >
+                  {/* Modal Content - for search results */}
+                  {selectedFood && (
+                    <View style={styles.modalContent}>
+                      {/* Food Info */}
+                      <View style={styles.foodInfoModal}>
+                        {selectedFood.image ? (
+                          <Image
+                            source={{ uri: selectedFood.image }}
+                            style={styles.foodImageLarge}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View style={styles.foodImagePlaceholder} />
+                        )}
+                        <Typo
+                          size={20}
+                          fontWeight="700"
+                          style={styles.modalFoodTitle}
+                          textProps={{ numberOfLines: 2 }}
+                        >
+                          {selectedFood.name}
+                        </Typo>
+                      </View>
 
-                      <View style={styles.nutritionGrid}>
-                        <View style={styles.nutritionItem}>
-                          <Typo
-                            size={24}
-                            fontWeight="700"
-                            color={colors.primary}
-                          >
-                            {Math.round(
-                              (selectedFood.calories *
-                                (parseFloat(quantity) || 0)) /
-                                100
-                            )}
-                          </Typo>
-                          <Typo size={12} color={colors.neutral400}>
-                            kcal
-                          </Typo>
-                        </View>
+                      {/* Quantity Input */}
+                      <View style={{ marginBottom: spacingY._25 }}>
+                        <Typo
+                          size={16}
+                          fontWeight="600"
+                          style={{ marginBottom: spacingY._10 }}
+                        >
+                          {t("nutrition_quantity_grams")}
+                        </Typo>
+                        <Input
+                          value={quantity}
+                          onChangeText={setQuantity}
+                          keyboardType="numeric"
+                          placeholder="100"
+                        />
+                      </View>
 
-                        <View style={styles.nutritionItem}>
-                          <Typo size={20} fontWeight="600">
-                            {Math.round(
-                              ((selectedFood.protein *
-                                (parseFloat(quantity) || 0)) /
-                                100) *
-                                10
-                            ) / 10}
-                            g
-                          </Typo>
-                          <Typo size={12} color={colors.neutral400}>
-                            Proteine
-                          </Typo>
-                        </View>
+                      {/* Nutrition Preview */}
+                      <View style={{ marginBottom: spacingY._20 }}>
+                        <Typo
+                          size={16}
+                          fontWeight="600"
+                          style={{ marginBottom: spacingY._15 }}
+                        >
+                          {t("meal_detail_modal_nutrition_values")}
+                        </Typo>
+                        <View style={styles.nutritionPreview}>
+                          <View style={styles.nutritionItem}>
+                            <Typo
+                              size={24}
+                              fontWeight="700"
+                              color={colors.primary}
+                            >
+                              {Math.round(
+                                (selectedFood.calories *
+                                  (parseFloat(quantity) || 0)) /
+                                  100,
+                              )}
+                            </Typo>
+                            <Typo size={12} color={colors.neutral400}>
+                              kcal
+                            </Typo>
+                          </View>
 
-                        <View style={styles.nutritionItem}>
-                          <Typo size={20} fontWeight="600">
-                            {Math.round(
-                              ((selectedFood.carbs *
-                                (parseFloat(quantity) || 0)) /
-                                100) *
-                                10
-                            ) / 10}
-                            g
-                          </Typo>
-                          <Typo size={12} color={colors.neutral400}>
-                            Carbohidrați
-                          </Typo>
-                        </View>
+                          <View style={styles.nutritionItem}>
+                            <Typo size={20} fontWeight="600">
+                              {Math.round(
+                                ((selectedFood.protein *
+                                  (parseFloat(quantity) || 0)) /
+                                  100) *
+                                  10,
+                              ) / 10}
+                              g
+                            </Typo>
+                            <Typo size={12} color={colors.neutral400}>
+                              {t("nutrition_protein")}
+                            </Typo>
+                          </View>
 
-                        <View style={styles.nutritionItem}>
-                          <Typo size={20} fontWeight="600">
-                            {Math.round(
-                              ((selectedFood.fat *
-                                (parseFloat(quantity) || 0)) /
-                                100) *
-                                10
-                            ) / 10}
-                            g
-                          </Typo>
-                          <Typo size={12} color={colors.neutral400}>
-                            Grăsimi
-                          </Typo>
+                          <View style={styles.nutritionItem}>
+                            <Typo size={20} fontWeight="600">
+                              {Math.round(
+                                ((selectedFood.carbs *
+                                  (parseFloat(quantity) || 0)) /
+                                  100) *
+                                  10,
+                              ) / 10}
+                              g
+                            </Typo>
+                            <Typo size={12} color={colors.neutral400}>
+                              {t("nutrition_carbs")}
+                            </Typo>
+                          </View>
+
+                          <View style={styles.nutritionItem}>
+                            <Typo size={20} fontWeight="600">
+                              {Math.round(
+                                ((selectedFood.fat *
+                                  (parseFloat(quantity) || 0)) /
+                                  100) *
+                                  10,
+                              ) / 10}
+                              g
+                            </Typo>
+                            <Typo size={12} color={colors.neutral400}>
+                              {t("nutrition_fat")}
+                            </Typo>
+                          </View>
                         </View>
                       </View>
-                    </View>
 
-                    <Button
-                      onPress={handleAddWithQuantity}
-                      loading={addingFood}
-                      style={{ marginTop: spacingY._20 }}
-                    >
-                      <Typo size={18} fontWeight="700" color={colors.black}>
-                        Adaugă la {currentMeal.name}
-                      </Typo>
-                    </Button>
-                  </View>
-                )}
-              </ScrollView>
+                      <Button
+                        onPress={handleAddWithQuantity}
+                        loading={addingFood}
+                        style={{ marginTop: spacingY._20 }}
+                      >
+                        <Typo size={18} fontWeight="700" color={colors.black}>
+                          {t("meal_detail_modal_add_to_meal", {
+                            meal: currentMealLabel,
+                          })}
+                        </Typo>
+                      </Button>
+                    </View>
+                  )}
+
+                  {/* Modal Content - for recent foods */}
+                  {selectedRecentFood && (
+                    <View style={styles.modalContent}>
+                      {/* Food Info */}
+                      <View style={styles.foodInfoModal}>
+                        <Typo
+                          size={20}
+                          fontWeight="700"
+                          style={styles.modalFoodTitle}
+                          textProps={{ numberOfLines: 2 }}
+                        >
+                          {selectedRecentFood.name}
+                        </Typo>
+                        <Typo
+                          size={14}
+                          color={colors.neutral400}
+                          style={{ marginTop: spacingY._5 }}
+                        >
+                          {t("meal_detail_modal_current_serving", {
+                            serving: selectedRecentFood.servingSize,
+                          })}
+                        </Typo>
+                      </View>
+
+                      {/* Quantity Input */}
+                      <View style={{ marginBottom: spacingY._25 }}>
+                        <Typo
+                          size={16}
+                          fontWeight="600"
+                          style={{ marginBottom: spacingY._10 }}
+                        >
+                          {t("nutrition_quantity_grams")}
+                        </Typo>
+                        <Input
+                          value={recentFoodQuantity}
+                          onChangeText={setRecentFoodQuantity}
+                          keyboardType="numeric"
+                          placeholder="100"
+                        />
+                      </View>
+
+                      {/* Nutrition Preview */}
+                      <View style={{ marginBottom: spacingY._20 }}>
+                        <Typo
+                          size={16}
+                          fontWeight="600"
+                          style={{ marginBottom: spacingY._15 }}
+                        >
+                          {t("meal_detail_modal_nutrition_values")}
+                        </Typo>
+                        <View style={styles.nutritionPreview}>
+                          {(() => {
+                            const originalServingMatch =
+                              selectedRecentFood.servingSize?.match(/(\d+)/);
+                            const originalQuantity = originalServingMatch
+                              ? parseFloat(originalServingMatch[1])
+                              : 100;
+                            const multiplier =
+                              (parseFloat(recentFoodQuantity) || 0) /
+                              originalQuantity;
+
+                            return (
+                              <>
+                                <View style={styles.nutritionItem}>
+                                  <Typo
+                                    size={24}
+                                    fontWeight="700"
+                                    color={colors.primary}
+                                  >
+                                    {Math.round(
+                                      selectedRecentFood.calories * multiplier,
+                                    )}
+                                  </Typo>
+                                  <Typo size={12} color={colors.neutral400}>
+                                    kcal
+                                  </Typo>
+                                </View>
+
+                                <View style={styles.nutritionItem}>
+                                  <Typo size={20} fontWeight="600">
+                                    {Math.round(
+                                      selectedRecentFood.protein *
+                                        multiplier *
+                                        10,
+                                    ) / 10}
+                                    g
+                                  </Typo>
+                                  <Typo size={12} color={colors.neutral400}>
+                                    {t("nutrition_protein")}
+                                  </Typo>
+                                </View>
+
+                                <View style={styles.nutritionItem}>
+                                  <Typo size={20} fontWeight="600">
+                                    {Math.round(
+                                      selectedRecentFood.carbs *
+                                        multiplier *
+                                        10,
+                                    ) / 10}
+                                    g
+                                  </Typo>
+                                  <Typo size={12} color={colors.neutral400}>
+                                    {t("nutrition_carbs")}
+                                  </Typo>
+                                </View>
+
+                                <View style={styles.nutritionItem}>
+                                  <Typo size={20} fontWeight="600">
+                                    {Math.round(
+                                      selectedRecentFood.fat * multiplier * 10,
+                                    ) / 10}
+                                    g
+                                  </Typo>
+                                  <Typo size={12} color={colors.neutral400}>
+                                    {t("nutrition_fat")}
+                                  </Typo>
+                                </View>
+                              </>
+                            );
+                          })()}
+                        </View>
+                      </View>
+
+                      <Button
+                        onPress={handleAddRecentFoodWithQuantity}
+                        loading={addingFood}
+                        style={{ marginTop: spacingY._20 }}
+                      >
+                        <Typo size={18} fontWeight="700" color={colors.black}>
+                          {t("meal_detail_modal_add_to_meal", {
+                            meal: currentMealLabel,
+                          })}
+                        </Typo>
+                      </Button>
+                    </View>
+                  )}
+                </ScrollView>
+              </Animated.View>
             </View>
           </KeyboardAvoidingView>
         </Modal>
+
+        {/* Success Toast */}
+        {showSuccessToast && (
+          <Animated.View
+            style={[
+              styles.successToast,
+              {
+                opacity: toastOpacity,
+                bottom: insets.bottom + spacingY._20,
+              },
+            ]}
+          >
+            <Icons.CheckCircle size={20} color={colors.green} weight="fill" />
+            <Typo size={14} fontWeight="600" color={colors.white}>
+              {successMessage}
+            </Typo>
+          </Animated.View>
+        )}
       </View>
     </ModalWrapper>
   );
@@ -761,7 +1236,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flex: 1,
-    paddingVertical: spacingY._8,
+    paddingVertical: spacingY._7,
   },
   mealTitle: {
     marginRight: spacingX._5,
@@ -824,7 +1299,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: spacingY._20,
   },
-  searchResultsContent: {
+  flashListContent: {
     paddingBottom: spacingY._20,
   },
   searchResultItem: {
@@ -887,21 +1362,42 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
     color: colors.text,
   },
-  foodsList: {
+  recentFoodsListContainer: {
     flex: 1,
-  },
-  foodsListContent: {
-    paddingBottom: verticalScale(20),
-  },
-  emptyFoodsListContent: {
-    flexGrow: 1,
-    justifyContent: "center",
+    minHeight: verticalScale(200),
   },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacingY._50,
     paddingHorizontal: spacingX._20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: spacingY._50,
+  },
+  recentFoodItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._12,
+    marginBottom: spacingY._10,
+    overflow: "hidden",
+  },
+  recentFoodBodyArea: {
+    flex: 1,
+    padding: spacingX._12,
+  },
+  quickAddButton: {
+    padding: spacingX._15,
+    justifyContent: "center",
+    alignItems: "center",
+    borderLeftWidth: 1,
+    borderLeftColor: colors.neutral700,
   },
   modalOverlay: {
     flex: 1,
@@ -916,7 +1412,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius._20,
     borderTopRightRadius: radius._20,
     maxHeight: "85%",
-    paddingTop: spacingY._15,
   },
   handleBar: {
     width: 40,
@@ -925,6 +1420,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: "center",
     marginBottom: spacingY._15,
+  },
+  modalHeaderContainer: {
+    paddingTop: spacingY._15,
   },
   modalHeader: {
     flexDirection: "row",
@@ -936,57 +1434,64 @@ const styles = StyleSheet.create({
   modalContent: {
     paddingHorizontal: spacingX._20,
   },
+  quantityScrollContent: {
+    paddingBottom: spacingY._25,
+  },
   foodInfoModal: {
     alignItems: "center",
     marginBottom: spacingY._25,
   },
+  modalFoodTitle: {
+    marginTop: spacingY._15,
+    textAlign: "center",
+    maxWidth: "96%",
+  },
   foodImageLarge: {
-    width: verticalScale(100),
-    height: verticalScale(100),
+    width: verticalScale(120),
+    height: verticalScale(120),
     borderRadius: radius._15,
     backgroundColor: colors.neutral700,
   },
-  quantitySection: {
-    marginBottom: spacingY._25,
-  },
-  quantityInput: {
+  foodImagePlaceholder: {
+    width: verticalScale(120),
+    height: verticalScale(120),
+    borderRadius: radius._15,
     backgroundColor: colors.neutral800,
-  },
-  adjustedNutrition: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
     borderWidth: 1,
     borderColor: colors.neutral700,
   },
-  nutritionGrid: {
+  nutritionPreview: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacingX._15,
-    justifyContent: "space-between",
+    justifyContent: "space-around",
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    padding: spacingX._15,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
   },
   nutritionItem: {
     alignItems: "center",
-    width: "45%",
-    backgroundColor: colors.neutral900,
-    padding: spacingX._15,
+    gap: verticalScale(4),
+  },
+  successToast: {
+    position: "absolute",
+    left: spacingX._20,
+    right: spacingX._20,
+    backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-  },
-    loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: spacingY._50,
-  },
-  recentFoodItem: {
+    padding: spacingX._15,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.neutral800,
+    gap: spacingX._10,
     borderWidth: 1,
-    borderColor: colors.neutral700,
-    borderRadius: radius._12,
-    padding: spacingX._12,
-    marginBottom: spacingY._10,
-    gap: spacingX._12,
+    borderColor: colors.green,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
 });

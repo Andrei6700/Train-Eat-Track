@@ -1,4 +1,6 @@
 import { auth, firestore } from "@/src/config/firebase";
+import { clearNutritionCalendarSummaryCache } from "@/src/services/nutritionCalendarCacheService";
+import { clearWorkoutHistoryCache } from "@/src/services/workoutHistoryCacheService";
 import { AuthContextType, UserType } from '@/src/types/index';
 import { useRouter } from "expo-router";
 import {
@@ -30,6 +32,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         // no user
         setUser(null);
+        void clearWorkoutHistoryCache();
+        void clearNutritionCalendarSummaryCache();
         router.replace("/(auth)/welcome");
       }
     });

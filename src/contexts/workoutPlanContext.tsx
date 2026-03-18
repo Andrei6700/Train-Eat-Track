@@ -1,9 +1,13 @@
 import { useAuth } from "@/src/contexts/authContext";
 import {
-  createWorkoutPlan,
+  cacheWorkoutPlan,
+  clearExpiredCache,
+  getCachedWorkoutPlan
+} from "@/src/services/cacheService";
+import {
   deleteWorkoutPlan,
   getUserWorkoutPlan,
-  updateWorkoutPlan,
+  updateWorkoutPlan
 } from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -12,23 +16,102 @@ type WorkoutPlanContextType = {
   workoutPlan: WorkoutPlan | null;
   loading: boolean;
   updateDay: (day: string, dayData: DayWorkout) => Promise<void>;
+  setPlanDraft: (plan: WorkoutPlan | null) => void;
+  clearPlanDraft: () => void;
   refreshPlan: () => Promise<void>;
   deletePlan: () => Promise<{ success: boolean; msg?: string }>;
 };
 
 const WorkoutPlanContext = createContext<WorkoutPlanContextType | null>(null);
 
+const parseDayNumber = (dayValue: string): number | null => {
+  const match = dayValue.match(/^Day\s+(\d+)$/i);
+  if (!match?.[1]) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+const normalizeSplitDays = (splitDays: unknown): number => {
+  const parsed = Number(splitDays);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.floor(parsed);
+};
+
+const ensureCycleDays = (days: DayWorkout[] | undefined, splitDays: number): DayWorkout[] => {
+  const sourceDays = Array.isArray(days) ? days : [];
+
+  return Array.from({ length: splitDays }, (_, idx) => {
+    const dayLabel = `Day ${idx + 1}`;
+    const existingDay = sourceDays.find((entry) => entry.day === dayLabel);
+    if (existingDay) return existingDay;
+
+    return {
+      day: dayLabel,
+      isRestDay: false,
+      exercises: [],
+    };
+  });
+};
+
+const createBaseLocalPlan = (userID: string, minSplitDays = 1): WorkoutPlan => {
+  const now = new Date();
+  const splitDays = Math.max(1, Math.floor(minSplitDays));
+  return {
+    userID,
+    planName: "",
+    splitDays,
+    days: ensureCycleDays([], splitDays),
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const buildPlanWithUpdatedDay = (
+  basePlan: WorkoutPlan,
+  targetDayLabel: string,
+  targetDayNumber: number,
+  dayData: DayWorkout,
+): WorkoutPlan => {
+  const nextSplitDays = Math.max(
+    normalizeSplitDays(basePlan.splitDays),
+    targetDayNumber,
+  );
+  const normalizedDays = ensureCycleDays(basePlan.days, nextSplitDays);
+
+  const normalizedDayData: DayWorkout = {
+    ...dayData,
+    day: targetDayLabel,
+  };
+
+  const updatedDays = normalizedDays.map((entry) =>
+    entry.day === targetDayLabel ? normalizedDayData : entry,
+  );
+
+  return {
+    ...basePlan,
+    splitDays: nextSplitDays,
+    days: updatedDays,
+    updatedAt: new Date(),
+  };
+};
+
 export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { user } = useAuth();
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan | null>(null);
+  const [planDraft, setPlanDraftState] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const activePlan = planDraft ?? workoutPlan;
 
   useEffect(() => {
     if (user?.uid) {
       loadWorkoutPlan();
+      clearExpiredCache(); // Cleans expired cache on startup
     } else {
+      setPlanDraftState(null);
       setWorkoutPlan(null);
       setLoading(false);
     }
@@ -41,16 +124,52 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoading(true);
-    console.log("[WorkoutPlanContext] loadWorkoutPlan for user:", user.uid);
+    console.log("[WorkoutPlanContext] Loading workout plan for user:", user.uid);
+
+    //  Try to load from cache
+    const cachedPlan = await getCachedWorkoutPlan();
+    if (cachedPlan) {
+      console.log(" [WorkoutPlanContext] Using cached workout plan");
+      setWorkoutPlan(cachedPlan);
+      setLoading(false);
+      
+      // Synchronize in background
+      syncPlanInBackground();
+      return;
+    }
+
+    //  Load from Firebase
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
-      console.log("[WorkoutPlanContext] plan found:", result.data.id);
+      console.log("[WorkoutPlanContext] Plan loaded from Firebase:", result.data.id);
       setWorkoutPlan(result.data);
+      
+      // Save to cache
+      await cacheWorkoutPlan(result.data);
     } else {
-      console.log("[WorkoutPlanContext] no plan found for user");
+      console.log("[WorkoutPlanContext] No plan found for user");
       setWorkoutPlan(null);
     }
+    
     setLoading(false);
+  };
+
+  /**
+   * Synchronize the plan in background without loading
+   */
+  const syncPlanInBackground = async () => {
+    if (!user?.uid) return;
+
+    try {
+      const result = await getUserWorkoutPlan(user.uid);
+      if (result.success && result.data) {
+        setWorkoutPlan(result.data);
+        await cacheWorkoutPlan(result.data);
+        console.log(" [WorkoutPlanContext] Background sync completed");
+      }
+    } catch (error) {
+      console.error("[WorkoutPlanContext] Background sync failed:", error);
+    }
   };
 
   const updateDay = async (day: string, dayData: DayWorkout) => {
@@ -58,62 +177,97 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       console.log("[WorkoutPlanContext] updateDay aborted, no user");
       return;
     }
+    const userId = user.uid;
 
     console.log("[WorkoutPlanContext] updateDay", day, dayData);
 
-    if (!workoutPlan) {
-      const defaultDays: DayWorkout[] = [
-        { day: "Luni", isRestDay: false, exercises: [] },
-        { day: "Marti", isRestDay: false, exercises: [] },
-        { day: "Miercuri", isRestDay: false, exercises: [] },
-        { day: "Joi", isRestDay: false, exercises: [] },
-        { day: "Vineri", isRestDay: false, exercises: [] },
-        { day: "Sambata", isRestDay: false, exercises: [] },
-        { day: "Duminica", isRestDay: false, exercises: [] },
-      ];
+    const dayNumber = parseDayNumber(day) ?? 1;
+    const dayLabel = `Day ${dayNumber}`;
+    const shouldUseDraft = Boolean(planDraft) || !workoutPlan?.id;
 
-      const updatedDays = defaultDays.map((d) => (d.day === day ? dayData : d));
+    if (shouldUseDraft) {
+      setPlanDraftState((currentDraft) => {
+        const basePlan =
+          currentDraft ??
+          workoutPlan ??
+          createBaseLocalPlan(userId, dayNumber);
 
-      const newLocalPlan: WorkoutPlan = {
-        userID: user.uid,
-        planName: "",
-        days: updatedDays,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+        const updatedDraft = buildPlanWithUpdatedDay(
+          basePlan,
+          dayLabel,
+          dayNumber,
+          dayData,
+        );
 
-      console.log("[WorkoutPlanContext] set local plan (no backend call). Payload:", newLocalPlan);
-      setWorkoutPlan(newLocalPlan);
+        console.log("[WorkoutPlanContext] Updated local draft plan");
+        return updatedDraft;
+      });
       return;
     }
 
-    const updatedDays = workoutPlan.days.map((d) => (d.day === day ? dayData : d));
+    const fallbackPlan = workoutPlan;
+    if (!fallbackPlan) return;
+    const updatedPlan = buildPlanWithUpdatedDay(
+      fallbackPlan,
+      dayLabel,
+      dayNumber,
+      dayData,
+    );
 
-    const updatedPlan: WorkoutPlan = {
-      ...workoutPlan,
-      days: updatedDays,
-      updatedAt: new Date(),
-    };
+    setWorkoutPlan((currentPlan) =>
+      buildPlanWithUpdatedDay(
+        currentPlan ?? fallbackPlan,
+        dayLabel,
+        dayNumber,
+        dayData,
+      ),
+    );
 
-    if (workoutPlan.id) {
+    await cacheWorkoutPlan(updatedPlan);
+
+    if (updatedPlan.id) {
       try {
-        console.log("[WorkoutPlanContext] updating plan id:", workoutPlan.id, "payload:", updatedPlan);
-        await updateWorkoutPlan(workoutPlan.id, updatedPlan);
+        console.log(
+          "[WorkoutPlanContext] Updating plan in Firebase:",
+          updatedPlan.id,
+        );
+        await updateWorkoutPlan(updatedPlan.id, updatedPlan);
       } catch (err) {
-        console.error("[WorkoutPlanContext] error updating plan on backend:", err);
+        console.error("[WorkoutPlanContext] Error updating plan on backend:", err);
       }
-    } else {
-      console.log("[WorkoutPlanContext] updated local plan (no id) – waiting for explicit Save:", updatedPlan);
+    }
+  };
+
+  const setPlanDraft = (plan: WorkoutPlan | null) => {
+    if (!plan) {
+      setPlanDraftState(null);
+      return;
     }
 
-    setWorkoutPlan(updatedPlan);
+    const splitFromPlan = normalizeSplitDays(plan.splitDays);
+    const maxDayFromPayload = (plan.days || []).reduce((max, entry) => {
+      const dayNumber = parseDayNumber(entry.day) ?? 0;
+      return Math.max(max, dayNumber);
+    }, 0);
+    const splitDays = Math.max(splitFromPlan, maxDayFromPayload || 1);
+
+    setPlanDraftState({
+      ...plan,
+      splitDays,
+      days: ensureCycleDays(plan.days, splitDays),
+      createdAt: plan.createdAt || new Date(),
+      updatedAt: new Date(),
+    });
+  };
+
+  const clearPlanDraft = () => {
+    setPlanDraftState(null);
   };
 
   const refreshPlan = async () => {
     await loadWorkoutPlan();
   };
 
-  // ✅ MODIFICAT: Trimite userID la funcția de delete
   const deletePlan = async (): Promise<{ success: boolean; msg?: string }> => {
     if (!workoutPlan?.id || !user?.uid) {
       return { success: false, msg: "No workout plan to delete" };
@@ -122,12 +276,17 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const result = await deleteWorkoutPlan(workoutPlan.id, user.uid);
       if (result.success) {
+        setPlanDraftState(null);
         setWorkoutPlan(null);
-        return { success: true, msg: result.msg || "Workout plan and history deleted successfully" };
+        
+        // Delete from cache
+        await cacheWorkoutPlan(null as any);
+        
+        return { success: true, msg: result.msg || "Workout plan deleted successfully" };
       }
       return result;
     } catch (error: any) {
-      console.error("[WorkoutPlanContext] error deleting plan:", error);
+      console.error("[WorkoutPlanContext] Error deleting plan:", error);
       return { success: false, msg: error?.message || "Could not delete workout plan" };
     }
   };
@@ -135,9 +294,11 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <WorkoutPlanContext.Provider
       value={{
-        workoutPlan,
+        workoutPlan: activePlan,
         loading,
         updateDay,
+        setPlanDraft,
+        clearPlanDraft,
         refreshPlan,
         deletePlan,
       }}

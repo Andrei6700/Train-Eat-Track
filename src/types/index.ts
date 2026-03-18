@@ -19,6 +19,7 @@ export type ModalWrapperProps = {
   bg?: string;
 };
 export type accountOptionType = {
+  id?: string;
   title: string;
   icon: React.ReactNode;
   bgColor: string;
@@ -60,6 +61,7 @@ export type HeaderProps = {
 export type BackButtonProps = {
   style?: ViewStyle;
   iconSize?: number;
+  onPress?: () => void;
 };
 
 export type CategoryType = {
@@ -77,8 +79,6 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
   inputRef?: React.RefObject<TextInput>;
-  //   label?: string;
-  //   error?: string;
 }
 
 export interface CustomButtonProps extends TouchableOpacityProps {
@@ -128,8 +128,16 @@ export type ResponseType = {
   success: boolean;
   data?: any;
   msg?: string;
+  code?: ResponseCode;
 };
 
+export type ResponseCode =
+  | "SYNC_CONFLICT"
+  | "SYNC_RETRY_SCHEDULED"
+  | "SYNC_QUEUED_OFFLINE"
+  | "SYNC_FAILED"
+  | "NETWORK_OFFLINE"
+  | "UNKNOWN_ERROR";
 
 export type WorkoutSet = {
   reps: number;
@@ -146,8 +154,13 @@ export type WorkoutHistory = {
   id?: string;
   userID: string;
   date: Date | string;
-  duration: number; // in secunde
+  duration: number;
   exercises: WorkoutExercise[];
+  isRestDay?: boolean;
+  isOffline?: boolean;
+  syncStatus?: string;
+  queuedActionId?: string;
+  savedAt?: number;
 };
 
 export type WorkoutHistoryListProps = {
@@ -157,9 +170,8 @@ export type WorkoutHistoryListProps = {
   refreshing?: boolean;
 };
 
-// Workout Plan Types
 export type DayWorkout = {
-  day: string; // "Luni", "Marti", etc.
+  day: string; 
   isRestDay: boolean;
   exercises: WorkoutExercise[];
   notes?: string;
@@ -169,12 +181,13 @@ export type WorkoutPlan = {
   id?: string;
   userID: string;
   planName: string;
+  splitDays?: number; // Cycle length: 2, 4, 7, 9, 14, etc. Default: 7
   days: DayWorkout[];
   createdAt: Date | string;
   updatedAt: Date | string;
+  localUpdatedAt?: number;
 };
 
-// Nutrition Types
 export type Food = {
   name: string;
   calories: number;
@@ -198,6 +211,8 @@ export type DailyNutrition = {
   carbsGoal: number;
   fatGoal: number;
   meals: Meal[];
+  updatedAt?: Date | string;
+  localUpdatedAt?: number;
 };
 
 export type WaterIntake = {
@@ -212,4 +227,6 @@ export type DailyWater = {
   goal: number;
   intakes: WaterIntake[];
   total: number;
+  updatedAt?: Date | string;
+  localUpdatedAt?: number;
 };

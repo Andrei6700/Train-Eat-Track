@@ -1,47 +1,305 @@
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import NutritionCalendar from "@/src/components/ui/NutritionCalendar";
+import { colors, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
-import Button from "@/src/components/ui/Button";
-import Input from "@/src/components/ui/Input";
+import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
+import NutritionCalendarLogModal from "@/src/components/nutrition/NutritionCalendarLogModal";
+import NutritionDateHeader from "@/src/components/nutrition/NutritionDateHeader";
+import NutritionEditQuantityModal, {
+  EditableFoodState,
+} from "@/src/components/nutrition/NutritionEditQuantityModal";
+import NutritionFoodActionsModal from "@/src/components/nutrition/NutritionFoodActionsModal";
+import NutritionMealCard, {
+  MealSummary,
+} from "@/src/components/nutrition/NutritionMealCard";
+import NutritionObjectiveCard, {
+  NutritionStats,
+} from "@/src/components/nutrition/NutritionObjectiveCard";
+import NutritionWaterCard from "@/src/components/nutrition/NutritionWaterCard";
+import NutritionCalendar, {
+  NutritionCalendarDayData,
+} from "@/src/components/ui/NutritionCalendar";
 import Typo from "@/src/components/ui/Typo";
-import WaterWave from "@/src/components/ui/WaterWave";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
-import { preloadWeekNutrition } from "@/src/services/nutritionCacheService";
-import { Food } from "@/src/types/index";
-import { scale, verticalScale } from "@/src/utils/styling";
+import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
+import {
+  batchGetCachedNutritionDays,
+  cacheNutritionDay,
+  getCachedNutritionForDate,
+  getNutritionCacheKey,
+} from "@/src/services/cacheService";
+import {
+  getCachedNutritionCalendarSummary,
+  NutritionCalendarSummary,
+  setCachedNutritionCalendarSummary,
+  upsertNutritionCalendarSummaryDay,
+} from "@/src/services/nutritionCalendarCacheService";
+import {
+  awaitNutritionCalendarPrefetch,
+  getDailyNutrition,
+  getMemoryEarliestDate,
+  getUserNutritionEarliestDate,
+} from "@/src/services/nutritionService";
+import { DailyNutrition, Food } from "@/src/types/index";
+import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
+import { measureAsync } from "@/src/utils/perf";
 import { useRouter } from "expo-router";
-import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle } from "react-native-svg";
 
-const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"];
-const MONTHS = [
-  "ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
-  "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"
-];
+const MEALS = ["Mic Dejun", "Pranz", "Cina", "Gustari"] as const;
+
+type FoodWithOptionalBrand = Food & { brand?: string };
+type DayData = NutritionCalendarDayData;
+type CalendarScrollRequest = {
+  date: Date;
+  animated: boolean;
+  reason?: "selection";
+};
+
+const DEFAULT_GOALS = {
+  calorie: 2500,
+  protein: 150,
+  carbs: 250,
+  fat: 70,
+};
+const CALENDAR_FUTURE_DAYS = 7;
+const CALENDAR_INITIAL_BACK_DAYS = 35;
+const CALENDAR_PRELOAD_WEEKS_BEFORE = 1;
+const CALENDAR_PRELOAD_WEEKS_AFTER = 1;
+
+const CIRCUMFERENCE = 2 * Math.PI * 40;
+
+const toDayLookupKey = (date: Date): string => toDateKey(startOfDay(date));
+
+const toMonthLookupKey = (date: Date): string =>
+  `${date.getFullYear()}-${date.getMonth()}`;
+
+const normalizeDate = (date: Date | string): Date => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
+
+const startOfCalendarWeek = (date: Date): Date => {
+  const normalized = startOfDay(date);
+  const day = normalized.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  normalized.setDate(normalized.getDate() + mondayOffset);
+  return normalized;
+};
+
+const endOfCalendarWeek = (date: Date): Date => {
+  const start = startOfCalendarWeek(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(0, 0, 0, 0);
+  return end;
+};
+
+const buildCalendarWindowDates = (
+  anchorDate: Date,
+  options?: {
+    weeksBefore?: number;
+    weeksAfter?: number;
+    maxDate?: Date;
+  },
+): Date[] => {
+  const normalizedAnchor = startOfDay(anchorDate);
+  const weekStart = startOfCalendarWeek(normalizedAnchor);
+  const weeksBefore = options?.weeksBefore ?? 0;
+  const weeksAfter = options?.weeksAfter ?? 0;
+  const maxDate =
+    options?.maxDate && options.maxDate instanceof Date
+      ? startOfDay(options.maxDate)
+      : null;
+
+  const windowStart = new Date(weekStart);
+  windowStart.setDate(weekStart.getDate() - weeksBefore * 7);
+  windowStart.setHours(0, 0, 0, 0);
+
+  const windowEnd = new Date(weekStart);
+  windowEnd.setDate(weekStart.getDate() + weeksAfter * 7 + 6);
+  windowEnd.setHours(0, 0, 0, 0);
+
+  const result: Date[] = [];
+  for (
+    let day = new Date(windowStart);
+    day <= windowEnd;
+    day.setDate(day.getDate() + 1)
+  ) {
+    const normalizedDay = startOfDay(day);
+    if (maxDate && normalizedDay > maxDate) {
+      continue;
+    }
+    result.push(new Date(normalizedDay));
+  }
+
+  return result;
+};
+
+const formatHeaderDateLabel = (date: Date, language: "en" | "ro"): string => {
+  const normalizedDate = startOfDay(date);
+  const monthName = MONTH_NAMES[language][normalizedDate.getMonth()] || "";
+  const shortMonth = monthName.slice(0, 3);
+  const normalizedMonth = shortMonth
+    ? shortMonth.charAt(0).toUpperCase() + shortMonth.slice(1)
+    : "";
+  return `${normalizedDate.getDate()} ${normalizedMonth}, ${normalizedDate.getFullYear()}`;
+};
+
+const formatMonthYearLabel = (date: Date, language: "en" | "ro"): string => {
+  const normalizedDate = startOfDay(date);
+  const monthName = MONTH_NAMES[language][normalizedDate.getMonth()] || "";
+  const normalizedMonthName = monthName
+    ? monthName.charAt(0).toUpperCase() + monthName.slice(1)
+    : "";
+  return `${normalizedMonthName} ${normalizedDate.getFullYear()}`;
+};
+
+const buildCalendarDays = (earliestDate: Date | null): Date[] => {
+  const today = startOfDay(new Date());
+  const endAnchor = new Date(today);
+  endAnchor.setDate(endAnchor.getDate() + CALENDAR_FUTURE_DAYS);
+  const endDate = endOfCalendarWeek(endAnchor);
+
+  let startAnchor = earliestDate
+    ? new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1)
+    : new Date(today);
+
+  if (!earliestDate) {
+    startAnchor.setDate(startAnchor.getDate() - CALENDAR_INITIAL_BACK_DAYS);
+    startAnchor.setHours(0, 0, 0, 0);
+  }
+
+  const startDate = startOfCalendarWeek(startAnchor);
+
+  const days: Date[] = [];
+  for (
+    let day = new Date(startDate);
+    day <= endDate;
+    day.setDate(day.getDate() + 1)
+  ) {
+    days.push(new Date(day));
+  }
+
+  return days;
+};
+
+const areCalendarDaysEqual = (left: Date[], right: Date[]): boolean => {
+  if (left.length !== right.length) return false;
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index].getTime() !== right[index].getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const hasOnlyEmptyMeals = (nutritionDay: DailyNutrition): boolean => {
+  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
+  if (meals.length === 0) return true;
+  return meals.every(
+    (meal) => !Array.isArray(meal.foods) || meal.foods.length === 0,
+  );
+};
+
+const isSyntheticEmptyNutritionFallback = (
+  nutritionDay: DailyNutrition,
+): boolean =>
+  !nutritionDay.id &&
+  !nutritionDay.localUpdatedAt &&
+  hasOnlyEmptyMeals(nutritionDay);
+
+const sumNutritionCalories = (nutritionDay: DailyNutrition): number => {
+  const meals = Array.isArray(nutritionDay.meals) ? nutritionDay.meals : [];
+  return meals.reduce((total, meal) => {
+    const foods = Array.isArray(meal.foods) ? meal.foods : [];
+    return (
+      total + foods.reduce((sum, food) => sum + (Number(food.calories) || 0), 0)
+    );
+  }, 0);
+};
+
+const buildMealSummaries = (
+  meals: { mealName: string; foods: Food[] }[] | undefined,
+): MealSummary[] => {
+  const mealMap = new Map<string, { mealName: string; foods: Food[] }>();
+  for (const meal of meals || []) {
+    mealMap.set(meal.mealName, meal);
+  }
+
+  return MEALS.map((mealName) => {
+    const meal = mealMap.get(mealName);
+    const foods = ((meal?.foods as FoodWithOptionalBrand[]) || []).map(
+      (food) => ({
+        ...food,
+      }),
+    );
+
+    const macros = foods.reduce(
+      (totals, food) => {
+        totals.protein += Number(food.protein) || 0;
+        totals.carbs += Number(food.carbs) || 0;
+        totals.fat += Number(food.fat) || 0;
+        return totals;
+      },
+      { protein: 0, carbs: 0, fat: 0 },
+    );
+
+    const totalGrams = macros.protein + macros.carbs + macros.fat;
+    const percentages =
+      totalGrams > 0
+        ? {
+            protein: Math.round((macros.protein / totalGrams) * 100),
+            carbs: Math.round((macros.carbs / totalGrams) * 100),
+            fat: Math.round((macros.fat / totalGrams) * 100),
+          }
+        : { protein: 0, carbs: 0, fat: 0 };
+
+    return {
+      mealName,
+      foods,
+      calories: foods.reduce(
+        (sum, food) => sum + (Number(food.calories) || 0),
+        0,
+      ),
+      macros,
+      percentages,
+      arcs: {
+        protein: (percentages.protein / 100) * CIRCUMFERENCE,
+        carbs: (percentages.carbs / 100) * CIRCUMFERENCE,
+        fat: (percentages.fat / 100) * CIRCUMFERENCE,
+      },
+      hasFoods: foods.length > 0,
+    };
+  });
+};
 
 const Nutrition = () => {
   const router = useRouter();
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { 
-    todayNutrition, 
+  const {
+    todayNutrition,
     todayWater,
-    loading, 
     refreshNutrition,
     addWaterIntake,
     resetWaterIntake,
@@ -51,223 +309,91 @@ const Nutrition = () => {
     moveFoodToMeal,
   } = useNutrition();
 
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    startOfDay(new Date()),
+  );
+  const [visibleCalendarDate, setVisibleCalendarDate] = useState<Date>(() =>
+    startOfDay(new Date()),
+  );
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [currentWeek, setCurrentWeek] = useState<Date[]>([]);
-  const [daysData, setDaysData] = useState<Array<{date: Date, calories: number, goal: number}>>([]);
-  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [daysData, setDaysData] = useState<DayData[]>([]);
+  const [calendarDays, setCalendarDays] = useState<Date[]>(() =>
+    buildCalendarDays(null),
+  );
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [calendarEarliestDate, setCalendarEarliestDate] = useState<Date | null>(
+    null,
+  );
+  const [calendarScrollRequest, setCalendarScrollRequest] =
+    useState<CalendarScrollRequest | null>(null);
+  const [showCalendarLogModal, setShowCalendarLogModal] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editingFood, setEditingFood] = useState<{
-    mealName: string;
-    foodIndex: number;
-    food: Food;
-  } | null>(null);
+  const [editingFood, setEditingFood] = useState<EditableFoodState>(null);
   const [editQuantity, setEditQuantity] = useState("");
 
   const [showActionsModal, setShowActionsModal] = useState(false);
-  const [actionFood, setActionFood] = useState<{
-    mealName: string;
-    foodIndex: number;
-    food: Food;
-  } | null>(null);
+  const [actionFood, setActionFood] = useState<EditableFoodState>(null);
 
-  useEffect(() => {
-    generateWeek();
-  }, []);
+  const calendarRequestIdRef = useRef(0);
+  const initialLoadUserIdRef = useRef<string | null>(null);
+  const previousCalendarUserIdRef = useRef<string | null>(null);
+  const calendarBootStartedAtRef = useRef(Date.now());
+  const lastVisibleCalendarDayRef = useRef<Date | null>(null);
+  const lastVisibleCalendarMonthKeyRef = useRef<string | null>(
+    toMonthLookupKey(startOfDay(new Date())),
+  );
+  const loadedDayKeysRef = useRef<Set<string>>(new Set());
+  const pendingDayKeysRef = useRef<Set<string>>(new Set());
+  const lastDaysDataChangeReasonRef = useRef<string>("initial");
+  const lastCalendarDaysChangeReasonRef = useRef<string>("initial");
+  const previousCalendarCountsRef = useRef<{
+    calendarDays: number;
+    daysData: number;
+  }>({
+    calendarDays: calendarDays.length,
+    daysData: daysData.length,
+  });
+  const loggedWeekKeysRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (user?.uid) {
-      loadNutritionData(selectedDate);
-    }
-  }, [user?.uid, selectedDate]);
+  const devLog = useCallback(
+    (event: string, payload?: Record<string, unknown>) => {
+      if (!__DEV__) return;
+      console.log(event, payload ?? {});
+    },
+    [],
+  );
 
-  useEffect(() => {
-    if (user?.uid && currentWeek.length > 0) {
-      preloadWeekData();
-    }
-  }, [user?.uid, currentWeek]);
+  const mealSummaries = useMemo(
+    () => buildMealSummaries(todayNutrition?.meals),
+    [todayNutrition?.meals],
+  );
 
-  const generateWeek = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-    const week: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday);
-      day.setDate(monday.getDate() + i);
-      week.push(day);
-    }
-
-    setCurrentWeek(week);
-    setSelectedDate(today);
-  };
-
-  const preloadWeekData = async () => {
-    if (!user?.uid || currentWeek.length === 0) return;
-
-    setCalendarLoading(true);
-    const cachedData = await preloadWeekNutrition(user.uid, currentWeek);
-    
-    const daysArray = currentWeek.map(date => {
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      const cached = cachedData.get(key);
-      return {
-        date,
-        calories: cached?.calories || 0,
-        goal: cached?.goal || 2500,
-      };
-    });
-
-    setDaysData(daysArray);
-    setCalendarLoading(false);
-  };
-
-  const loadNutritionData = async (date: Date) => {
-    await refreshNutrition(date);
-    setRefreshing(false);
-  };
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadNutritionData(selectedDate);
-    preloadWeekData();
-  }, [selectedDate, user?.uid]);
-
-  const handleDayPress = useCallback((day: Date, index: number) => {
-    setSelectedDate(day);
-    // load data in the background
-    loadNutritionData(day);
-  }, []);
-
-  const handleAddWater = async (amount: number) => {
-    await addWaterIntake(amount);
-  };
-
-  const handleResetWater = () => {
-    Alert.alert(
-      "Reset Water Intake",
-      "Are you sure you want to reset today's water intake?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: async () => {
-            await resetWaterIntake();
-          },
-        },
-      ]
+  const nutritionStats = useMemo<NutritionStats>(() => {
+    const totalCalories = mealSummaries.reduce(
+      (sum, meal) => sum + meal.calories,
+      0,
     );
-  };
-
-  const handleFoodPress = (mealName: string, foodIndex: number, food: Food) => {
-    const currentQuantity = parseFloat(food.servingSize) || 100;
-    setEditingFood({ mealName, foodIndex, food });
-    setEditQuantity(currentQuantity.toString());
-    setShowEditModal(true);
-  };
-
-  const handleSaveQuantity = async () => {
-    if (!editingFood || !editQuantity || parseFloat(editQuantity) <= 0) {
-      Alert.alert("Eroare", "Te rog introdu o cantitate validă");
-      return;
-    }
-
-    await updateFoodQuantity(
-      editingFood.mealName,
-      editingFood.foodIndex,
-      parseFloat(editQuantity)
+    const totalMacros = mealSummaries.reduce(
+      (totals, meal) => {
+        totals.protein += meal.macros.protein;
+        totals.carbs += meal.macros.carbs;
+        totals.fat += meal.macros.fat;
+        return totals;
+      },
+      { protein: 0, carbs: 0, fat: 0 },
     );
 
-    setShowEditModal(false);
-    setEditingFood(null);
-    Alert.alert("Success", "Cantitatea a fost actualizată!");
-  };
-
-  const handleFoodLongPress = (mealName: string, foodIndex: number, food: Food) => {
-    setActionFood({ mealName, foodIndex, food });
-    setShowActionsModal(true);
-  };
-
-  const handleCopyFood = (toMeal: string) => {
-    if (!actionFood) return;
-    
-    copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
-    setShowActionsModal(false);
-    Alert.alert("Success", `${actionFood.food.name} copiat la ${toMeal}`);
-  };
-
-  const handleMoveFood = (toMeal: string) => {
-    if (!actionFood) return;
-    
-    moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
-    setShowActionsModal(false);
-    Alert.alert("Success", `${actionFood.food.name} mutat la ${toMeal}`);
-  };
-
-  const handleDeleteFood = () => {
-    if (!actionFood) return;
-
-    Alert.alert(
-      "Sterge aliment",
-      `Esti sigur ca vrei sa stergi ${actionFood.food.name}?`,
-      [
-        { text: "Anuleaza", style: "cancel" },
-        {
-          text: "Sterge",
-          style: "destructive",
-          onPress: async () => {
-            await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
-            setShowActionsModal(false);
-            Alert.alert("Success", "Alimentul a fost șters!");
-          },
-        },
-      ]
-    );
-  };
-
-  const nutritionStats = useMemo(() => {
-    if (!todayNutrition) {
-      return {
-        totalCalories: 0,
-        totalMacros: { protein: 0, carbs: 0, fat: 0 },
-        remainingCalories: 2500,
-        progress: 0,
-        calorieGoal: 2500,
-        proteinGoal: 150,
-        carbsGoal: 250,
-        fatGoal: 70,
-        proteinProgress: 0,
-        carbsProgress: 0,
-        fatProgress: 0,
-      };
-    }
-
-    const totalCalories = todayNutrition.meals.reduce((total, meal) => {
-      return total + meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
-    }, 0);
-
-    const totalMacros = todayNutrition.meals.reduce((totals, meal) => {
-      meal.foods.forEach(food => {
-        totals.protein += food.protein || 0;
-        totals.carbs += food.carbs || 0;
-        totals.fat += food.fat || 0;
-      });
-      return totals;
-    }, { protein: 0, carbs: 0, fat: 0 });
-
-    const calorieGoal = todayNutrition.calorieGoal || 2500;
-    const proteinGoal = todayNutrition.proteinGoal || 150;
-    const carbsGoal = todayNutrition.carbsGoal || 250;
-    const fatGoal = todayNutrition.fatGoal || 70;
+    const calorieGoal = todayNutrition?.calorieGoal || DEFAULT_GOALS.calorie;
+    const proteinGoal = todayNutrition?.proteinGoal || DEFAULT_GOALS.protein;
+    const carbsGoal = todayNutrition?.carbsGoal || DEFAULT_GOALS.carbs;
+    const fatGoal = todayNutrition?.fatGoal || DEFAULT_GOALS.fat;
 
     return {
       totalCalories,
       totalMacros,
       remainingCalories: Math.max(calorieGoal - totalCalories, 0),
+      overCalories: Math.max(totalCalories - calorieGoal, 0),
       progress: Math.min((totalCalories / calorieGoal) * 100, 100),
       calorieGoal,
       proteinGoal,
@@ -277,718 +403,1163 @@ const Nutrition = () => {
       carbsProgress: Math.min((totalMacros.carbs / carbsGoal) * 100, 100),
       fatProgress: Math.min((totalMacros.fat / fatGoal) * 100, 100),
     };
-  }, [todayNutrition]);
+  }, [mealSummaries, todayNutrition]);
 
   const waterPercentage = useMemo(() => {
-    return todayWater 
-      ? Math.min((todayWater.total / todayWater.goal) * 100, 100)
-      : 0;
-  }, [todayWater]);
+    if (!todayWater?.goal) return 0;
+    return Math.min((todayWater.total / todayWater.goal) * 100, 100);
+  }, [todayWater?.goal, todayWater?.total]);
 
-  const isToday = selectedDate.toDateString() === new Date().toDateString();
-  const isYesterday = (() => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return selectedDate.toDateString() === yesterday.toDateString();
-  })();
+  const dateHeaderLabel = useMemo(
+    () => formatHeaderDateLabel(selectedDate, language),
+    [language, selectedDate],
+  );
 
-  const formatDateHeader = () => {
-    if (isToday) return "Azi";
-    if (isYesterday) return "Ieri";
-    
-    const day = selectedDate.getDate();
-    const month = MONTHS[selectedDate.getMonth()];
-    const year = selectedDate.getFullYear();
-    
-    return `${day} ${month}, ${year}`;
-  };
+  const calendarMonthLabel = useMemo(
+    () => formatMonthYearLabel(visibleCalendarDate, language),
+    [language, visibleCalendarDate],
+  );
 
-  const getMealData = useCallback((mealName: string) => {
-    if (!todayNutrition) return null;
-    return todayNutrition.meals.find(m => m.mealName === mealName);
-  }, [todayNutrition]);
-
-  const getMealCalories = useCallback((mealName: string) => {
-    const meal = getMealData(mealName);
-    if (!meal) return 0;
-    return meal.foods.reduce((sum, food) => sum + (food.calories || 0), 0);
-  }, [getMealData]);
-
-  const getMealMacros = useCallback((mealName: string) => {
-    const meal = getMealData(mealName);
-    if (!meal) return { protein: 0, carbs: 0, fat: 0 };
-    
-    return meal.foods.reduce((totals, food) => {
-      totals.protein += food.protein || 0;
-      totals.carbs += food.carbs || 0;
-      totals.fat += food.fat || 0;
-      return totals;
-    }, { protein: 0, carbs: 0, fat: 0 });
-  }, [getMealData]);
-
-  const getMealMacroPercentages = useCallback((mealName: string) => {
-    const mealMacros = getMealMacros(mealName);
-    const totalGrams = mealMacros.protein + mealMacros.carbs + mealMacros.fat;
-    
-    if (totalGrams === 0) {
-      return { protein: 0, carbs: 0, fat: 0 };
-    }
-
-    return {
-      protein: Math.round((mealMacros.protein / totalGrams) * 100),
-      carbs: Math.round((mealMacros.carbs / totalGrams) * 100),
-      fat: Math.round((mealMacros.fat / totalGrams) * 100)
-    };
-  }, [getMealMacros]);
-
-  const handleMealPress = (mealName: string) => {
-    router.push({
-      pathname: "/(modals)/mealDetail",
-      params: { 
-        mealName,
-        date: selectedDate.toISOString()
+  const calendarDataSignature = useMemo(() => {
+    let hash = 0;
+    for (const day of daysData) {
+      const key = toDayLookupKey(day.date);
+      for (let index = 0; index < key.length; index += 1) {
+        hash = (hash * 31 + key.charCodeAt(index)) | 0;
       }
+      hash = (hash * 31 + day.calories) | 0;
+      hash = (hash * 31 + day.goal) | 0;
+    }
+    return `${daysData.length}-${hash}`;
+  }, [daysData]);
+
+  const calendarExtraDataToken = useMemo(
+    () => `${calendarDays.length}-${calendarDataSignature}`,
+    [calendarDataSignature, calendarDays.length],
+  );
+
+  const mainCalendarInitialIndex = useMemo(() => {
+    const selectedKey = toDayLookupKey(startOfDay(selectedDate));
+    const selectedIndex = calendarDays.findIndex(
+      (day) => toDayLookupKey(day) === selectedKey,
+    );
+    if (selectedIndex !== -1) return selectedIndex;
+
+    const todayKey = toDayLookupKey(startOfDay(new Date()));
+    const todayIndex = calendarDays.findIndex(
+      (day) => toDayLookupKey(day) === todayKey,
+    );
+    if (todayIndex !== -1) return todayIndex;
+    return Math.max(calendarDays.length - 1, 0);
+  }, [calendarDays, selectedDate]);
+
+  const maxPlannableDate = useMemo(() => {
+    const planningAnchor = startOfDay(new Date());
+    planningAnchor.setDate(planningAnchor.getDate() + CALENDAR_FUTURE_DAYS);
+    return endOfCalendarWeek(planningAnchor);
+  }, []);
+
+  const calendarHasFuture2Days = useMemo(
+    () => mainCalendarInitialIndex + 2 < calendarDays.length,
+    [calendarDays.length, mainCalendarInitialIndex],
+  );
+
+  const logCalendarWeekLoaded = useCallback(
+    (date: Date, source: "cache" | "remote" | "empty") => {
+      if (!__DEV__) return;
+      const weekStart = startOfCalendarWeek(date);
+      const weekKey = toDayLookupKey(weekStart);
+      if (loggedWeekKeysRef.current.has(weekKey)) return;
+      loggedWeekKeysRef.current.add(weekKey);
+      const weekEnd = endOfCalendarWeek(weekStart);
+      devLog("calendar_week_loaded", {
+        weekStart: toDateKey(weekStart),
+        weekEnd: toDateKey(weekEnd),
+        source,
+      });
+    },
+    [devLog],
+  );
+
+  const upsertCalendarDayData = useCallback(
+    (date: Date, calories: number, goal: number) => {
+      const normalizedDate = startOfDay(date);
+      const dayLookupKey = toDayLookupKey(normalizedDate);
+      lastDaysDataChangeReasonRef.current = "upsert_calendar_day";
+
+      setDaysData((previousDaysData) => {
+        const existingIndex = previousDaysData.findIndex(
+          (day) => toDayLookupKey(day.date) === dayLookupKey,
+        );
+
+        if (existingIndex !== -1) {
+          const existing = previousDaysData[existingIndex];
+          if (existing.calories === calories && existing.goal === goal) {
+            return previousDaysData;
+          }
+
+          const updated = [...previousDaysData];
+          updated[existingIndex] = { ...existing, calories, goal };
+          return updated;
+        }
+
+        return [...previousDaysData, { date: normalizedDate, calories, goal }];
+      });
+
+      loadedDayKeysRef.current.add(toDateKey(normalizedDate));
+
+      if (user?.uid) {
+        void upsertNutritionCalendarSummaryDay(user.uid, {
+          date: normalizedDate,
+          calories,
+          goal,
+        });
+      }
+    },
+    [user?.uid],
+  );
+
+  useEffect(() => {
+    if (calendarDays.length === 0) return;
+
+    devLog("calendar_ready", {
+      latencyMs: Date.now() - calendarBootStartedAtRef.current,
+      dayCount: calendarDays.length,
+      initialIndex: mainCalendarInitialIndex,
+      hasFuture2Days: calendarHasFuture2Days,
+      selectedDateKey: toDayLookupKey(selectedDate),
     });
-  };
+  }, [
+    calendarDays.length,
+    calendarHasFuture2Days,
+    devLog,
+    mainCalendarInitialIndex,
+    selectedDate,
+  ]);
 
-  const getFoodIcon = (foodName: string, brand?: string) => {
-    const name = foodName.toLowerCase();
-    const brandName = brand?.toLowerCase() || '';
+  const applyCalendarSummary = useCallback(
+    (
+      summary: NutritionCalendarSummary | null,
+      reason: "hydrate_cache" | "seed_remote" | "reset" = "hydrate_cache",
+    ) => {
+      if (!summary) {
+        setCalendarEarliestDate(null);
+        lastCalendarDaysChangeReasonRef.current = `summary_${reason}_reset`;
+        setCalendarDays(buildCalendarDays(null));
+        lastDaysDataChangeReasonRef.current = `summary_${reason}_reset`;
+        setDaysData([]);
+        loadedDayKeysRef.current.clear();
+        pendingDayKeysRef.current.clear();
+        devLog("calendar_apply_summary", {
+          reason,
+          incomingDays: 0,
+          previousDays: 0,
+          mergedDays: 0,
+          earliestDate: null,
+        });
+        return;
+      }
 
-    if (name.includes('protein') || name.includes('Proteine') || name.includes('powerjack') || name.includes('whey')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('unt') || name.includes('butter') || name.includes('peanut') || name.includes('arahide')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('fulgi') || name.includes('flakes') || name.includes('corn') || name.includes('cereale')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('lapte') || name.includes('milk') || brandName.includes('pilos')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('pui') || name.includes('piept') || name.includes('carne') || name.includes('chicken') || name.includes('beef') || name.includes('pork')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('somon') || name.includes('peste') || name.includes('fish') || name.includes('ton')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('ou') || name.includes('egg') || name.includes('oua')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('paine') || name.includes('bread') || name.includes('paine')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    if (name.includes('fruct') || name.includes('fruit') || name.includes('banana') || name.includes('apple') || name.includes('mar')) {
-      return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-    }
-    
-    return <Icons.Package size={20} color={colors.primary} weight="fill" />;
-  };
+      const earliestDate = summary.earliestDate
+        ? startOfDay(new Date(summary.earliestDate))
+        : null;
+      setCalendarEarliestDate(earliestDate);
 
-  const proteinColor = '#10B981';
-  const carbsColor = '#EF4444';
-  const fatColor = '#F59E0B';
+      // Set calendarDays directly so React batches it with earliestDate,
+      // avoiding a visible 49→147 day rebuild flash.
+      const nextCalendarDays = buildCalendarDays(earliestDate);
+      setCalendarDays((previousDays) => {
+        if (areCalendarDaysEqual(previousDays, nextCalendarDays)) {
+          return previousDays;
+        }
+        lastCalendarDaysChangeReasonRef.current = `summary_${reason}`;
+        return nextCalendarDays;
+      });
+
+      const mappedDaysData: DayData[] = summary.days.map((day) => ({
+        date: startOfDay(new Date(day.date)),
+        calories: Number(day.calories) || 0,
+        goal: Number(day.goal) || DEFAULT_GOALS.calorie,
+      }));
+
+      setDaysData((previousDaysData) => {
+        if (mappedDaysData.length === 0) {
+          devLog("calendar_apply_summary_metadata_only", {
+            reason,
+            incomingDays: 0,
+            retainedDays: previousDaysData.length,
+            earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+          });
+          return previousDaysData;
+        }
+
+        lastDaysDataChangeReasonRef.current = `summary_${reason}`;
+        const mergedByKey = new Map<string, DayData>();
+        for (const day of mappedDaysData) {
+          mergedByKey.set(toDateKey(day.date), day);
+        }
+        for (const day of previousDaysData) {
+          mergedByKey.set(toDateKey(day.date), day);
+        }
+        const mergedDaysData = [...mergedByKey.values()].sort(
+          (left, right) => left.date.getTime() - right.date.getTime(),
+        );
+
+        loadedDayKeysRef.current = new Set(
+          mergedDaysData.map((day) => toDateKey(day.date)),
+        );
+
+        devLog("calendar_apply_summary", {
+          reason,
+          incomingDays: mappedDaysData.length,
+          previousDays: previousDaysData.length,
+          mergedDays: mergedDaysData.length,
+          earliestDate: earliestDate ? toDateKey(earliestDate) : null,
+        });
+
+        return mergedDaysData;
+      });
+    },
+    [devLog],
+  );
+
+  useEffect(() => {
+    const previousCounts = previousCalendarCountsRef.current;
+    const nextCounts = {
+      calendarDays: calendarDays.length,
+      daysData: daysData.length,
+    };
+
+    const calendarDaysChanged =
+      previousCounts.calendarDays !== nextCounts.calendarDays;
+    const daysDataChanged = previousCounts.daysData !== nextCounts.daysData;
+
+    if (!calendarDaysChanged && !daysDataChanged) {
+      return;
+    }
+
+    devLog("calendar_state_transition", {
+      previousCalendarDays: previousCounts.calendarDays,
+      nextCalendarDays: nextCounts.calendarDays,
+      previousDaysData: previousCounts.daysData,
+      nextDaysData: nextCounts.daysData,
+      calendarDaysReason: calendarDaysChanged
+        ? lastCalendarDaysChangeReasonRef.current
+        : null,
+      daysDataReason: daysDataChanged
+        ? lastDaysDataChangeReasonRef.current
+        : null,
+    });
+
+    if (calendarDaysChanged) {
+      lastCalendarDaysChangeReasonRef.current = "idle";
+    }
+    if (daysDataChanged) {
+      lastDaysDataChangeReasonRef.current = "idle";
+    }
+
+    previousCalendarCountsRef.current = nextCounts;
+  }, [calendarDays.length, daysData.length, devLog]);
+
+  const loadCalendarDaySummary = useCallback(
+    async (
+      date: Date,
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
+    ) => {
+      const userId = user?.uid;
+      if (!userId) return;
+
+      const force = options?.force ?? false;
+      const forceRemote = options?.forceRemote ?? false;
+      const normalizedDate = startOfDay(date);
+      if (normalizedDate > maxPlannableDate) return;
+
+      const dateKey = toDateKey(normalizedDate);
+      if (!force && loadedDayKeysRef.current.has(dateKey)) return;
+      if (pendingDayKeysRef.current.has(dateKey)) return;
+
+      pendingDayKeysRef.current.add(dateKey);
+
+      try {
+        let hasCachedSnapshot = false;
+        const cached = await getCachedNutritionForDate(normalizedDate);
+        if (cached) {
+          hasCachedSnapshot = true;
+          const calories = sumNutritionCalories(cached);
+          const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
+          upsertCalendarDayData(normalizedDate, calories, goal);
+          logCalendarWeekLoaded(normalizedDate, "cache");
+          if (!forceRemote) {
+            return;
+          }
+        }
+
+        const remoteResult = await getDailyNutrition(userId, normalizedDate);
+        if (remoteResult.success && remoteResult.data) {
+          const nutrition = remoteResult.data as DailyNutrition;
+          const calories = sumNutritionCalories(nutrition);
+          const goal = nutrition.calorieGoal || DEFAULT_GOALS.calorie;
+
+          upsertCalendarDayData(normalizedDate, calories, goal);
+          void cacheNutritionDay(normalizedDate, nutrition);
+          logCalendarWeekLoaded(normalizedDate, "remote");
+          return;
+        }
+
+        if (!hasCachedSnapshot) {
+          loadedDayKeysRef.current.add(dateKey);
+          logCalendarWeekLoaded(normalizedDate, "empty");
+        }
+      } catch (error) {
+        console.error("[Nutrition] Error loading calendar day summary:", error);
+      } finally {
+        pendingDayKeysRef.current.delete(dateKey);
+      }
+    },
+    [logCalendarWeekLoaded, maxPlannableDate, upsertCalendarDayData, user?.uid],
+  );
+
+  const loadCalendarDaysBatch = useCallback(
+    async (
+      dates: Date[],
+      options?: { force?: boolean; forceRemote?: boolean },
+    ) => {
+      const userId = user?.uid;
+      if (!userId || dates.length === 0) return;
+
+      const force = options?.force ?? false;
+      const forceRemote = options?.forceRemote ?? false;
+
+      // Deduplicate and filter out already-loaded / out-of-range dates
+      const uniqueDays = new Map<string, Date>();
+      for (const date of dates) {
+        const normalized = startOfDay(date);
+        if (normalized > maxPlannableDate) continue;
+        const dk = toDateKey(normalized);
+        if (!force && loadedDayKeysRef.current.has(dk)) continue;
+        if (pendingDayKeysRef.current.has(dk)) continue;
+        uniqueDays.set(dk, normalized);
+      }
+
+      if (uniqueDays.size === 0) return;
+
+      const datesToLoad = [...uniqueDays.values()];
+      for (const d of datesToLoad) {
+        pendingDayKeysRef.current.add(toDateKey(d));
+      }
+
+      try {
+        // --- Phase A: batch cache read (single multiGet) ---
+        const cacheMap = await batchGetCachedNutritionDays(datesToLoad);
+
+        const cacheHits: DayData[] = [];
+        const cacheMissDates: Date[] = [];
+
+        for (const date of datesToLoad) {
+          const key = getNutritionCacheKey(date);
+          const cached = cacheMap.get(key);
+
+          if (cached) {
+            const calories = sumNutritionCalories(cached);
+            const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
+            cacheHits.push({ date, calories, goal });
+            logCalendarWeekLoaded(date, "cache");
+          } else {
+            cacheMissDates.push(date);
+          }
+        }
+
+        // Single state update for all cache hits
+        if (cacheHits.length > 0) {
+          lastDaysDataChangeReasonRef.current = "batch_cache_hits";
+          setDaysData((prev) => {
+            const merged = new Map<string, DayData>();
+            for (const day of prev) {
+              merged.set(toDayLookupKey(day.date), day);
+            }
+            for (const hit of cacheHits) {
+              const dk = toDayLookupKey(hit.date);
+              const existing = merged.get(dk);
+              if (
+                existing &&
+                existing.calories === hit.calories &&
+                existing.goal === hit.goal
+              ) {
+                continue;
+              }
+              merged.set(dk, hit);
+            }
+            if (merged.size === prev.length) {
+              // Check if any values actually changed
+              let anyChanged = false;
+              for (const hit of cacheHits) {
+                const dk = toDayLookupKey(hit.date);
+                const existing = prev.find(
+                  (d) => toDayLookupKey(d.date) === dk,
+                );
+                if (
+                  !existing ||
+                  existing.calories !== hit.calories ||
+                  existing.goal !== hit.goal
+                ) {
+                  anyChanged = true;
+                  break;
+                }
+              }
+              if (!anyChanged) return prev;
+            }
+            return [...merged.values()];
+          });
+
+          for (const hit of cacheHits) {
+            loadedDayKeysRef.current.add(toDateKey(hit.date));
+          }
+
+          if (userId) {
+            for (const hit of cacheHits) {
+              void upsertNutritionCalendarSummaryDay(userId, {
+                date: hit.date,
+                calories: hit.calories,
+                goal: hit.goal,
+              });
+            }
+          }
+        }
+
+        // If no remote needed, mark cache misses as loaded (empty) and return
+        if (!forceRemote && cacheMissDates.length === 0) return;
+
+        // --- Phase B: parallel remote fetches for cache misses ---
+        const remoteDates = forceRemote ? datesToLoad : cacheMissDates;
+        if (remoteDates.length === 0) return;
+
+        const remoteResults = await Promise.all(
+          remoteDates.map(async (date) => {
+            try {
+              const result = await getDailyNutrition(userId, date);
+              if (result.success && result.data) {
+                const nutrition = result.data as DailyNutrition;
+                void cacheNutritionDay(date, nutrition);
+                return {
+                  date,
+                  calories: sumNutritionCalories(nutrition),
+                  goal: nutrition.calorieGoal || DEFAULT_GOALS.calorie,
+                };
+              }
+              return null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        const remoteHits = remoteResults.filter(
+          (r): r is DayData => r !== null,
+        );
+
+        // Single state update for all remote results
+        if (remoteHits.length > 0) {
+          lastDaysDataChangeReasonRef.current = "batch_remote_hits";
+          setDaysData((prev) => {
+            const merged = new Map<string, DayData>();
+            for (const day of prev) {
+              merged.set(toDayLookupKey(day.date), day);
+            }
+            for (const hit of remoteHits) {
+              merged.set(toDayLookupKey(hit.date), hit);
+              logCalendarWeekLoaded(hit.date, "remote");
+            }
+            return [...merged.values()];
+          });
+
+          if (userId) {
+            for (const hit of remoteHits) {
+              void upsertNutritionCalendarSummaryDay(userId, {
+                date: hit.date,
+                calories: hit.calories,
+                goal: hit.goal,
+              });
+            }
+          }
+        }
+
+        // Mark all dates as loaded
+        for (const date of datesToLoad) {
+          loadedDayKeysRef.current.add(toDateKey(date));
+        }
+      } catch (error) {
+        console.error("[Nutrition] Error in batch calendar load:", error);
+      } finally {
+        for (const date of datesToLoad) {
+          pendingDayKeysRef.current.delete(toDateKey(date));
+        }
+      }
+    },
+    [logCalendarWeekLoaded, maxPlannableDate, user?.uid],
+  );
+
+  const preloadCalendarDates = useCallback(
+    (
+      dates: Date[],
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
+    ) => {
+      if (dates.length === 0) return;
+      void loadCalendarDaysBatch(dates, options);
+    },
+    [loadCalendarDaysBatch],
+  );
+
+  const requestCalendarWindowLoad = useCallback(
+    (
+      date: Date,
+      options?: {
+        force?: boolean;
+        forceRemote?: boolean;
+      },
+    ) => {
+      const datesToLoad = buildCalendarWindowDates(date, {
+        weeksBefore: CALENDAR_PRELOAD_WEEKS_BEFORE,
+        weeksAfter: CALENDAR_PRELOAD_WEEKS_AFTER,
+        maxDate: maxPlannableDate,
+      });
+      preloadCalendarDates(datesToLoad, options);
+    },
+    [maxPlannableDate, preloadCalendarDates],
+  );
+
+  // Keep nearby weeks warm so rings are already filled when the user swipes.
+  useEffect(() => {
+    if (!user?.uid) return;
+    requestCalendarWindowLoad(selectedDate, { force: true });
+  }, [requestCalendarWindowLoad, selectedDate, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    requestCalendarWindowLoad(visibleCalendarDate);
+  }, [requestCalendarWindowLoad, user?.uid, visibleCalendarDate]);
+
+  const loadNutritionData = useCallback(
+    async (date: Date, options?: Parameters<typeof refreshNutrition>[1]) => {
+      if (!user?.uid) return;
+
+      try {
+        await refreshNutrition(date, options);
+      } catch (error) {
+        console.error("[Nutrition] Error refreshing selected date:", error);
+      }
+    },
+    [refreshNutrition, user?.uid],
+  );
+
+  const loadCalendarHistory = useCallback(
+    async (options?: { forceRemote?: boolean }) => {
+      const userId = user?.uid;
+      const forceRemote = options?.forceRemote ?? false;
+      calendarRequestIdRef.current += 1;
+      const requestId = calendarRequestIdRef.current;
+      let cachedSummary: NutritionCalendarSummary | null = null;
+
+      if (!userId) {
+        lastDaysDataChangeReasonRef.current = "history_no_user_reset";
+        setDaysData([]);
+        setCalendarEarliestDate(null);
+        setCalendarLoading(false);
+        return;
+      }
+
+      await awaitNutritionCalendarPrefetch();
+      if (requestId !== calendarRequestIdRef.current) return;
+
+      const memEarliest = getMemoryEarliestDate(userId);
+      if (memEarliest !== undefined && memEarliest) {
+        const memDate = startOfDay(new Date(memEarliest));
+        setCalendarEarliestDate(memDate);
+        const memDays = buildCalendarDays(memDate);
+        setCalendarDays((prev) =>
+          areCalendarDaysEqual(prev, memDays) ? prev : memDays,
+        );
+      }
+
+      const cacheResult = await measureAsync(
+        "nutrition_calendar_hydrate_cache_ms",
+        () => getCachedNutritionCalendarSummary(userId, { allowStale: true }),
+        (result) => ({
+          source: result.data
+            ? result.data.days.length > 0
+              ? "cache"
+              : result.data.earliestDate
+                ? "cache_metadata"
+                : "fallback"
+            : "fallback",
+          itemCount: result.data?.days.length ?? 0,
+          hasEarliestDate: Boolean(result.data?.earliestDate),
+          cacheAgeMs: result.ageMs ?? null,
+          success: Boolean(
+            result.data &&
+            (result.data.days.length > 0 || result.data.earliestDate),
+          ),
+        }),
+      );
+
+      if (requestId !== calendarRequestIdRef.current) return;
+
+      if (cacheResult.data) {
+        cachedSummary = cacheResult.data;
+        applyCalendarSummary(cacheResult.data, "hydrate_cache");
+      }
+
+      const cachedEarliest = cachedSummary?.earliestDate ?? null;
+      if (cachedEarliest && !forceRemote) {
+        setCalendarLoading(false);
+        return;
+      }
+
+      try {
+        const earliestDate = await measureAsync(
+          "nutrition_calendar_seed_remote_ms",
+          () => getUserNutritionEarliestDate(userId),
+          (result) => ({
+            source: result ? "remote" : "fallback",
+            itemCount: 0,
+            cacheAgeMs: null,
+            success: Boolean(result),
+          }),
+        );
+
+        if (requestId !== calendarRequestIdRef.current) return;
+
+        const earliestIso = earliestDate
+          ? startOfDay(earliestDate).toISOString()
+          : null;
+        const nextSummary = cachedSummary
+          ? {
+              ...cachedSummary,
+              earliestDate: earliestIso ?? cachedSummary.earliestDate,
+            }
+          : {
+              userID: userId,
+              earliestDate: earliestIso,
+              days: [],
+              updatedAt: Date.now(),
+            };
+
+        if (nextSummary.earliestDate || cachedSummary) {
+          applyCalendarSummary(nextSummary, "seed_remote");
+          await setCachedNutritionCalendarSummary(userId, {
+            earliestDate: nextSummary.earliestDate,
+            days: nextSummary.days,
+          });
+        } else if (!cachedSummary) {
+          lastDaysDataChangeReasonRef.current = "history_remote_empty_reset";
+          setDaysData([]);
+          setCalendarEarliestDate(null);
+        }
+      } catch (error) {
+        console.error("[Nutrition] Error loading calendar seed:", error);
+        if (requestId !== calendarRequestIdRef.current) return;
+
+        if (!cachedSummary) {
+          lastDaysDataChangeReasonRef.current = "history_seed_error_reset";
+          setDaysData([]);
+          setCalendarEarliestDate(null);
+        }
+      } finally {
+        if (requestId === calendarRequestIdRef.current) {
+          setCalendarLoading(false);
+        }
+      }
+    },
+    [applyCalendarSummary, user?.uid],
+  );
+
+  useEffect(() => {
+    if (user?.uid && previousCalendarUserIdRef.current !== user.uid) {
+      calendarBootStartedAtRef.current = Date.now();
+      lastDaysDataChangeReasonRef.current = "user_switch_reset";
+      setDaysData([]);
+      setCalendarEarliestDate(null);
+      setCalendarLoading(true);
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = null;
+      lastVisibleCalendarMonthKeyRef.current = null;
+      loadedDayKeysRef.current.clear();
+      pendingDayKeysRef.current.clear();
+    }
+    previousCalendarUserIdRef.current = user?.uid || null;
+
+    if (!user?.uid) {
+      calendarBootStartedAtRef.current = Date.now();
+      lastDaysDataChangeReasonRef.current = "user_signed_out_reset";
+      setDaysData([]);
+      setCalendarEarliestDate(null);
+      setCalendarLoading(false);
+      setRefreshing(false);
+      setShowCalendarLogModal(false);
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = null;
+      lastVisibleCalendarMonthKeyRef.current = null;
+      loadedDayKeysRef.current.clear();
+      pendingDayKeysRef.current.clear();
+      initialLoadUserIdRef.current = null;
+      return;
+    }
+
+    const isInitialLoadForUser = initialLoadUserIdRef.current !== user.uid;
+    initialLoadUserIdRef.current = user.uid;
+
+    void loadNutritionData(selectedDate, {
+      forceRemote: false,
+      preloadWeek: isInitialLoadForUser,
+      reason: isInitialLoadForUser ? "screen_mount" : "date_switch",
+    });
+  }, [loadNutritionData, selectedDate, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    void loadCalendarHistory();
+  }, [loadCalendarHistory, user?.uid]);
+
+  useEffect(() => {
+    if (!todayNutrition) return;
+
+    const nutritionDate = toValidDate(todayNutrition.date);
+    if (!nutritionDate) return;
+
+    const normalizedDate = startOfDay(nutritionDate);
+    if (normalizedDate > maxPlannableDate) return;
+
+    const nutritionDateKey = toDayLookupKey(normalizedDate);
+    const calories = nutritionStats.totalCalories;
+    const goal = todayNutrition.calorieGoal || DEFAULT_GOALS.calorie;
+    const isFallbackEmptySnapshot =
+      calories === 0 && isSyntheticEmptyNutritionFallback(todayNutrition);
+
+    lastDaysDataChangeReasonRef.current = "sync_today_nutrition";
+    setDaysData((previousDaysData) => {
+      const existingIndex = previousDaysData.findIndex(
+        (day) => toDayLookupKey(day.date) === nutritionDateKey,
+      );
+
+      if (existingIndex !== -1) {
+        const existing = previousDaysData[existingIndex];
+        if (isFallbackEmptySnapshot && existing.calories > 0) {
+          return previousDaysData;
+        }
+        if (existing.calories === calories && existing.goal === goal) {
+          return previousDaysData;
+        }
+
+        const updated = [...previousDaysData];
+        updated[existingIndex] = { ...existing, calories, goal };
+        return updated;
+      }
+
+      if (isFallbackEmptySnapshot) {
+        return previousDaysData;
+      }
+
+      return [...previousDaysData, { date: normalizedDate, calories, goal }];
+    });
+
+    if (!isFallbackEmptySnapshot) {
+      loadedDayKeysRef.current.add(toDateKey(normalizedDate));
+    }
+
+    if (!isFallbackEmptySnapshot && user?.uid) {
+      void upsertNutritionCalendarSummaryDay(user.uid, {
+        date: normalizedDate,
+        calories,
+        goal,
+      });
+    }
+  }, [
+    maxPlannableDate,
+    nutritionStats.totalCalories,
+    todayNutrition,
+    user?.uid,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      calendarRequestIdRef.current += 1;
+    };
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    calendarBootStartedAtRef.current = Date.now();
+    loadedDayKeysRef.current.clear();
+    pendingDayKeysRef.current.clear();
+    setRefreshing(true);
+
+    void (async () => {
+      try {
+        await Promise.all([
+          loadNutritionData(selectedDate, {
+            forceRemote: true,
+            preloadWeek: true,
+            reason: "pull_to_refresh",
+          }),
+          loadCalendarHistory({ forceRemote: true }),
+        ]);
+        requestCalendarWindowLoad(selectedDate, {
+          force: true,
+          forceRemote: true,
+        });
+      } finally {
+        setRefreshing(false);
+      }
+    })();
+  }, [
+    loadCalendarHistory,
+    loadNutritionData,
+    requestCalendarWindowLoad,
+    selectedDate,
+  ]);
+
+  const updateVisibleCalendarMonth = useCallback((date: Date) => {
+    const normalizedDate = startOfDay(date);
+    const monthKey = toMonthLookupKey(normalizedDate);
+    lastVisibleCalendarMonthKeyRef.current = monthKey;
+    setVisibleCalendarDate((previousDate) =>
+      toMonthLookupKey(previousDate) === monthKey
+        ? previousDate
+        : normalizedDate,
+    );
+  }, []);
+
+  const handleDayPress = useCallback(
+    (day: Date, _index?: number) => {
+      const normalizedDay = normalizeDate(day);
+      if (normalizedDay > maxPlannableDate) return;
+
+      setCalendarScrollRequest(null);
+      lastVisibleCalendarDayRef.current = normalizedDay;
+      updateVisibleCalendarMonth(normalizedDay);
+      setSelectedDate((previousDate) => {
+        if (toDayLookupKey(normalizedDay) === toDayLookupKey(previousDate)) {
+          return previousDate;
+        }
+        return normalizedDay;
+      });
+    },
+    [maxPlannableDate, updateVisibleCalendarMonth],
+  );
+
+  const handleOpenSettings = useCallback(() => {
+    router.push("/(modals)/nutritionSettings");
+  }, [router]);
+
+  const handleOpenCalendarLog = useCallback(() => {
+    setShowCalendarLogModal(true);
+  }, []);
+
+  const handleCloseCalendarLog = useCallback(() => {
+    setShowCalendarLogModal(false);
+  }, []);
+
+  const handleCalendarModalDayPress = useCallback(
+    (day: Date, _index?: number) => {
+      const normalizedDate = startOfDay(day);
+      if (normalizedDate > maxPlannableDate) return;
+
+      lastVisibleCalendarDayRef.current = normalizedDate;
+      updateVisibleCalendarMonth(normalizedDate);
+      setCalendarScrollRequest({
+        date: normalizedDate,
+        animated: true,
+        reason: "selection",
+      });
+      setSelectedDate((previousDate) => {
+        if (toDayLookupKey(normalizedDate) === toDayLookupKey(previousDate)) {
+          return previousDate;
+        }
+        return normalizedDate;
+      });
+    },
+    [maxPlannableDate, updateVisibleCalendarMonth],
+  );
+
+  const handleCalendarScrollHandled = useCallback((_date: Date) => {
+    setCalendarScrollRequest(null);
+  }, []);
+
+  const handleCalendarVisibleDayChange = useCallback(
+    (day: Date) => {
+      const normalizedDay = startOfDay(day);
+      if (
+        lastVisibleCalendarDayRef.current &&
+        toDateKey(lastVisibleCalendarDayRef.current) ===
+          toDateKey(normalizedDay)
+      ) {
+        return;
+      }
+
+      lastVisibleCalendarDayRef.current = normalizedDay;
+      requestCalendarWindowLoad(normalizedDay);
+
+      const monthKey = toMonthLookupKey(normalizedDay);
+      if (lastVisibleCalendarMonthKeyRef.current === monthKey) {
+        return;
+      }
+
+      lastVisibleCalendarMonthKeyRef.current = monthKey;
+      setVisibleCalendarDate((previousDate) =>
+        toMonthLookupKey(previousDate) === monthKey
+          ? previousDate
+          : normalizedDay,
+      );
+    },
+    [requestCalendarWindowLoad],
+  );
+
+  const handleMealPress = useCallback(
+    (mealName: string) => {
+      router.push({
+        pathname: "/(modals)/mealDetail",
+        params: {
+          mealName,
+          date: selectedDate.toISOString(),
+        },
+      });
+    },
+    [router, selectedDate],
+  );
+
+  const handleAddWater = useCallback(
+    async (amount: number) => {
+      await addWaterIntake(amount);
+    },
+    [addWaterIntake],
+  );
+
+  const handleResetWater = useCallback(() => {
+    Alert.alert(
+      t("nutrition_reset_water_title"),
+      t("nutrition_reset_water_message"),
+      [
+        { text: t("common_cancel"), style: "cancel" },
+        {
+          text: t("nutrition_reset"),
+          style: "destructive",
+          onPress: async () => {
+            await resetWaterIntake();
+          },
+        },
+      ],
+    );
+  }, [resetWaterIntake, t]);
+
+  const handleFoodPress = useCallback(
+    (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      const currentQuantity = Number.parseFloat(food.servingSize) || 100;
+      setEditingFood({ mealName, foodIndex, food });
+      setEditQuantity(currentQuantity.toString());
+      setShowEditModal(true);
+    },
+    [],
+  );
+
+  const handleFoodLongPress = useCallback(
+    (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      setActionFood({ mealName, foodIndex, food });
+      setShowActionsModal(true);
+    },
+    [],
+  );
+
+  const handleSaveQuantity = useCallback(async () => {
+    const parsedQuantity = Number.parseFloat(editQuantity);
+    if (
+      !editingFood ||
+      !Number.isFinite(parsedQuantity) ||
+      parsedQuantity <= 0
+    ) {
+      Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
+      return;
+    }
+
+    await updateFoodQuantity(
+      editingFood.mealName,
+      editingFood.foodIndex,
+      parsedQuantity,
+    );
+    setShowEditModal(false);
+    setEditingFood(null);
+    Alert.alert(t("common_success"), t("nutrition_quantity_updated"));
+  }, [editQuantity, editingFood, t, updateFoodQuantity]);
+
+  const closeEditModal = useCallback(() => {
+    setShowEditModal(false);
+    setEditingFood(null);
+  }, []);
+
+  const closeActionsModal = useCallback(() => {
+    setShowActionsModal(false);
+    setActionFood(null);
+  }, []);
+
+  const handleCopyFood = useCallback(
+    async (toMeal: string) => {
+      if (!actionFood) return;
+      await copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
+      setShowActionsModal(false);
+      Alert.alert(
+        t("common_success"),
+        t("nutrition_copied_to_meal", {
+          name: actionFood.food.name,
+          meal: getMealLabel(language, toMeal),
+        }),
+      );
+    },
+    [actionFood, copyFoodToMeal, language, t],
+  );
+
+  const handleMoveFood = useCallback(
+    async (toMeal: string) => {
+      if (!actionFood) return;
+      await moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
+      setShowActionsModal(false);
+      Alert.alert(
+        t("common_success"),
+        t("nutrition_moved_to_meal", {
+          name: actionFood.food.name,
+          meal: getMealLabel(language, toMeal),
+        }),
+      );
+    },
+    [actionFood, language, moveFoodToMeal, t],
+  );
+
+  const handleDeleteFood = useCallback(() => {
+    if (!actionFood) return;
+
+    Alert.alert(
+      t("nutrition_delete_food_title"),
+      t("nutrition_delete_food_message", {
+        name: actionFood.food.name,
+      }),
+      [
+        { text: t("common_cancel"), style: "cancel" },
+        {
+          text: t("nutrition_delete_food"),
+          style: "destructive",
+          onPress: async () => {
+            await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
+            setShowActionsModal(false);
+            Alert.alert(t("common_success"), t("nutrition_food_deleted"));
+          },
+        },
+      ],
+    );
+  }, [actionFood, removeFoodFromMeal, t]);
 
   return (
-    <ScreenWrapper>
-      <ScrollView 
-        style={styles.container} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        {/*  Date Header  */}
-        <Animated.View 
-          entering={FadeInDown.duration(400)}
-          style={styles.dateHeader}
+    <SwipeableScreen>
+      <ScreenWrapper>
+        <ScrollView
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
         >
-          <View style={styles.dateHeaderContent}>
-            <Typo size={24} fontWeight="700">
-              {formatDateHeader()}
-            </Typo>
-            <TouchableOpacity onPress={() => router.push("/(modals)/nutritionSettings")}>
-              <Icons.Gear size={24} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+          <NutritionDateHeader
+            dateLabel={dateHeaderLabel}
+            onOpenCalendarLog={handleOpenCalendarLog}
+            onOpenSettings={handleOpenSettings}
+          />
 
-        {/* Calendar Component */}
-        <NutritionCalendar
-          currentWeek={currentWeek}
-          selectedDate={selectedDate}
-          daysData={daysData}
-          loading={calendarLoading}
-          onDayPress={handleDayPress}
+          <Typo size={24} fontWeight="700" style={styles.calendarMonthTitle}>
+            {calendarMonthLabel}
+          </Typo>
+
+          <NutritionCalendar
+            calendarDays={calendarDays}
+            daysData={daysData}
+            selectedDate={selectedDate}
+            loading={calendarLoading}
+            initialIndex={mainCalendarInitialIndex}
+            extraDataToken={calendarExtraDataToken}
+            scrollToDate={calendarScrollRequest?.date ?? null}
+            scrollToDateAnimated={calendarScrollRequest?.animated ?? true}
+            onScrollToDateHandled={handleCalendarScrollHandled}
+            onDayPress={handleDayPress}
+            onVisibleDayChange={handleCalendarVisibleDayChange}
+          />
+
+          <NutritionObjectiveCard stats={nutritionStats} />
+
+          <Animated.View
+            entering={FadeInDown.duration(400).delay(300)}
+            style={styles.mealsSection}
+          >
+            {mealSummaries.map((summary) => (
+              <NutritionMealCard
+                key={summary.mealName}
+                summary={summary}
+                onMealPress={handleMealPress}
+                onFoodPress={handleFoodPress}
+                onFoodLongPress={handleFoodLongPress}
+              />
+            ))}
+          </Animated.View>
+
+          <NutritionWaterCard
+            waterPercentage={waterPercentage}
+            total={todayWater?.total || 0}
+            goal={todayWater?.goal || 2000}
+            onResetWater={handleResetWater}
+            onAddWater={handleAddWater}
+          />
+        </ScrollView>
+
+        {showCalendarLogModal && (
+          <NutritionCalendarLogModal
+            visible={showCalendarLogModal}
+            calendarDays={calendarDays}
+            daysData={daysData}
+            selectedDate={selectedDate}
+            maxSelectableDate={maxPlannableDate}
+            loading={calendarLoading}
+            onClose={handleCloseCalendarLog}
+            onDaySelect={handleCalendarModalDayPress}
+          />
+        )}
+
+        <NutritionEditQuantityModal
+          visible={showEditModal}
+          editingFood={editingFood}
+          editQuantity={editQuantity}
+          bottomInset={insets.bottom}
+          onClose={closeEditModal}
+          onChangeQuantity={setEditQuantity}
+          onSave={handleSaveQuantity}
         />
 
-        {/* Objective Card */}
-        <Animated.View 
-          entering={FadeInDown.duration(400).delay(100)}
-          style={styles.objectiveCard}
-        >
-          <View style={styles.mainContent}>
-            <View style={styles.leftSection}>
-              <View style={styles.objectivesContainer}>
-                <View style={styles.objectiveItem}>
-                  <View style={styles.objectiveHeader}>
-                    <Icons.Target size={20} color={colors.primary} weight="fill" />
-                    <Typo size={16} fontWeight="600" color={colors.white}>
-                      Obiectiv
-                    </Typo>
-                  </View>
-                  <Typo size={20} fontWeight="700" color={colors.white} style={styles.calorieValue}>
-                    {nutritionStats.calorieGoal} kcal
-                  </Typo>
-                </View>
-                <View style={styles.objectiveItem}>
-                  <View style={styles.objectiveHeader}>
-                    <Icons.Fire size={20} color="#FF6B35" weight="fill" />
-                    <Typo size={16} fontWeight="600" color={colors.white}>
-                      Consumat
-                    </Typo>
-                  </View>
-                  <Typo size={20} fontWeight="700" color={colors.white} style={styles.calorieValue}>
-                    {nutritionStats.totalCalories} kcal
-                  </Typo>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.rightSection}>
-              <View style={styles.progressCircleContainer}>
-                <View style={styles.progressCircle}>
-                  <View style={[styles.progressFill, { height: `${nutritionStats.progress}%` }]} />
-                  <View style={styles.circleInner}>
-                    <Typo size={18} fontWeight="700" color={colors.white} style={styles.remainingCalories}>
-                      {nutritionStats.remainingCalories}
-                    </Typo>
-                    <Typo size={12} color={colors.neutral400}>
-                      kcal rămase
-                    </Typo>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.macrosContainer}>
-            <View style={styles.macroItem}>
-              <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-                Proteine
-              </Typo>
-              <View style={styles.macroProgressBar}>
-                <View 
-                  style={[
-                    styles.macroProgressFill,
-                    { 
-                      width: `${nutritionStats.proteinProgress}%`,
-                      backgroundColor: proteinColor
-                    }
-                  ]} 
-                />
-              </View>
-              <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(nutritionStats.totalMacros.protein)}g / {nutritionStats.proteinGoal}g
-              </Typo>
-            </View>
-
-            <View style={styles.macroItem}>
-              <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-                Carbohidrati
-              </Typo>
-              <View style={styles.macroProgressBar}>
-                <View 
-                  style={[
-                    styles.macroProgressFill,
-                    { 
-                      width: `${nutritionStats.carbsProgress}%`,
-                      backgroundColor: carbsColor
-                    }
-                  ]} 
-                />
-              </View>
-              <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(nutritionStats.totalMacros.carbs)}g / {nutritionStats.carbsGoal}g
-              </Typo>
-            </View>
-
-            <View style={styles.macroItem}>
-              <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-                Grasimi
-              </Typo>
-              <View style={styles.macroProgressBar}>
-                <View 
-                  style={[
-                    styles.macroProgressFill,
-                    { 
-                      width: `${nutritionStats.fatProgress}%`,
-                      backgroundColor: fatColor
-                    }
-                  ]} 
-                />
-              </View>
-              <Typo size={14} fontWeight="600" color={colors.white} style={styles.macroValue}>
-                {Math.round(nutritionStats.totalMacros.fat)}g / {nutritionStats.fatGoal}g
-              </Typo>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Meals Section */}
-        <Animated.View 
-          entering={FadeInDown.duration(400).delay(300)}
-          style={styles.mealsSection}
-        >
-          {MEALS.map((mealName, index) => {
-            const meal = getMealData(mealName);
-            const mealCalories = getMealCalories(mealName);
-            const mealMacros = getMealMacros(mealName);
-            const mealPercentages = getMealMacroPercentages(mealName);
-            const hasFoods = meal && meal.foods.length > 0;
-
-            const circumference = 2 * Math.PI * 40;
-            const proteinArc = (mealPercentages.protein / 100) * circumference;
-            const carbsArc = (mealPercentages.carbs / 100) * circumference;
-            const fatArc = (mealPercentages.fat / 100) * circumference;
-
-            return (
-              <View
-                key={index}
-                style={styles.mealCardExact}
-              >
-                <View style={styles.mealHeaderExact}>
-                  <Typo size={18} fontWeight="700" color={colors.white}>
-                    {mealName}
-                  </Typo>
-                </View>
-
-                <View style={styles.nutritionRow}>
-                  <View style={styles.circleContainerRow}>
-                    <Svg width={80} height={80} viewBox="0 0 100 100">
-                      <Circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        stroke={colors.neutral700}
-                        strokeWidth="8"
-                        fill="none"
-                      />
-                      <Circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        stroke={proteinColor}
-                        strokeWidth="8"
-                        fill="none"
-                        strokeDasharray={`${proteinArc} ${circumference}`}
-                        strokeDashoffset="0"
-                        transform="rotate(-90 50 50)"
-                      />
-                      <Circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        stroke={carbsColor}
-                        strokeWidth="8"
-                        fill="none"
-                        strokeDasharray={`${carbsArc} ${circumference}`}
-                        strokeDashoffset={-proteinArc}
-                        transform="rotate(-90 50 50)"
-                      />
-                      <Circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        stroke={fatColor}
-                        strokeWidth="8"
-                        fill="none"
-                        strokeDasharray={`${fatArc} ${circumference}`}
-                        strokeDashoffset={-(proteinArc + carbsArc)}
-                        transform="rotate(-90 50 50)"
-                      />
-                    </Svg>
-                    
-                    <View style={styles.circleTextRow}>
-                      <Typo size={16} fontWeight="600" color={colors.white} style={styles.calorieValueText}>
-                        {mealCalories.toFixed(0)}
-                      </Typo>
-                      <Typo size={10} color={colors.neutral400} style={styles.calorieLabelText}>
-                        kCal
-                      </Typo>
-                    </View>
-                  </View>
-
-                  <View style={styles.macrosContainerRow}>
-                    <View style={styles.macroItemRow}>
-                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {mealPercentages.protein}%
-                      </Typo>
-                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
-                        {Math.round(mealMacros.protein)} g
-                      </Typo>
-                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
-                        Prot.
-                      </Typo>
-                    </View>
-
-                    <View style={styles.macroItemRow}>
-                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {mealPercentages.carbs}%
-                      </Typo>
-                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
-                        {Math.round(mealMacros.carbs)} g
-                      </Typo>
-                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
-                        Carb.
-                      </Typo>
-                    </View>
-
-                    <View style={styles.macroItemRow}>
-                      <Typo size={12} fontWeight="600" color={colors.white} style={styles.macroPercentage}>
-                        {mealPercentages.fat}%
-                      </Typo>
-                      <Typo size={14} fontWeight="700" color={colors.white} style={styles.macroValueRow}>
-                        {Math.round(mealMacros.fat)} g
-                      </Typo>
-                      <Typo size={10} color={colors.neutral400} style={styles.macroLabelRow}>
-                        Grasimi
-                      </Typo>
-                    </View>
-                  </View>
-                </View>
-
-                {hasFoods && (
-                  <View style={styles.foodsList}>
-                    {meal.foods.map((food, foodIndex) => (
-                      <TouchableOpacity
-                        key={foodIndex}
-                        style={styles.foodItemImage}
-                        onPress={() => handleFoodPress(mealName, foodIndex, food)}
-                        onLongPress={() => handleFoodLongPress(mealName, foodIndex, food)}
-                      >
-                        <View style={styles.foodMainRow}>
-                          <View style={styles.foodIconBox}>
-                            {getFoodIcon(food.name, (food as any).brand)}
-                          </View>
-                          
-                          <View style={styles.foodContentColumn}>
-                            <Typo size={14} fontWeight="600" color={colors.white} numberOfLines={1}>
-                              {food.name}
-                            </Typo>
-                            {(food as any).brand && (
-                              <Typo size={11} color={colors.neutral400} numberOfLines={1}>
-                                {(food as any).brand}
-                              </Typo>
-                            )}
-                            
-                            <View style={styles.foodMetricsRow}>
-                              <View style={styles.metricItem}>
-                                <Icons.Scales size={12} color={colors.neutral400} weight="fill" />
-                                <Typo size={11} color={colors.white}>
-                                  {food.servingSize || '100'} Grame
-                                </Typo>
-                              </View>
-                              
-                              <View style={styles.metricItem}>
-                                <Icons.Flame size={12} color={colors.neutral400} weight="fill" />
-                                <Typo size={11} color={colors.white}>
-                                  {Math.round(food.calories)}kCal
-                                </Typo>
-                              </View>
-                            </View>
-                            
-                            <View style={styles.macrosRow}>
-                              <View style={styles.macroTag}>
-                                <Icons.Drop size={12} color={proteinColor} weight="fill" />
-                                <Typo size={11} color={colors.white}>
-                                  {Math.round(food.protein)}g
-                                </Typo>
-                              </View>
-                              
-                              <View style={styles.macroTag}>
-                                <Icons.GrainsSlash size={12} color={carbsColor} weight="fill" />
-                                <Typo size={11} color={colors.white}>
-                                  {Math.round(food.carbs)}g
-                                </Typo>
-                              </View>
-                              
-                              <View style={styles.macroTag}>
-                                <Icons.Nut size={12} color={fatColor} weight="fill" />
-                                <Typo size={11} color={colors.white}>
-                                  {Math.round(food.fat)}g
-                                </Typo>
-                              </View>
-                            </View>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-
-                <TouchableOpacity 
-                  style={styles.addButtonExact}
-                  onPress={() => handleMealPress(mealName)}
-                >
-                  <Icons.Plus size={18} color={colors.primary} weight="bold" />
-                  <Typo size={15} fontWeight="600" color={colors.primary}>
-                    Adauga alimente
-                  </Typo>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </Animated.View>
-
-        {/* Water Intake Section */}
-        <Animated.View 
-          entering={FadeInDown.duration(400).delay(200)}
-          style={styles.waterCard}
-        >
-          <View style={styles.waterHeader}>
-            <Icons.Drop size={24} color={colors.primary} weight="fill" />
-            <Typo size={20} fontWeight="600" style={{ flex: 1 }}>
-              Aport apă
-            </Typo>
-            <TouchableOpacity onPress={handleResetWater}>
-              <Icons.ArrowCounterClockwise size={20} color={colors.neutral400} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.waterContent}>
-            <WaterWave 
-              percentage={waterPercentage}
-              total={todayWater?.total || 0}
-              goal={todayWater?.goal || 2000}
-            />
-            
-            <View style={styles.waterButtons}>
-              <TouchableOpacity
-                style={styles.waterButton}
-                onPress={() => handleAddWater(250)}
-              >
-                <Typo size={14} fontWeight="600" color={colors.black}>
-                  + 250 ml
-                </Typo>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.waterButton}
-                onPress={() => handleAddWater(500)}
-              >
-                <Typo size={14} fontWeight="600" color={colors.black}>
-                  + 500 ml
-                </Typo>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.waterButton}
-                onPress={() => handleAddWater(750)}
-              >
-                <Typo size={14} fontWeight="600" color={colors.black}>
-                  + 750 ml
-                </Typo>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
-      </ScrollView>
-
-      {/* Edit Modal */}
-      <Modal
-        visible={showEditModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={() => setShowEditModal(false)}
-          />
-          
-          <View style={[styles.editModal, { paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.handleBar} />
-
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <Icons.X size={24} color={colors.white} weight="bold" />
-              </TouchableOpacity>
-              <Typo size={20} fontWeight="700">
-                Editeaza cantitatea
-              </Typo>
-              <View style={{ width: 24 }} />
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {editingFood && (
-                <View style={styles.modalContent}>
-                  <View style={styles.foodInfoModal}>
-                    <Typo size={18} fontWeight="700" style={{ textAlign: 'center' }}>
-                      {editingFood.food.name}
-                    </Typo>
-                    <Typo size={14} color={colors.neutral400} style={{ textAlign: 'center', marginTop: spacingY._5 }}>
-                      {editingFood.mealName}
-                    </Typo>
-                  </View>
-
-                  <View style={styles.quantitySection}>
-                    <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
-                      Cantitate (grame)
-                    </Typo>
-                    <Input
-                      placeholder="100"
-                      value={editQuantity}
-                      onChangeText={setEditQuantity}
-                      keyboardType="numeric"
-                      containerStyle={styles.quantityInput}
-                    />
-                  </View>
-
-                  <View style={styles.adjustedNutrition}>
-                    <Typo size={15} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
-                      Valori calculate pentru {editQuantity || '0'}g:
-                    </Typo>
-                    
-                    <View style={styles.nutritionGrid}>
-                      <View style={styles.nutritionItem}>
-                        <Typo size={24} fontWeight="700" color={colors.primary}>
-                          {Math.round(editingFood.food.calories * (parseFloat(editQuantity) || 0) / 100)}
-                        </Typo>
-                        <Typo size={12} color={colors.neutral400}>kcal</Typo>
-                      </View>
-
-                      <View style={styles.nutritionItem}>
-                        <Typo size={20} fontWeight="600">
-                          {Math.round(editingFood.food.protein * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
-                        </Typo>
-                        <Typo size={12} color={colors.neutral400}>Proteine</Typo>
-                      </View>
-
-                      <View style={styles.nutritionItem}>
-                        <Typo size={20} fontWeight="600">
-                          {Math.round(editingFood.food.carbs * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
-                        </Typo>
-                        <Typo size={12} color={colors.neutral400}>Carbohidrati</Typo>
-                      </View>
-
-                      <View style={styles.nutritionItem}>
-                        <Typo size={20} fontWeight="600">
-                          {Math.round(editingFood.food.fat * (parseFloat(editQuantity) || 0) / 100 * 10) / 10}g
-                        </Typo>
-                        <Typo size={12} color={colors.neutral400}>Grasimi</Typo>
-                      </View>
-                    </View>
-                  </View>
-
-                  <Button 
-                    onPress={handleSaveQuantity}
-                    style={{ marginTop: spacingY._20 }}
-                  >
-                    <Typo size={18} fontWeight="700" color={colors.black}>
-                      Salveaza
-                    </Typo>
-                  </Button>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Actions Modal */}
-      <Modal
-        visible={showActionsModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowActionsModal(false)}
-      >
-        <TouchableOpacity 
-          style={styles.actionsOverlay}
-          activeOpacity={1}
-          onPress={() => setShowActionsModal(false)}
-        >
-          <View style={[styles.actionsModal, { bottom: insets.bottom + 20 }]}>
-            {actionFood && (
-              <>
-                <View style={styles.actionsHeader}>
-                  <Typo size={18} fontWeight="700">
-                    {actionFood.food.name}
-                  </Typo>
-                </View>
-
-                <View style={styles.actionsList}>
-                  <View style={styles.actionGroup}>
-                    <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
-                      Copiaza la:
-                    </Typo>
-                    {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
-                      <TouchableOpacity
-                        key={`copy-${idx}`}
-                        style={styles.actionButton}
-                        onPress={() => handleCopyFood(meal)}
-                      >
-                        <Icons.Copy size={20} color={colors.primary} weight="bold" />
-                        <Typo size={16} fontWeight="500">
-                          {meal}
-                        </Typo>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <View style={styles.actionGroup}>
-                    <Typo size={15} fontWeight="600" color={colors.neutral400} style={{ marginBottom: spacingY._10 }}>
-                      Muta la:
-                    </Typo>
-                    {MEALS.filter(m => m !== actionFood.mealName).map((meal, idx) => (
-                      <TouchableOpacity
-                        key={`move-${idx}`}
-                        style={styles.actionButton}
-                        onPress={() => handleMoveFood(meal)}
-                      >
-                        <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
-                        <Typo size={16} fontWeight="500">
-                          {meal}
-                        </Typo>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.deleteAction]}
-                    onPress={handleDeleteFood}
-                  >
-                    <Icons.Trash size={20} color={colors.rose} weight="bold" />
-                    <Typo size={16} fontWeight="600" color={colors.rose}>
-                      Sterge aliment
-                    </Typo>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </ScreenWrapper>
+        <NutritionFoodActionsModal
+          visible={showActionsModal}
+          actionFood={actionFood}
+          meals={[...MEALS]}
+          bottomInset={insets.bottom}
+          onClose={closeActionsModal}
+          onCopy={handleCopyFood}
+          onMove={handleMoveFood}
+          onDelete={handleDeleteFood}
+        />
+      </ScreenWrapper>
+    </SwipeableScreen>
   );
 };
-
 
 export default Nutrition;
 
@@ -997,371 +1568,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
-  dateHeader: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    marginVertical: spacingY._15,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  dateHeaderContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  objectiveCard: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    marginBottom: spacingY._20,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  mainContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacingY._20,
-  },
-  leftSection: {
-    flex: 1,
-  },
-  objectivesContainer: {
-    gap: spacingY._15,
-  },
-  objectiveItem: {
-    gap: verticalScale(6),
-  },
-  objectiveHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacingX._8,
-  },
-  calorieValue: {
-    marginLeft: spacingX._28, 
-  },
-  rightSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressCircleContainer: {
-    position: 'relative',
-    width: verticalScale(120),
-    height: verticalScale(120),
-  },
-  progressCircle: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 60,
-    backgroundColor: colors.neutral700,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    backgroundColor: colors.primary,
-  },
-  circleInner: {
-    width: verticalScale(100),
-    height: verticalScale(100),
-    borderRadius: 50,
-    backgroundColor: colors.neutral800,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: verticalScale(2),
-  },
-  remainingCalories: {
-    lineHeight: 24,
-  },
-  macrosContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  macroItem: {
-    alignItems: 'center',
-    flex: 1,
-    gap: verticalScale(6),
-  },
-  macroLabel: {
-    textAlign: 'center',
-    marginBottom: verticalScale(4),
-  },
-  macroProgressBar: {
-    width: '80%',
-    height: 4,
-    backgroundColor: colors.neutral700,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: verticalScale(4),
-  },
-  macroProgressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  macroValue: {
-    textAlign: 'center',
-  },
-  waterCard: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    marginBottom: spacingY._20,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  waterHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacingX._10,
-    marginBottom: spacingY._20,
-  },
-  waterContent: {
-    alignItems: "center",
-    gap: spacingY._20,
-  },
-  waterButtons: {
-    flexDirection: "row",
-    gap: spacingX._10,
-    width: "100%",
-    justifyContent: "center",
-  },
-  waterButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacingY._12,
-    paddingHorizontal: spacingX._20,
-    borderRadius: radius._12,
+  calendarMonthTitle: {
+    marginBottom: spacingY._10,
+    paddingHorizontal: spacingX._5,
   },
   mealsSection: {
     marginBottom: spacingY._30,
     gap: spacingY._15,
-  },
-  mealCardExact: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-    marginBottom: spacingY._15,
-  },
-  mealHeaderExact: {
-    marginBottom: 16,
-  },
-  nutritionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.neutral900,
-    borderRadius: radius._12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  circleContainerRow: {
-    position: 'relative',
-    width: 80,
-    height: 80,
-  },
-  circleTextRow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calorieValueText: {
-    lineHeight: 18,
-    marginBottom: 1,
-  },
-  calorieLabelText: {
-    lineHeight: 12,
-  },
-  macrosContainerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flex: 1,
-    marginLeft: 16,
-  },
-  macroItemRow: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  macroPercentage: {
-    marginBottom: 2,
-  },
-  macroValueRow: {
-    marginBottom: 1,
-  },
-  macroLabelRow: {
-    lineHeight: 12,
-  },
-  foodsList: {
-    gap: 8,
-    marginBottom: 16,
-  },
-  foodItemImage: {
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    padding: 0,
-    borderWidth: 0,
-  },
-  foodMainRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  foodIconBox: {
-    width: 32,
-    height: 32,
-    backgroundColor: colors.neutral900,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  foodContentColumn: {
-    flex: 1,
-    gap: 4,
-  },
-  foodMetricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 2,
-  },
-  metricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  macrosRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  macroTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  addButtonExact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  editModal: {
-    backgroundColor: colors.neutral900,
-    borderTopLeftRadius: radius._20,
-    borderTopRightRadius: radius._20,
-    maxHeight: '85%',
-    paddingTop: spacingY._15,
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.neutral600,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: spacingY._15,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacingX._20,
-    marginBottom: spacingY._20,
-  },
-  modalContent: {
-    paddingHorizontal: spacingX._20,
-  },
-  foodInfoModal: {
-    alignItems: 'center',
-    marginBottom: spacingY._25,
-  },
-  quantitySection: {
-    marginBottom: spacingY._25,
-  },
-  quantityInput: {
-    backgroundColor: colors.neutral800,
-  },
-  adjustedNutrition: {
-    backgroundColor: colors.neutral800,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  nutritionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacingX._15,
-    justifyContent: 'space-between',
-  },
-  nutritionItem: {
-    alignItems: 'center',
-    width: '45%',
-    backgroundColor: colors.neutral900,
-    padding: spacingX._15,
-    borderRadius: radius._12,
-  },
-  actionsOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  actionsModal: {
-    position: 'absolute',
-    left: spacingX._20,
-    right: spacingX._20,
-    backgroundColor: colors.neutral900,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    maxHeight: '70%',
-  },
-  actionsHeader: {
-    paddingBottom: spacingY._15,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral700,
-    marginBottom: spacingY._15,
-  },
-  actionsList: {
-    gap: spacingY._20,
-  },
-  actionGroup: {
-    gap: spacingY._10,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacingX._12,
-    backgroundColor: colors.neutral800,
-    padding: spacingX._15,
-    borderRadius: radius._12,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
-  },
-  deleteAction: {
-    borderColor: colors.rose,
-    marginTop: spacingY._10,
   },
 });

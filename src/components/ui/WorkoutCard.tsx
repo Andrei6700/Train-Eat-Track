@@ -1,7 +1,9 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { WorkoutHistory } from "@/src/types/index";
+import { scale, verticalScale } from "@/src/utils/styling";
 import { formatDuration } from "@/src/utils/utils";
-import { verticalScale, scale } from "@/src/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React from "react";
@@ -14,6 +16,7 @@ type WorkoutCardProps = {
 
 const WorkoutCard = ({ workout }: WorkoutCardProps) => {
   const router = useRouter();
+  const { language, t } = useLanguage();
 
   const formatDate = (date: Date | string) => {
     const workoutDate = new Date(date);
@@ -22,11 +25,11 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
     yesterday.setDate(today.getDate() - 1);
 
     if (workoutDate.toDateString() === today.toDateString()) {
-      return "Today";
+      return t("common_today");
     } else if (workoutDate.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
+      return t("common_yesterday");
     } else {
-      return workoutDate.toLocaleDateString("en-US", {
+      return workoutDate.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
         weekday: "short",
         month: "short",
         day: "numeric",
@@ -34,15 +37,12 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
     }
   };
 
-  const getTotalSets = () => {
-    return workout.exercises?.reduce((total, exercise) => {
+  const exerciseNames = workout.exercises?.map((exercise) => exercise.exerciseName) || [];
+
+  const totalSets =
+    workout.exercises?.reduce((total, exercise) => {
       return total + (exercise.sets?.length || 0);
     }, 0) ?? 0;
-  };
-
-  const getExerciseNames = () => {
-    return workout.exercises?.map((ex) => ex.exerciseName) || [];
-  };
 
   const handlePress = () => {
     router.push({
@@ -59,7 +59,7 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.headerContent}>
           <Typo size={18} fontWeight="600" color={colors.white}>
             {formatDate(workout.date)}
           </Typo>
@@ -80,24 +80,24 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
       <View style={styles.statsRow}>
         <View style={styles.statBadge}>
           <Typo size={13} fontWeight="500" color={colors.white}>
-            {workout.exercises?.length || 0} exercises
+            {workout.exercises?.length || 0} {t("common_exercises")}
           </Typo>
         </View>
         <View style={styles.statBadge}>
           <Typo size={13} fontWeight="500" color={colors.white}>
-            {getTotalSets()} sets
+            {totalSets} {t("common_sets")}
           </Typo>
         </View>
       </View>
 
       {/* Exercise List */}
-      {workout.exercises && workout.exercises.length > 0 && (
+      {exerciseNames.length > 0 && (
         <View style={styles.exercisesSection}>
           <Typo size={14} fontWeight="600" color={colors.neutral200}>
-            Exercises:
+            {t("history_exercises_title")}
           </Typo>
           <View style={styles.exercisesList}>
-            {getExerciseNames()
+            {exerciseNames
               .slice(0, 3)
               .map((name, index) => (
                 <View key={index} style={styles.exerciseBadge}>
@@ -106,10 +106,10 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
                   </Typo>
                 </View>
               ))}
-            {getExerciseNames().length > 3 && (
+            {exerciseNames.length > 3 && (
               <View style={styles.exerciseBadge}>
                 <Typo size={12} fontWeight="500" color={colors.neutral400}>
-                  +{getExerciseNames().length - 3} more
+                  {t("common_more_count", { count: exerciseNames.length - 3 })}
                 </Typo>
               </View>
             )}
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(15),
     borderWidth: 1,
     borderColor: colors.neutral700,
-    width: '100%',
+    width: "100%",
     minHeight: verticalScale(120),
   },
   header: {
@@ -139,6 +139,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: spacingY._15,
+  },
+  headerContent: {
+    flex: 1,
   },
   durationRow: {
     flexDirection: "row",

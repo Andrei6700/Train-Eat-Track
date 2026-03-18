@@ -6,6 +6,7 @@ import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { getProfileImage } from "@/src/services/imageService";
 import { updateUser } from "@/src/services/userService";
 import { UserDataType } from "@/src/types/index";
@@ -25,6 +26,7 @@ import {
 
 const ProfileModal = () => {
   const { user, updateUserData } = useAuth();
+  const { t } = useLanguage();
   const [userData, setUserData] = useState<UserDataType>({
     name: "",
     image: null,
@@ -54,9 +56,9 @@ const ProfileModal = () => {
   };
 
   const onSubmit = async () => {
-    let { name, image } = userData;
+    let { name } = userData;
     if (!name.trim()) {
-      Alert.alert("User", "Please fill in all the fields.");
+      Alert.alert(t("profile_modal_alert_title"), t("common_validation_fill_all_fields"));
       return;
     }
 
@@ -68,14 +70,14 @@ const ProfileModal = () => {
       updateUserData(user?.uid as string);
       router.back();
     } else {
-      Alert.alert("User", res.msg);
+      Alert.alert(t("profile_modal_alert_title"), res.msg);
     }
   };
   return (
     <ModalWrapper>
       <View style={styles.container}>
         <Header
-          title="Update Profile"
+          title={t("profile_modal_title")}
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._10 }}
         />
@@ -96,9 +98,9 @@ const ProfileModal = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.inputContainer}>
-            <Typo color={colors.neutral200}>Name</Typo>
+            <Typo color={colors.neutral200}>{t("profile_modal_name_label")}</Typo>
             <Input
-              placeholder="Enter your name"
+              placeholder={t("profile_modal_name_placeholder")}
               value={userData.name}
               onChangeText={(value) =>
                 setUserData({ ...userData, name: value })
@@ -111,7 +113,7 @@ const ProfileModal = () => {
       <View style={styles.footer}>
         <Button onPress={onSubmit} loading={loading} style={{ flex: 1 }}>
           <Typo color={colors.black} fontWeight={"700"}>
-            Update
+            {t("profile_modal_update_button")}
           </Typo>
         </Button>
       </View>

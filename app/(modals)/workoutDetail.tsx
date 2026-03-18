@@ -4,6 +4,8 @@ import ModalWrapper from "@/src/components/layout/ModalWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { deleteWorkout, getWorkout } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
@@ -24,6 +26,7 @@ const WorkoutDetail = () => {
   const [workout, setWorkout] = useState<WorkoutHistory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { language, t } = useLanguage();
 
   useEffect(() => {
     fetchWorkoutDetails();
@@ -36,22 +39,25 @@ const WorkoutDetail = () => {
     if (result.success) {
       setWorkout(result.data);
     } else {
-      Alert.alert("Error", result.msg || "Could not load workout details");
+      Alert.alert(
+        t("common_error"),
+        result.msg || t("workout_detail_modal_error_load"),
+      );
     }
     setIsLoading(false);
   };
 
   const handleDelete = () => {
     Alert.alert(
-      "Delete Workout",
-      "Are you sure you want to delete this workout?",
+      t("workout_detail_modal_delete_title"),
+      t("workout_detail_modal_delete_message"),
       [
         {
-          text: "Cancel",
+          text: t("common_cancel"),
           style: "cancel",
         },
         {
-          text: "Delete",
+          text: t("common_delete"),
           style: "destructive",
           onPress: performDelete,
         },
@@ -72,13 +78,16 @@ const WorkoutDetail = () => {
         params: { refresh: "true" },
       });
     } else {
-      Alert.alert("Error", result.msg || "Could not delete workout");
+      Alert.alert(
+        t("common_error"),
+        result.msg || t("workout_detail_modal_error_delete"),
+      );
     }
   };
 
   const formatDate = (date: Date | string) => {
     const workoutDate = new Date(date);
-    return workoutDate.toLocaleDateString("en-US", {
+    return workoutDate.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -91,7 +100,7 @@ const WorkoutDetail = () => {
       <ModalWrapper>
         <View style={styles.container}>
           <Header
-            title="Workout Details"
+            title={t("workout_detail_modal_title")}
             leftIcon={<BackButton />}
             style={{ marginBottom: spacingY._20 }}
           />
@@ -106,11 +115,11 @@ const WorkoutDetail = () => {
       <ModalWrapper>
         <View style={styles.container}>
           <Header
-            title="Workout Details"
+            title={t("workout_detail_modal_title")}
             leftIcon={<BackButton />}
             style={{ marginBottom: spacingY._20 }}
           />
-          <Typo>Workout not found</Typo>
+          <Typo>{t("workout_detail_modal_not_found")}</Typo>
         </View>
       </ModalWrapper>
     );
@@ -134,7 +143,7 @@ const WorkoutDetail = () => {
               <Icons.CalendarIcon size={24} color={colors.primary} />
               <View style={{ flex: 1 }}>
                 <Typo size={13} color={colors.neutral400}>
-                  Date
+                  {t("workout_detail_modal_date")}
                 </Typo>
                 <Typo size={16} fontWeight="500">
                   {formatDate(workout.date)}
@@ -148,7 +157,7 @@ const WorkoutDetail = () => {
               <Icons.TimerIcon size={24} color={colors.primary} />
               <View style={{ flex: 1 }}>
                 <Typo size={13} color={colors.neutral400}>
-                  Duration
+                  {t("workout_detail_modal_duration")}
                 </Typo>
                 <Typo size={16} fontWeight="500">
                   {formatDuration(workout.duration)}
@@ -160,7 +169,9 @@ const WorkoutDetail = () => {
           {/* Exercises */}
           <View style={styles.section}>
             <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
-              Exercises ({workout.exercises?.length || 0})
+              {t("workout_detail_modal_exercises_count", {
+                count: workout.exercises?.length || 0,
+              })}
             </Typo>
 
             {workout.exercises?.map((exercise, index) => (
@@ -171,7 +182,9 @@ const WorkoutDetail = () => {
                   </Typo>
                   <View style={styles.setsBadge}>
                     <Typo size={13} color={colors.white}>
-                      {exercise.sets.length} sets
+                      {t("workout_detail_modal_sets_badge", {
+                        count: exercise.sets.length,
+                      })}
                     </Typo>
                   </View>
                 </View>
@@ -182,7 +195,9 @@ const WorkoutDetail = () => {
                     <View key={setIndex} style={styles.setRow}>
                       <View style={styles.setNumber}>
                         <Typo size={13} color={colors.neutral400}>
-                          Set {setIndex + 1}
+                          {t("workout_detail_modal_set_label", {
+                            index: setIndex + 1,
+                          })}
                         </Typo>
                       </View>
                       <View style={styles.setDetails}>
@@ -191,7 +206,7 @@ const WorkoutDetail = () => {
                             {set.weight} {set.weightUnit}
                           </Typo>
                           <Typo size={13} color={colors.neutral400}>
-                            × {set.reps} reps
+                            x {t("workout_detail_modal_reps_count", { count: set.reps })}
                           </Typo>
                         </View>
                       </View>
@@ -202,13 +217,14 @@ const WorkoutDetail = () => {
             ))}
           </View>
 
-          {/* Delete Button */}
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-            <Icons.TrashIcon size={20} color={colors.rose} />
-            <Typo size={16} fontWeight="600" color={colors.rose}>
-              Delete Workout
-            </Typo>
-          </TouchableOpacity>
+          <View style={styles.deleteActionWrap}>
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+              <Icons.TrashIcon size={20} color={colors.rose} />
+              <Typo size={16} fontWeight="600" color={colors.rose}>
+                {t("workout_detail_modal_delete_title")}
+              </Typo>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
     </ModalWrapper>
@@ -223,7 +239,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
   },
   scrollContent: {
-    paddingBottom: verticalScale(40),
+    paddingBottom: verticalScale(72),
     gap: spacingY._20,
   },
   infoCard: {
@@ -288,6 +304,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  deleteActionWrap: {
+    alignItems: "center",
+    marginTop: spacingY._15,
+    marginBottom: spacingY._15,
+  },
   deleteButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -298,6 +319,6 @@ const styles = StyleSheet.create({
     padding: spacingY._15,
     borderWidth: 1,
     borderColor: colors.rose,
-    marginTop: spacingY._10,
+    width: "92%",
   },
 });

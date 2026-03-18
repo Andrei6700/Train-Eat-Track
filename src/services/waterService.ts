@@ -1,5 +1,5 @@
 import { firestore } from "@/src/config/firebase";
-import { DailyWater, ResponseType } from '@/src/types/index';
+import { DailyWater, ResponseType } from "@/src/types/index";
 import {
   addDoc,
   collection,
@@ -9,133 +9,158 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
-  where
+  where,
 } from "firebase/firestore";
 
 const COLLECTION_NAME = "waterTracking";
+const REMOTE_TIMEOUT_MS = 8000;
 
-// ✅ Helper pentru a normaliza data la midnight
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  operationName: string,
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${operationName} timed out after ${REMOTE_TIMEOUT_MS}ms`));
+        }, REMOTE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 const normalizeDate = (date: Date): Date => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 };
 
-// ✅ Helper pentru a crea document ID consistent
-const getDateKey = (date: Date): string => {
+export const getWaterDateKey = (date: Date): string => {
   const normalized = normalizeDate(date);
-  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}-${String(normalized.getDate()).padStart(2, '0')}`;
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}-${String(
+    normalized.getDate(),
+  ).padStart(2, "0")}`;
+};
+
+const parseFirestoreDate = (value: unknown, fallback: Date): Date => {
+  if (value instanceof Timestamp) {
+    return value.toDate();
+  }
+
+  const parsed = new Date(value as any);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+};
+
+const parseWaterDoc = (docId: string, payload: any, fallbackDate: Date): DailyWater => {
+  const waterDate = parseFirestoreDate(payload.date, fallbackDate);
+  const intakes = Array.isArray(payload.intakes)
+    ? payload.intakes.map((intake: any) => ({
+        amount: intake.amount,
+        timestamp: parseFirestoreDate(intake.timestamp, waterDate),
+      }))
+    : [];
+  const updatedAt = payload.updatedAt ? parseFirestoreDate(payload.updatedAt, waterDate) : undefined;
+
+  return {
+    id: docId,
+    ...payload,
+    date: waterDate,
+    intakes,
+    updatedAt,
+  } as DailyWater;
 };
 
 export const getDailyWater = async (
   userID: string,
-  date: Date
+  date: Date,
 ): Promise<ResponseType> => {
   try {
-    const dateKey = getDateKey(date);
-    
-    console.log('[WaterService] Searching for dateKey:', dateKey);
+    const dateKey = getWaterDateKey(date);
 
     const q = query(
       collection(firestore, COLLECTION_NAME),
       where("userID", "==", userID),
-      where("dateKey", "==", dateKey)
+      where("dateKey", "==", dateKey),
     );
 
-    const querySnapshot = await getDocs(q);
-    
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getDailyWater.getDocs",
+    );
+
     if (!querySnapshot.empty) {
-      const docData = querySnapshot.docs[0];
-      const data = docData.data() as any;
-      
-      console.log('[WaterService] Found existing document:', docData.id);
-      
-      // Convertim date field din Timestamp în Date
-      let waterDate = date;
-      if (data.date) {
-        waterDate = data.date instanceof Timestamp 
-          ? data.date.toDate() 
-          : new Date(data.date);
-      }
-
-      // Convertim timestamp-urile din intakes
-      const intakes = data.intakes?.map((intake: any) => ({
-        amount: intake.amount,
-        timestamp: intake.timestamp instanceof Timestamp 
-          ? intake.timestamp.toDate() 
-          : new Date(intake.timestamp)
-      })) || [];
-
+      const firstDoc = querySnapshot.docs[0];
       return {
         success: true,
-        data: {
-          id: docData.id,
-          ...data,
-          date: waterDate,
-          intakes,
-        } as DailyWater,
+        data: parseWaterDoc(firstDoc.id, firstDoc.data(), date),
       };
     }
 
-    console.log('[WaterService] No document found for dateKey:', dateKey);
-    
     return {
       success: true,
       data: null,
     };
   } catch (error: any) {
     console.error("[WaterService] Error fetching daily water:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
 
 export const saveDailyWater = async (
-  water: DailyWater
+  water: DailyWater,
 ): Promise<ResponseType> => {
   try {
-    const dateKey = getDateKey(new Date(water.date));
-    
-    // Convertim timestamp-urile din intakes pentru Firestore
-    const intakesForFirestore = water.intakes.map(intake => ({
+    const date = new Date(water.date);
+    const dateKey = getWaterDateKey(date);
+
+    const intakesForFirestore = water.intakes.map((intake) => ({
       amount: intake.amount,
-      timestamp: Timestamp.fromDate(new Date(intake.timestamp))
+      timestamp: Timestamp.fromDate(new Date(intake.timestamp)),
     }));
-    
+
     if (water.id) {
-      // ✅ UPDATE
-      console.log('[WaterService] Updating document:', water.id);
-      
       const docRef = doc(firestore, COLLECTION_NAME, water.id);
-      const { id, ...updateData } = water;
-      
-      await updateDoc(docRef, {
-        ...updateData,
-        dateKey,
-        date: Timestamp.fromDate(new Date(water.date)),
-        intakes: intakesForFirestore,
-        updatedAt: serverTimestamp(),
-      });
-      
-      return { success: true, msg: "Water tracking updated successfully" };
-    } else {
-      // ✅ CREATE
-      console.log('[WaterService] Creating new document for dateKey:', dateKey);
-      
-      const docRef = await addDoc(collection(firestore, COLLECTION_NAME), {
+      const { id, localUpdatedAt, ...updateData } = water as DailyWater & {
+        localUpdatedAt?: number;
+      };
+
+      await withTimeout(
+        updateDoc(docRef, {
+          ...updateData,
+          dateKey,
+          date: Timestamp.fromDate(date),
+          intakes: intakesForFirestore,
+          updatedAt: serverTimestamp(),
+        }),
+        "saveDailyWater.updateDoc",
+      );
+
+      return { success: true, data: { id: water.id } };
+    }
+
+    const docRef = await withTimeout(
+      addDoc(collection(firestore, COLLECTION_NAME), {
         ...water,
         dateKey,
-        date: Timestamp.fromDate(new Date(water.date)),
+        date: Timestamp.fromDate(date),
         intakes: intakesForFirestore,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      
-      console.log('[WaterService] Document created with ID:', docRef.id);
-      
-      return { success: true, data: { id: docRef.id } };
-    }
+      }),
+      "saveDailyWater.addDoc",
+    );
+
+    return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
     console.error("[WaterService] Error saving daily water:", error);
-    return { success: false, msg: error?.message };
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
