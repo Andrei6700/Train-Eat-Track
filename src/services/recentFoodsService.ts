@@ -43,7 +43,9 @@ export const addRecentFoodRemote = async (
 
     return { success: true };
   } catch (error: any) {
-    console.error("[RecentFoodsService] Error adding recent food remotely:", error);
+    if (__DEV__) {
+      console.error("[RecentFoodsService] Error adding recent food remotely:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -88,7 +90,9 @@ export const addRecentFood = async (
       msg: "Recent food saved locally and queued for sync.",
     };
   } catch (error: any) {
-    console.error("[RecentFoodsService] Error adding recent food:", error);
+    if (__DEV__) {
+      console.error("[RecentFoodsService] Error adding recent food:", error);
+    }
 
     await saveOfflineRecentFood(userID, mealName, food);
     await enqueueOrMergeAction({
@@ -149,7 +153,9 @@ export const getRecentFoodsByMeal = async (
 
     return { success: true, data: mergedFoods.slice(0, limitCount) };
   } catch (error: any) {
-    console.error("[RecentFoodsService] Error getting recent foods:", error);
+    if (__DEV__) {
+      console.error("[RecentFoodsService] Error getting recent foods:", error);
+    }
     const offlineFoods = await getOfflineRecentFoodsByMeal(userID, mealName);
     return { success: true, data: offlineFoods };
   }

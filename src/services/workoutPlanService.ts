@@ -119,7 +119,9 @@ export const getUserWorkoutPlan = async (
 
     return { success: true, data: null };
   } catch (error: any) {
-    console.log("Error fetching workout plan:", error);
+    if (__DEV__) {
+      console.log("Error fetching workout plan:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -136,7 +138,9 @@ export const createWorkoutPlanRemote = async (
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
-    console.log("Error creating workout plan:", error);
+    if (__DEV__) {
+      console.log("Error creating workout plan:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -154,7 +158,9 @@ export const updateWorkoutPlanRemote = async (
 
     return { success: true, msg: "Workout plan updated successfully" };
   } catch (error: any) {
-    console.log("Error updating workout plan:", error);
+    if (__DEV__) {
+      console.log("Error updating workout plan:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -311,7 +317,9 @@ export const deleteWorkoutPlan = async (
       msg: `Workout plan and ${workoutsSnapshot.size} workout(s) deleted successfully`,
     };
   } catch (error: any) {
-    console.log("Error deleting workout plan:", error);
+    if (__DEV__) {
+      console.log("Error deleting workout plan:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -332,7 +340,9 @@ export const getWorkoutPlan = async (
       data: parseWorkoutPlanDoc(docSnap.id, docSnap.data()),
     };
   } catch (error: any) {
-    console.log("Error getting workout plan:", error);
+    if (__DEV__) {
+      console.log("Error getting workout plan:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };

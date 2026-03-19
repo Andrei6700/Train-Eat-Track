@@ -207,7 +207,9 @@ const emitQueueSummary = async (): Promise<void> => {
     try {
       listener(summary);
     } catch (error) {
-      console.error("[SyncQueueV2] Listener error:", error);
+      if (__DEV__) {
+        console.error("[SyncQueueV2] Listener error:", error);
+      }
     }
   });
 };
@@ -313,7 +315,9 @@ const migrateLegacyQueueIfNeeded = async (): Promise<void> => {
     await AsyncStorage.removeItem(LEGACY_SYNC_QUEUE_KEY);
     await AsyncStorage.removeItem(LEGACY_OFFLINE_WORKOUTS_KEY);
   } catch (error) {
-    console.error("[SyncQueueV2] Migration error:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Migration error:", error);
+    }
   }
 };
 
@@ -324,7 +328,9 @@ const readQueue = async (): Promise<SyncAction[]> => {
     if (!raw) return [];
     return sanitizeQueue(JSON.parse(raw));
   } catch (error) {
-    console.error("[SyncQueueV2] Error reading queue:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Error reading queue:", error);
+    }
     return [];
   }
 };
@@ -334,7 +340,9 @@ const writeQueue = async (queue: SyncAction[]): Promise<void> => {
     await AsyncStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
     await emitQueueSummary();
   } catch (error) {
-    console.error("[SyncQueueV2] Error writing queue:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Error writing queue:", error);
+    }
   }
 };
 
@@ -775,7 +783,9 @@ export const saveOfflineRecentFood = async (
     const trimmed = foods.slice(-50);
     await AsyncStorage.setItem(OFFLINE_FOODS_KEY, JSON.stringify(trimmed));
   } catch (error) {
-    console.error("[SyncQueueV2] Error saving recent food locally:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Error saving recent food locally:", error);
+    }
   }
 };
 
@@ -784,7 +794,9 @@ export const getOfflineRecentFoods = async (): Promise<any[]> => {
     const data = await AsyncStorage.getItem(OFFLINE_FOODS_KEY);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error("[SyncQueueV2] Error getting local recent foods:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Error getting local recent foods:", error);
+    }
     return [];
   }
 };
@@ -801,7 +813,9 @@ export const getOfflineRecentFoodsByMeal = async (
       .reverse()
       .slice(0, 10);
   } catch (error) {
-    console.error("[SyncQueueV2] Error filtering local recent foods:", error);
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Error filtering local recent foods:", error);
+    }
     return [];
   }
 };

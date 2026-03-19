@@ -124,12 +124,16 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setLoading(true);
-    console.log("[WorkoutPlanContext] Loading workout plan for user:", user.uid);
+    if (__DEV__) {
+      console.log("[WorkoutPlanContext] Loading workout plan for user:", user.uid);
+    }
 
     //  Try to load from cache
     const cachedPlan = await getCachedWorkoutPlan();
     if (cachedPlan) {
-      console.log(" [WorkoutPlanContext] Using cached workout plan");
+      if (__DEV__) {
+        console.log(" [WorkoutPlanContext] Using cached workout plan");
+      }
       setWorkoutPlan(cachedPlan);
       setLoading(false);
       
@@ -141,13 +145,17 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
     //  Load from Firebase
     const result = await getUserWorkoutPlan(user.uid);
     if (result.success && result.data) {
-      console.log("[WorkoutPlanContext] Plan loaded from Firebase:", result.data.id);
+      if (__DEV__) {
+        console.log("[WorkoutPlanContext] Plan loaded from Firebase:", result.data.id);
+      }
       setWorkoutPlan(result.data);
       
       // Save to cache
       await cacheWorkoutPlan(result.data);
     } else {
-      console.log("[WorkoutPlanContext] No plan found for user");
+      if (__DEV__) {
+        console.log("[WorkoutPlanContext] No plan found for user");
+      }
       setWorkoutPlan(null);
     }
     
@@ -165,21 +173,29 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       if (result.success && result.data) {
         setWorkoutPlan(result.data);
         await cacheWorkoutPlan(result.data);
-        console.log(" [WorkoutPlanContext] Background sync completed");
+        if (__DEV__) {
+          console.log(" [WorkoutPlanContext] Background sync completed");
+        }
       }
     } catch (error) {
-      console.error("[WorkoutPlanContext] Background sync failed:", error);
+      if (__DEV__) {
+        console.error("[WorkoutPlanContext] Background sync failed:", error);
+      }
     }
   };
 
   const updateDay = async (day: string, dayData: DayWorkout) => {
     if (!user?.uid) {
-      console.log("[WorkoutPlanContext] updateDay aborted, no user");
+      if (__DEV__) {
+        console.log("[WorkoutPlanContext] updateDay aborted, no user");
+      }
       return;
     }
     const userId = user.uid;
 
-    console.log("[WorkoutPlanContext] updateDay", day, dayData);
+    if (__DEV__) {
+      console.log("[WorkoutPlanContext] updateDay", day, dayData);
+    }
 
     const dayNumber = parseDayNumber(day) ?? 1;
     const dayLabel = `Day ${dayNumber}`;
@@ -199,7 +215,9 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
           dayData,
         );
 
-        console.log("[WorkoutPlanContext] Updated local draft plan");
+        if (__DEV__) {
+          console.log("[WorkoutPlanContext] Updated local draft plan");
+        }
         return updatedDraft;
       });
       return;
@@ -227,13 +245,17 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (updatedPlan.id) {
       try {
-        console.log(
-          "[WorkoutPlanContext] Updating plan in Firebase:",
-          updatedPlan.id,
-        );
+        if (__DEV__) {
+          console.log(
+            "[WorkoutPlanContext] Updating plan in Firebase:",
+            updatedPlan.id,
+          );
+        }
         await updateWorkoutPlan(updatedPlan.id, updatedPlan);
       } catch (err) {
-        console.error("[WorkoutPlanContext] Error updating plan on backend:", err);
+        if (__DEV__) {
+          console.error("[WorkoutPlanContext] Error updating plan on backend:", err);
+        }
       }
     }
   };
@@ -286,7 +308,9 @@ export const WorkoutPlanProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return result;
     } catch (error: any) {
-      console.error("[WorkoutPlanContext] Error deleting plan:", error);
+      if (__DEV__) {
+        console.error("[WorkoutPlanContext] Error deleting plan:", error);
+      }
       return { success: false, msg: error?.message || "Could not delete workout plan" };
     }
   };

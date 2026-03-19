@@ -110,10 +110,14 @@ const History = () => {
           setWorkoutHistoryMemoryCache(userId, nextHistory);
         } else if (!cachedHistory) {
           setWorkoutsHistory([]);
-          console.error("Error fetching workouts:", result.msg);
+          if (__DEV__) {
+            console.error("Error fetching workouts:", result.msg);
+          }
         }
       } catch (error) {
-        console.error("Error fetching workouts history:", error);
+        if (__DEV__) {
+          console.error("Error fetching workouts history:", error);
+        }
         if (!cachedHistory && requestId === requestIdRef.current) {
           setWorkoutsHistory([]);
         }

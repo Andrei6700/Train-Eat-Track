@@ -37,7 +37,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
           setLanguageState(savedLanguage);
         }
       } catch (error) {
-        console.log("[languageContext] Failed to load language:", error);
+        if (__DEV__) {
+          console.log("[languageContext] Failed to load language:", error);
+        }
       }
     };
 
@@ -49,7 +51,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
     } catch (error) {
-      console.log("[languageContext] Failed to save language:", error);
+      if (__DEV__) {
+        console.log("[languageContext] Failed to save language:", error);
+      }
     }
   }, []);
 

@@ -161,8 +161,8 @@ const Settings = () => {
   };
 
   const handleNotifications = () => {
-    // UI only - navigate to notifications settings
-    console.log("Notifications settings pressed");
+    // TODO: Implement notifications settings navigation
+    // router.push("/(modals)/notificationSettings");
   };
 
   return (

@@ -34,7 +34,9 @@ const Register = () => {
       nameRef.current
     );
     setIsLoading(false);
-    console.log('register result', res);
+    if (__DEV__) {
+      console.log('register result', res);
+    }
     if (!res.success) {
       Alert.alert(t("auth_register_alert_title"), res.msg);
     }

@@ -109,7 +109,9 @@ export const getDailyWater = async (
       data: null,
     };
   } catch (error: any) {
-    console.error("[WaterService] Error fetching daily water:", error);
+    if (__DEV__) {
+      console.error("[WaterService] Error fetching daily water:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -160,7 +162,9 @@ export const saveDailyWater = async (
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
-    console.error("[WaterService] Error saving daily water:", error);
+    if (__DEV__) {
+      console.error("[WaterService] Error saving daily water:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };

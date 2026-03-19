@@ -46,7 +46,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      console.log("error message:", msg);
+      if (__DEV__) {
+        console.log("error message:", msg);
+      }
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
       if (msg.includes("(auth/network-request-failed)")) msg = "Network error, please try again";
@@ -69,7 +71,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      console.log("error message:", msg);
+      if (__DEV__) {
+        console.log("error message:", msg);
+      }
       if (msg.includes("(auth/email-already-in-use)")) msg = "This email is already in use";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
       return { success: false, msg };
@@ -94,7 +98,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (error: any) {
       let msg = error.message;
       // return { success: false, msg };
-      console.log("error:",error)
+      if (__DEV__) {
+        console.log("error:",error)
+      }
     }
   };
 

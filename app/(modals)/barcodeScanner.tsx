@@ -69,7 +69,9 @@ const BarcodeScanner = () => {
     setScanned(true);
     setLoading(true);
 
-    console.log(`Scanned barcode: ${data}`);
+    if (__DEV__) {
+      console.log(`Scanned barcode: ${data}`);
+    }
 
     const result = await getFoodByBarcode(data);
 

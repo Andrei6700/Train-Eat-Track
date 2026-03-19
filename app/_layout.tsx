@@ -79,7 +79,9 @@ const SyncManager = () => {
           );
         }
       } catch (error) {
-        console.error("[SyncManager] Sync run failed:", error);
+        if (__DEV__) {
+          console.error("[SyncManager] Sync run failed:", error);
+        }
       } finally {
         isSyncingRef.current = false;
       }

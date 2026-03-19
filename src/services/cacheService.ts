@@ -64,7 +64,9 @@ const persistTimestamps = async (timestamps: CacheTimestamps): Promise<void> => 
       JSON.stringify(timestamps)
     );
   } catch (error) {
-    console.error("[CacheService] Error persisting timestamps:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error persisting timestamps:", error);
+    }
   }
 };
 
@@ -75,7 +77,9 @@ const setCacheTimestamp = async (key: string): Promise<void> => {
     memoryTimestamps = timestamps;
     await persistTimestamps(timestamps);
   } catch (error) {
-    console.error("[CacheService] Error setting timestamp:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error setting timestamp:", error);
+    }
   }
 };
 
@@ -98,7 +102,9 @@ const removeCacheTimestamps = async (keys: string[]): Promise<void> => {
       await persistTimestamps(timestamps);
     }
   } catch (error) {
-    console.error("[CacheService] Error removing cache timestamps:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error removing cache timestamps:", error);
+    }
   }
 };
 
@@ -119,7 +125,9 @@ export const cacheLastWorkout = async (
 ): Promise<void> => {
   try {
     if (!workout) {
-      console.log(" [CacheService] Cannot cache null/undefined workout");
+      if (__DEV__) {
+        console.log(" [CacheService] Cannot cache null/undefined workout");
+      }
       return;
     }
     await AsyncStorage.setItem(
@@ -127,9 +135,13 @@ export const cacheLastWorkout = async (
       JSON.stringify(workout)
     );
     await setCacheTimestamp(CACHE_KEYS.LAST_WORKOUT);
-    console.log(" [CacheService] Last workout cached");
+    if (__DEV__) {
+      console.log(" [CacheService] Last workout cached");
+    }
   } catch (error) {
-    console.error("[CacheService] Error caching last workout:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error caching last workout:", error);
+    }
   }
 };
 
@@ -140,7 +152,9 @@ export const getCachedLastWorkout = async (): Promise<WorkoutHistory | null> => 
       CACHE_EXPIRY.LAST_WORKOUT
     );
     if (!isValid) {
-      console.log(" [CacheService] Last workout cache expired");
+      if (__DEV__) {
+        console.log(" [CacheService] Last workout cache expired");
+      }
       return null;
     }
 
@@ -155,7 +169,9 @@ export const getCachedLastWorkout = async (): Promise<WorkoutHistory | null> => 
     }
     return null;
   } catch (error) {
-    console.error("[CacheService] Error getting cached last workout:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error getting cached last workout:", error);
+    }
     return null;
   }
 };
@@ -166,14 +182,20 @@ export const cacheWorkoutPlan = async (plan: WorkoutPlan | null): Promise<void> 
     if (!plan) {
       // If plan is null, remove from cache
       await AsyncStorage.removeItem(CACHE_KEYS.WORKOUT_PLAN);
-      console.log(" [CacheService] Workout plan removed from cache");
+      if (__DEV__) {
+        console.log(" [CacheService] Workout plan removed from cache");
+      }
       return;
     }
     await AsyncStorage.setItem(CACHE_KEYS.WORKOUT_PLAN, JSON.stringify(plan));
     await setCacheTimestamp(CACHE_KEYS.WORKOUT_PLAN);
-    console.log(" [CacheService] Workout plan cached");
+    if (__DEV__) {
+      console.log(" [CacheService] Workout plan cached");
+    }
   } catch (error) {
-    console.error("[CacheService] Error caching workout plan:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error caching workout plan:", error);
+    }
   }
 };
 
@@ -184,14 +206,18 @@ export const getCachedWorkoutPlan = async (): Promise<WorkoutPlan | null> => {
       CACHE_EXPIRY.WORKOUT_PLAN
     );
     if (!isValid) {
-      console.log(" [CacheService] Workout plan cache expired");
+      if (__DEV__) {
+        console.log(" [CacheService] Workout plan cache expired");
+      }
       return null;
     }
 
     const data = await AsyncStorage.getItem(CACHE_KEYS.WORKOUT_PLAN);
     return data ? JSON.parse(data) : null;
   } catch (error) {
-    console.error("[CacheService] Error getting cached workout plan:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error getting cached workout plan:", error);
+    }
     return null;
   }
 };
@@ -225,7 +251,9 @@ export const cacheNutritionDay = async (
   try {
     //  Check if nutrition is valid
     if (!nutrition) {
-      console.log(" [CacheService] Cannot cache null/undefined nutrition");
+      if (__DEV__) {
+        console.log(" [CacheService] Cannot cache null/undefined nutrition");
+      }
       return;
     }
 
@@ -241,9 +269,13 @@ export const cacheNutritionDay = async (
 
     await AsyncStorage.setItem(key, serializedPayload);
     await setCacheTimestamp(key);
-    console.log(" [CacheService] Nutrition cached for:", key);
+    if (__DEV__) {
+      console.log(" [CacheService] Nutrition cached for:", key);
+    }
   } catch (error) {
-    console.error("[CacheService] Error caching nutrition:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error caching nutrition:", error);
+    }
   }
 };
 
@@ -269,7 +301,9 @@ export const getCachedNutritionDay = async (
     }
     return null;
   } catch (error) {
-    console.error("[CacheService] Error getting cached nutrition:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error getting cached nutrition:", error);
+    }
     return null;
   }
 };
@@ -284,7 +318,9 @@ export const cacheNutritionWeek = async (
 ): Promise<void> => {
   try {
     if (!weekData || weekData.length === 0) {
-      console.log("[CacheService] No week data to cache");
+      if (__DEV__) {
+        console.log("[CacheService] No week data to cache");
+      }
       return;
     }
 
@@ -298,9 +334,13 @@ export const cacheNutritionWeek = async (
         await cacheNutritionDay(date, nutrition);
       }
     }
-    console.log(`[CacheService] Week nutrition cached (${weekData.length} days)`);
+    if (__DEV__) {
+      console.log(`[CacheService] Week nutrition cached (${weekData.length} days)`);
+    }
   } catch (error) {
-    console.error("[CacheService] Error caching week nutrition:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error caching week nutrition:", error);
+    }
   }
 };
 
@@ -362,7 +402,9 @@ export const batchGetCachedNutritionDays = async (
 
     return result;
   } catch (error) {
-    console.error("[CacheService] Error batch-reading nutrition cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error batch-reading nutrition cache:", error);
+    }
     return result;
   }
 };
@@ -427,7 +469,9 @@ export const addFoodToCache = async (food: Food): Promise<void> => {
 
     await persistFoodCache(foods.slice(0, 100));
   } catch (error) {
-    console.error("[CacheService] Error adding food to cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error adding food to cache:", error);
+    }
   }
 };
 
@@ -457,7 +501,9 @@ export const addFoodsToCache = async (newFoods: Food[]): Promise<void> => {
 
     await persistFoodCache(foods.slice(0, 100));
   } catch (error) {
-    console.error("[CacheService] Error batch-adding foods to cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error batch-adding foods to cache:", error);
+    }
   }
 };
 
@@ -471,7 +517,9 @@ export const getCachedFoods = async (): Promise<Food[]> => {
 
     return validFoods;
   } catch (error) {
-    console.error("[CacheService] Error getting cached foods:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error getting cached foods:", error);
+    }
     return [];
   }
 };
@@ -485,7 +533,9 @@ export const searchCachedFoods = async (query: string): Promise<Food[]> => {
       food.name.toLowerCase().includes(lowerQuery)
     );
   } catch (error) {
-    console.error("[CacheService] Error searching cached foods:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error searching cached foods:", error);
+    }
     return [];
   }
 };
@@ -515,10 +565,14 @@ export const clearExpiredCache = async (): Promise<void> => {
     }
 
     if (removedCount > 0) {
-      console.log(`[CacheService] Removed ${removedCount} expired cache entries`);
+      if (__DEV__) {
+        console.log(`[CacheService] Removed ${removedCount} expired cache entries`);
+      }
     }
   } catch (error) {
-    console.error("[CacheService] Error clearing expired cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error clearing expired cache:", error);
+    }
   }
 };
 
@@ -533,9 +587,13 @@ export const clearNutritionCache = async (): Promise<void> => {
 
     await AsyncStorage.multiRemove(nutritionKeys);
     await removeCacheTimestamps(nutritionKeys);
-    console.log("[CacheService] Nutrition cache cleared");
+    if (__DEV__) {
+      console.log("[CacheService] Nutrition cache cleared");
+    }
   } catch (error) {
-    console.error("[CacheService] Error clearing nutrition cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error clearing nutrition cache:", error);
+    }
   }
 };
 
@@ -551,9 +609,13 @@ export const clearAllCache = async (): Promise<void> => {
     await AsyncStorage.multiRemove(cacheKeys);
     await removeCacheTimestamps(cacheKeys);
     foodMemoryCache = null;
-    console.log("[CacheService] All cache cleared");
+    if (__DEV__) {
+      console.log("[CacheService] All cache cleared");
+    }
   } catch (error) {
-    console.error("[CacheService] Error clearing all cache:", error);
+    if (__DEV__) {
+      console.error("[CacheService] Error clearing all cache:", error);
+    }
   }
 };
 

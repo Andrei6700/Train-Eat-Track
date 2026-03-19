@@ -714,7 +714,9 @@ const Nutrition = () => {
           logCalendarWeekLoaded(normalizedDate, "empty");
         }
       } catch (error) {
-        console.error("[Nutrition] Error loading calendar day summary:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error loading calendar day summary:", error);
+        }
       } finally {
         pendingDayKeysRef.current.delete(dateKey);
       }
@@ -891,7 +893,9 @@ const Nutrition = () => {
           loadedDayKeysRef.current.add(toDateKey(date));
         }
       } catch (error) {
-        console.error("[Nutrition] Error in batch calendar load:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error in batch calendar load:", error);
+        }
       } finally {
         for (const date of datesToLoad) {
           pendingDayKeysRef.current.delete(toDateKey(date));
@@ -951,7 +955,9 @@ const Nutrition = () => {
       try {
         await refreshNutrition(date, options);
       } catch (error) {
-        console.error("[Nutrition] Error refreshing selected date:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error refreshing selected date:", error);
+        }
       }
     },
     [refreshNutrition, user?.uid],
@@ -1061,7 +1067,9 @@ const Nutrition = () => {
           setCalendarEarliestDate(null);
         }
       } catch (error) {
-        console.error("[Nutrition] Error loading calendar seed:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error loading calendar seed:", error);
+        }
         if (requestId !== calendarRequestIdRef.current) return;
 
         if (!cachedSummary) {

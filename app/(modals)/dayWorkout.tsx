@@ -131,11 +131,15 @@ const DayWorkout = () => {
       isRestDay: true,
       exercises: [],
     };
-    console.log("[DayWorkout] mark rest day payload:", payload);
+    if (__DEV__) {
+      console.log("[DayWorkout] mark rest day payload:", payload);
+    }
 
     await updateDay(day as string, payload);
 
-    console.log("[DayWorkout] rest day saved, going back");
+    if (__DEV__) {
+      console.log("[DayWorkout] rest day saved, going back");
+    }
     setSaving(false);
     router.back();
   };
@@ -170,14 +174,18 @@ const DayWorkout = () => {
       exercises,
     };
 
-    console.log(
-      "[DayWorkout] saving exercises payload:",
-      JSON.stringify(payload)
-    );
+    if (__DEV__) {
+      console.log(
+        "[DayWorkout] saving exercises payload:",
+        JSON.stringify(payload)
+      );
+    }
     await updateDay(day as string, payload);
-    console.log(
-      "[DayWorkout] updateDay finished - local context should be updated"
-    );
+    if (__DEV__) {
+      console.log(
+        "[DayWorkout] updateDay finished - local context should be updated"
+      );
+    }
 
     setSaving(false);
     router.back();

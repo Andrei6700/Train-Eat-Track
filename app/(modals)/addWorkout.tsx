@@ -83,7 +83,9 @@ const AddWorkout = () => {
    */
   const getTodayDayIndex = (): number => {
     if (!workoutPlan || !workoutPlan.splitDays) {
-      console.log("[addWorkout] No workout plan or splitDays");
+      if (__DEV__) {
+        console.log("[addWorkout] No workout plan or splitDays");
+      }
       return 0;
     }
 
@@ -109,14 +111,16 @@ const AddWorkout = () => {
         (1000 * 60 * 60 * 24),
     );
 
-    console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
-    console.log("[addWorkout] Target workout date:", workoutDate.toISOString());
-    console.log("[addWorkout] Days difference:", daysDifference);
-    console.log("[addWorkout] Split days:", workoutPlan.splitDays);
-    console.log(
-      "[addWorkout] Day index:",
-      daysDifference % workoutPlan.splitDays,
-    );
+    if (__DEV__) {
+      console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
+      console.log("[addWorkout] Target workout date:", workoutDate.toISOString());
+      console.log("[addWorkout] Days difference:", daysDifference);
+      console.log("[addWorkout] Split days:", workoutPlan.splitDays);
+      console.log(
+        "[addWorkout] Day index:",
+        daysDifference % workoutPlan.splitDays,
+      );
+    }
 
     return daysDifference % workoutPlan.splitDays;
   };
@@ -197,23 +201,29 @@ const AddWorkout = () => {
     const currentDayIndex = daysDifference % workoutPlan.splitDays;
     const dayName = `Day ${currentDayIndex + 1}`;
 
-    console.log("[addWorkout] Days since plan created:", daysDifference);
-    console.log("[addWorkout] Current cycle day:", dayName);
+    if (__DEV__) {
+      console.log("[addWorkout] Days since plan created:", daysDifference);
+      console.log("[addWorkout] Current cycle day:", dayName);
+    }
 
     // Find the workout plan for the target date
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
     if (!planDay) {
-      console.log("[addWorkout] No plan found for", dayName);
+      if (__DEV__) {
+        console.log("[addWorkout] No plan found for", dayName);
+      }
       return;
     }
 
-    console.log(
-      "[addWorkout] Plan day found:",
-      planDay.day,
-      "Exercises:",
-      planDay.exercises?.length || 0,
-    );
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] Plan day found:",
+        planDay.day,
+        "Exercises:",
+        planDay.exercises?.length || 0,
+      );
+    }
 
     // Load workout history for prefilling
     let workoutHistory: WorkoutHistory[] = [];
@@ -221,14 +231,18 @@ const AddWorkout = () => {
       const historyResult = await getUserWorkouts(user.uid);
       if (historyResult.success && historyResult.data) {
         workoutHistory = historyResult.data;
-        console.log(
-          "[addWorkout] Loaded workout history:",
-          workoutHistory.length,
-          "workouts",
-        );
+        if (__DEV__) {
+          console.log(
+            "[addWorkout] Loaded workout history:",
+            workoutHistory.length,
+            "workouts",
+          );
+        }
       }
     } catch (error) {
-      console.error("[addWorkout] Error loading workout history:", error);
+      if (__DEV__) {
+        console.error("[addWorkout] Error loading workout history:", error);
+      }
     }
 
     // Look for the most recent successful workout for this cycle day (searches all previous cycles)
@@ -240,13 +254,15 @@ const AddWorkout = () => {
     );
 
     if (previousCycleWorkout) {
-      console.log(
-        "[addWorkout] Found previous workout for cycle day",
-        currentDayIndex,
-        "with",
-        previousCycleWorkout.exercises?.length,
-        "exercises",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] Found previous workout for cycle day",
+          currentDayIndex,
+          "with",
+          previousCycleWorkout.exercises?.length,
+          "exercises",
+        );
+      }
     }
 
     // CASE 1: Plan has exercises - use them as template for FIRST CYCLE ONLY
@@ -255,9 +271,11 @@ const AddWorkout = () => {
       planDay.exercises.length > 0 &&
       daysDifference < workoutPlan.splitDays
     ) {
-      console.log(
-        "[addWorkout] First cycle - using plan exercises as template",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] First cycle - using plan exercises as template",
+        );
+      }
 
       let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
@@ -310,9 +328,11 @@ const AddWorkout = () => {
       previousCycleWorkout.exercises &&
       previousCycleWorkout.exercises.length > 0
     ) {
-      console.log(
-        "[addWorkout] After first cycle - copying from previous cycle",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] After first cycle - copying from previous cycle",
+        );
+      }
 
       let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
@@ -329,20 +349,24 @@ const AddWorkout = () => {
         };
       });
 
-      console.log(
-        "[addWorkout] Loaded",
-        loadedExercises.length,
-        "exercises from previous cycle",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] Loaded",
+          loadedExercises.length,
+          "exercises from previous cycle",
+        );
+      }
       setHistoryExercises(newHistoryExercises);
       setExercises(loadedExercises as WorkoutExercise[]);
       return;
     }
 
     // CASE 3: No previous workout found, start with empty form
-    console.log(
-      "[addWorkout] No previous cycle workout found, starting with empty form",
-    );
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] No previous cycle workout found, starting with empty form",
+      );
+    }
     setExercises([
       {
         exerciseName: "",
@@ -547,11 +571,13 @@ const AddWorkout = () => {
     const workoutDateToSave = new Date(targetDate);
     workoutDateToSave.setHours(12, 0, 0, 0);
 
-    console.log(
-      "[addWorkout] Saving workout for date:",
-      workoutDateToSave.toISOString(),
-    );
-    console.log("[addWorkout] Is historical:", isHistoricalWorkout);
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] Saving workout for date:",
+        workoutDateToSave.toISOString(),
+      );
+      console.log("[addWorkout] Is historical:", isHistoricalWorkout);
+    }
 
     const workoutData = {
       userID: user.uid,

@@ -174,7 +174,9 @@ const MealDetail = () => {
           setCachedFoods(localCachedFoods);
         }
       } catch (error) {
-        console.error("[MealDetail] Error loading cached foods:", error);
+        if (__DEV__) {
+          console.error("[MealDetail] Error loading cached foods:", error);
+        }
       }
     })();
 
@@ -203,9 +205,11 @@ const MealDetail = () => {
 
     if (result.success && result.data) {
       setRecentFoods(result.data);
-      console.log(
-        ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`,
-      );
+      if (__DEV__) {
+        console.log(
+          ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`,
+        );
+      }
     } else {
       setRecentFoods([]);
     }
@@ -334,7 +338,9 @@ const MealDetail = () => {
             if (searchToken !== latestSearchTokenRef.current) return;
 
             if (!cancelled) {
-              console.error("[MealDetail] Food search failed:", error);
+              if (__DEV__) {
+                console.error("[MealDetail] Food search failed:", error);
+              }
             }
 
             setIsSearching(false);

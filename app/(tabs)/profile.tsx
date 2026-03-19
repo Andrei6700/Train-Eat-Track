@@ -60,7 +60,7 @@ const Profile = () => {
     Alert.alert(t("profile_logout_confirm_title"), t("profile_logout_confirm_message"), [
       {
         text: t("common_cancel"),
-        onPress: () => console.log("Cancel logout"),
+        onPress: () => {},
         style: "cancel",
       },
       {

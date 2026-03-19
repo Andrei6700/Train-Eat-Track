@@ -51,7 +51,7 @@ const getPeriodStartDate = (period: PeriodType): Date => {
   return periodStart;
 };
 
-const Statistics = () => {
+const Statistics = React.memo(() => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
@@ -140,7 +140,9 @@ const Statistics = () => {
         setWorkoutsHistory([]);
       }
     } catch (error) {
-      console.error("Error fetching workouts:", error);
+      if (__DEV__) {
+        console.error("Error fetching workouts:", error);
+      }
       if (!hydratedFromCache && requestId === requestIdRef.current) {
         setWorkoutsHistory([]);
       }
@@ -152,6 +154,9 @@ const Statistics = () => {
 
   useEffect(() => {
     void fetchWorkoutsHistory();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchWorkoutsHistory]);
 
   const getFilteredWorkouts = (period: PeriodType): WorkoutHistory[] => {
@@ -691,7 +696,9 @@ const Statistics = () => {
     </ScreenWrapper>
     </SwipeableScreen>
   );
-};
+});
+
+Statistics.displayName = "Statistics";
 
 export default Statistics;
 

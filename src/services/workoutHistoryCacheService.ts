@@ -95,7 +95,9 @@ const readPayload = async (userID: string): Promise<WorkoutHistoryCachePayload |
 
     return parsed;
   } catch (error) {
-    console.error("[WorkoutHistoryCache] Error reading cache:", error);
+    if (__DEV__) {
+      console.error("[WorkoutHistoryCache] Error reading cache:", error);
+    }
     return null;
   }
 };
@@ -156,7 +158,9 @@ export const setCachedWorkoutHistory = async (
   try {
     await writePayload(userID, workouts);
   } catch (error) {
-    console.error("[WorkoutHistoryCache] Error writing cache:", error);
+    if (__DEV__) {
+      console.error("[WorkoutHistoryCache] Error writing cache:", error);
+    }
   }
 };
 
@@ -174,7 +178,9 @@ export const upsertCachedWorkoutHistoryItem = async (
 
     await writePayload(userID, merged);
   } catch (error) {
-    console.error("[WorkoutHistoryCache] Error upserting workout:", error);
+    if (__DEV__) {
+      console.error("[WorkoutHistoryCache] Error upserting workout:", error);
+    }
   }
 };
 
@@ -189,7 +195,9 @@ export const removeCachedWorkoutHistoryItem = async (
     const filtered = existing.data.filter((item) => item.id !== workoutId);
     await writePayload(userID, filtered);
   } catch (error) {
-    console.error("[WorkoutHistoryCache] Error removing workout:", error);
+    if (__DEV__) {
+      console.error("[WorkoutHistoryCache] Error removing workout:", error);
+    }
   }
 };
 
@@ -208,7 +216,9 @@ export const clearWorkoutHistoryCache = async (userID?: string): Promise<void> =
       await AsyncStorage.multiRemove(workoutHistoryKeys);
     }
   } catch (error) {
-    console.error("[WorkoutHistoryCache] Error clearing cache:", error);
+    if (__DEV__) {
+      console.error("[WorkoutHistoryCache] Error clearing cache:", error);
+    }
   }
 };
 

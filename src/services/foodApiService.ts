@@ -298,7 +298,9 @@ const cacheRemoteFoods = (foods: SimplifiedFood[]) => {
       const batch = foods.slice(0, 8).map(toFoodCachePayload);
       await addFoodsToCache(batch);
     } catch (error) {
-      console.error("[FoodAPI] Error caching remote foods:", error);
+      if (__DEV__) {
+        console.error("[FoodAPI] Error caching remote foods:", error);
+      }
     }
   })();
 };
@@ -342,7 +344,9 @@ async function fetchWithRetry(
       }
 
       const waitMs = Math.min(1000 * Math.pow(2, attempt), 5000);
-      console.log(`[FoodAPI] Retry ${attempt + 1}/${retries} after ${waitMs}ms`);
+      if (__DEV__) {
+        console.log(`[FoodAPI] Retry ${attempt + 1}/${retries} after ${waitMs}ms`);
+      }
       await sleep(waitMs);
     } finally {
       clearTimeout(timeoutId);
@@ -382,7 +386,9 @@ export const searchFood = async (
     });
 
     const url = `${OPEN_FOOD_FACTS_API}?${params.toString()}`;
-    console.log("[FoodAPI] Searching:", url);
+    if (__DEV__) {
+      console.log("[FoodAPI] Searching:", url);
+    }
 
     const response = await fetchWithRetry(
       url,
@@ -401,7 +407,9 @@ export const searchFood = async (
     );
 
     if (!response.ok) {
-      console.error("[FoodAPI] Error response:", response.status, response.statusText);
+      if (__DEV__) {
+        console.error("[FoodAPI] Error response:", response.status, response.statusText);
+      }
       return [];
     }
 
@@ -452,7 +460,9 @@ export const searchFood = async (
         };
       });
 
-    console.log(`[FoodAPI] Found ${simplifiedFoods.length} products`);
+    if (__DEV__) {
+      console.log(`[FoodAPI] Found ${simplifiedFoods.length} products`);
+    }
     return simplifiedFoods;
   } catch (error: any) {
     if (isAbortError(error) && options.signal?.aborted) {
@@ -460,9 +470,13 @@ export const searchFood = async (
     }
 
     if (isAbortError(error)) {
-      console.error("[FoodAPI] Request timeout");
+      if (__DEV__) {
+        console.error("[FoodAPI] Request timeout");
+      }
     } else {
-      console.error("[FoodAPI] Search error:", error?.message || error);
+      if (__DEV__) {
+        console.error("[FoodAPI] Search error:", error?.message || error);
+      }
     }
 
     return [];
@@ -586,7 +600,9 @@ export const getFoodByBarcode = async (
 
   try {
     const url = `${PRODUCT_API}/${encodeURIComponent(barcode)}`;
-    console.log("[FoodAPI] Fetching barcode:", url);
+    if (__DEV__) {
+      console.log("[FoodAPI] Fetching barcode:", url);
+    }
 
     const response = await fetchWithRetry(url, {
       method: "GET",
@@ -597,7 +613,9 @@ export const getFoodByBarcode = async (
     });
 
     if (!response.ok) {
-      console.error("[FoodAPI] Error response:", response.status);
+      if (__DEV__) {
+        console.error("[FoodAPI] Error response:", response.status);
+      }
       return { success: false, msg: "Product not found" };
     }
 
@@ -635,10 +653,14 @@ export const getFoodByBarcode = async (
     return successResult;
   } catch (error: any) {
     if (isAbortError(error)) {
-      console.error("[FoodAPI] Barcode request timeout");
+      if (__DEV__) {
+        console.error("[FoodAPI] Barcode request timeout");
+      }
       return { success: false, msg: "Request timeout - please try again" };
     }
-    console.error("[FoodAPI] Barcode search error:", error?.message || error);
+    if (__DEV__) {
+      console.error("[FoodAPI] Barcode search error:", error?.message || error);
+    }
     return { success: false, msg: error?.message || "Error fetching product" };
   }
 };
