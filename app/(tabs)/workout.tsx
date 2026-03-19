@@ -517,7 +517,7 @@ const Workout = () => {
             entering={FadeInDown.duration(400).delay(100)}
             style={styles.monthHeader}
           >
-            <Typo size={20} fontWeight="600" color={colors.white}>
+            <Typo size={20} fontWeight="600" color={colors.text}>
               {MONTH_NAMES[language][currentMonth.getMonth()]}{" "}
               {currentMonth.getFullYear()}
             </Typo>

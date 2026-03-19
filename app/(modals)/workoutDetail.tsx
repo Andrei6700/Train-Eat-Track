@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   infoRow: {
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._20,
     marginBottom: spacingY._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   exerciseHeader: {
@@ -317,8 +317,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingY._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.rose,
     width: "92%",
   },
 });
+

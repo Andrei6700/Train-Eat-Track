@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
     height: verticalScale(100),
     borderRadius: radius._15,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   quantitySection: {
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionGrid: {
@@ -699,4 +699,5 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
   },
 });
+
 

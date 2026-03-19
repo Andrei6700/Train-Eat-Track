@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   adjustedTitle: {
@@ -258,3 +258,4 @@ const styles = StyleSheet.create({
     marginTop: spacingY._20,
   },
 });
+

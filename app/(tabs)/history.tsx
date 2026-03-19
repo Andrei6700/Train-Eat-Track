@@ -18,7 +18,10 @@ import { getUserWorkouts } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { MONTH_NAMES } from "@/src/i18n/translations";
-import { getCycleDayNameFromDate } from "@/src/utils/workoutPlanCycle";
+import {
+  getCycleDayNameFromDate,
+  shouldAutoConvertToRestDay,
+} from "@/src/utils/workoutPlanCycle";
 import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -258,13 +261,26 @@ const History = () => {
 
     for (const day of calendarDays) {
       const dayName = getCycleDayNameFromDate(day, workoutPlan);
-      if (workoutPlanByDayName.get(dayName)?.isRestDay) {
+      const isPlannedRestDay = Boolean(workoutPlanByDayName.get(dayName)?.isRestDay);
+      const isAutoRestDay = shouldAutoConvertToRestDay(
+        day,
+        workoutPlan,
+        workoutsHistory,
+      );
+
+      if (isPlannedRestDay || isAutoRestDay) {
         set.add(toDateKey(day));
       }
     }
 
     return set;
-  }, [calendarDays, loggedRestDayDateSet, workoutPlan, workoutPlanByDayName]);
+  }, [
+    calendarDays,
+    loggedRestDayDateSet,
+    workoutPlan,
+    workoutPlanByDayName,
+    workoutsHistory,
+  ]);
 
   const onRefresh = useCallback(() => {
     const today = startOfDay(new Date());
@@ -290,7 +306,15 @@ const History = () => {
     return workoutPlanByDayName.get(dayName) ?? null;
   }, [selectedDate, workoutPlan, workoutPlanByDayName]);
 
-  const isSelectedDayRestDay = hasLoggedRestDay || Boolean(selectedPlanDay?.isRestDay);
+  const isSelectedDayAutoRestDay = useMemo(() => {
+    if (!workoutPlan) return false;
+    return shouldAutoConvertToRestDay(selectedDate, workoutPlan, workoutsHistory);
+  }, [selectedDate, workoutPlan, workoutsHistory]);
+
+  const isSelectedDayRestDay =
+    hasLoggedRestDay ||
+    Boolean(selectedPlanDay?.isRestDay) ||
+    isSelectedDayAutoRestDay;
 
   const calendarIndexByDateKey = useMemo(() => {
     const map = new Map<string, number>();
@@ -363,7 +387,7 @@ const History = () => {
           <Header title={t("tab_history")} style={styles.header} />
 
           <View style={styles.monthHeader}>
-            <Typo size={20} fontWeight="600" color={colors.white}>
+            <Typo size={20} fontWeight="600" color={colors.text}>
               {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Typo>
             <View style={styles.statsRow}>

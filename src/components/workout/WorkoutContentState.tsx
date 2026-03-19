@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     gap: spacingY._20,
   },
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._20,
     gap: spacingY._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   planHeader: {
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._10,
     padding: spacingY._12,
     marginBottom: spacingY._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   warningBox: {
@@ -576,3 +576,4 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 });
+

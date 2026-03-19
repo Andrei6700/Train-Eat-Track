@@ -949,6 +949,7 @@ const AddWorkout = () => {
                                     )
                                   }
                                   containerStyle={styles.smallInput}
+                                  inputStyle={styles.smallInputText}
                                 />
                               </View>
 
@@ -973,6 +974,7 @@ const AddWorkout = () => {
                                     )
                                   }
                                   containerStyle={styles.smallInput}
+                                  inputStyle={styles.smallInputText}
                                 />
                                 <Typo
                                   size={12}
@@ -1078,14 +1080,14 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     padding: spacingX._15,
     marginBottom: spacingY._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
   },
   pageSwitch: {
     flexDirection: "row",
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     padding: spacingX._5,
     marginBottom: spacingY._12,
@@ -1119,7 +1121,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._20,
     marginBottom: spacingY._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 8 },
@@ -1140,7 +1142,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.neutral700,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral600,
     paddingHorizontal: spacingX._10,
     paddingVertical: spacingY._10,
@@ -1168,7 +1170,7 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     paddingHorizontal: spacingX._12,
     paddingVertical: spacingY._10,
@@ -1197,7 +1199,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._5,
     backgroundColor: "rgba(163, 230, 53, 0.08)",
     borderRadius: radius._10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "rgba(163, 230, 53, 0.25)",
   },
   scrollView: {
@@ -1211,7 +1213,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   exerciseHeader: {
@@ -1262,7 +1264,16 @@ const styles = StyleSheet.create({
   smallInput: {
     flex: 1,
     backgroundColor: colors.neutral700,
-    height: verticalScale(40),
+    borderWidth: 1,
+    borderColor: colors.border,
+    height: verticalScale(44),
+    minHeight: verticalScale(44),
+    paddingHorizontal: spacingX._10,
+    paddingVertical: 0,
+  },
+  smallInputText: {
+    color: colors.textLight,
+    textAlign: "center",
   },
   unitLabel: {
     width: 24,
@@ -1283,7 +1294,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._10,
     marginTop: spacingY._10,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: "dashed",
   },
@@ -1304,3 +1315,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
   },
 });
+

@@ -75,145 +75,148 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
   return (
     <Animated.View
       entering={FadeInDown.duration(400).delay(100)}
-      style={styles.objectiveCard}
+      style={styles.cardOuter}
     >
-      <View style={styles.mainContent}>
-        <View style={styles.leftSection}>
-          <View style={styles.objectivesContainer}>
-            <View style={styles.objectiveItem}>
-              <View style={styles.objectiveHeader}>
-                <Icons.Target size={20} color={colors.primary} weight="fill" />
-                <Typo size={16} fontWeight="600" color={colors.white}>
-                  {t("nutrition_target")}
+      <View style={styles.cardShadow} />
+      <View style={styles.objectiveCard}>
+        <View style={styles.mainContent}>
+          <View style={styles.leftSection}>
+            <View style={styles.objectivesContainer}>
+              <View style={styles.objectiveItem}>
+                <View style={styles.objectiveHeader}>
+                  <Icons.Target size={20} color={colors.primary} weight="fill" />
+                  <Typo size={16} fontWeight="600" color={colors.white}>
+                    {t("nutrition_target")}
+                  </Typo>
+                </View>
+                <Typo
+                  size={20}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={styles.calorieValue}
+                >
+                  {stats.calorieGoal} kcal
                 </Typo>
               </View>
-              <Typo
-                size={20}
-                fontWeight="700"
-                color={colors.white}
-                style={styles.calorieValue}
-              >
-                {stats.calorieGoal} kcal
-              </Typo>
-            </View>
-            <View style={styles.objectiveItem}>
-              <View style={styles.objectiveHeader}>
-                <Icons.Fire size={20} color={FIRE_COLOR} weight="fill" />
-                <Typo size={16} fontWeight="600" color={colors.white}>
-                  {t("nutrition_consumed")}
+              <View style={styles.objectiveItem}>
+                <View style={styles.objectiveHeader}>
+                  <Icons.Fire size={20} color={FIRE_COLOR} weight="fill" />
+                  <Typo size={16} fontWeight="600" color={colors.white}>
+                    {t("nutrition_consumed")}
+                  </Typo>
+                </View>
+                <Typo
+                  size={20}
+                  fontWeight="700"
+                  color={colors.white}
+                  style={styles.calorieValue}
+                >
+                  {stats.totalCalories} kcal
                 </Typo>
               </View>
-              <Typo
-                size={20}
-                fontWeight="700"
-                color={colors.white}
-                style={styles.calorieValue}
-              >
-                {stats.totalCalories} kcal
-              </Typo>
+            </View>
+          </View>
+
+          <View style={styles.rightSection}>
+            <View style={styles.progressCircleContainer}>
+              <Svg width={RING_SIZE} height={RING_SIZE} viewBox="0 0 124 124">
+                <Circle
+                  cx="62"
+                  cy="62"
+                  r={RING_RADIUS}
+                  stroke={RING_TRACK_COLOR}
+                  strokeWidth={RING_STROKE_WIDTH}
+                  fill="none"
+                  opacity={0.5}
+                />
+                <Circle
+                  cx="62"
+                  cy="62"
+                  r={RING_RADIUS}
+                  stroke={ringColor}
+                  strokeWidth={RING_STROKE_WIDTH}
+                  fill="none"
+                  strokeDasharray={RING_CIRCUMFERENCE}
+                  strokeDashoffset={ringStrokeDashOffset}
+                  strokeLinecap="round"
+                  rotation="-90"
+                  origin="62, 62"
+                />
+              </Svg>
+
+              <View style={styles.circleInner}>
+                <Typo
+                  size={21}
+                  fontWeight="700"
+                  color={ringColor}
+                  style={styles.centerValue}
+                >
+                  {displayValue}
+                </Typo>
+                <Typo
+                  size={10}
+                  color={colors.neutral200}
+                  style={styles.centerLabel}
+                  textProps={{ numberOfLines: 1 }}
+                >
+                  {displayLabel}
+                </Typo>
+              </View>
             </View>
           </View>
         </View>
 
-        <View style={styles.rightSection}>
-          <View style={styles.progressCircleContainer}>
-            <Svg width={RING_SIZE} height={RING_SIZE} viewBox="0 0 124 124">
-              <Circle
-                cx="62"
-                cy="62"
-                r={RING_RADIUS}
-                stroke={RING_TRACK_COLOR}
-                strokeWidth={RING_STROKE_WIDTH}
-                fill="none"
-                opacity={0.5}
-              />
-              <Circle
-                cx="62"
-                cy="62"
-                r={RING_RADIUS}
-                stroke={ringColor}
-                strokeWidth={RING_STROKE_WIDTH}
-                fill="none"
-                strokeDasharray={RING_CIRCUMFERENCE}
-                strokeDashoffset={ringStrokeDashOffset}
-                strokeLinecap="round"
-                rotation="-90"
-                origin="62, 62"
-              />
-            </Svg>
-
-            <View style={styles.circleInner}>
-              <Typo
-                size={21}
-                fontWeight="700"
-                color={ringColor}
-                style={styles.centerValue}
-              >
-                {displayValue}
-              </Typo>
-              <Typo
-                size={10}
-                color={colors.neutral200}
-                style={styles.centerLabel}
-                textProps={{ numberOfLines: 1 }}
-              >
-                {displayLabel}
-              </Typo>
+        <View style={styles.macrosContainer}>
+          <View style={styles.macroItem}>
+            <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
+              {t("nutrition_protein")}
+            </Typo>
+            <View style={styles.macroProgressBar}>
+              <View style={[styles.macroProgressFill, proteinFillStyle]} />
             </View>
+            <Typo
+              size={14}
+              fontWeight="600"
+              color={colors.white}
+              style={styles.macroValue}
+            >
+              {Math.round(stats.totalMacros.protein)}g / {stats.proteinGoal}g
+            </Typo>
           </View>
-        </View>
-      </View>
 
-      <View style={styles.macrosContainer}>
-        <View style={styles.macroItem}>
-          <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            {t("nutrition_protein")}
-          </Typo>
-          <View style={styles.macroProgressBar}>
-            <View style={[styles.macroProgressFill, proteinFillStyle]} />
+          <View style={styles.macroItem}>
+            <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
+              {t("nutrition_carbs")}
+            </Typo>
+            <View style={styles.macroProgressBar}>
+              <View style={[styles.macroProgressFill, carbsFillStyle]} />
+            </View>
+            <Typo
+              size={14}
+              fontWeight="600"
+              color={colors.white}
+              style={styles.macroValue}
+            >
+              {Math.round(stats.totalMacros.carbs)}g / {stats.carbsGoal}g
+            </Typo>
           </View>
-          <Typo
-            size={14}
-            fontWeight="600"
-            color={colors.white}
-            style={styles.macroValue}
-          >
-            {Math.round(stats.totalMacros.protein)}g / {stats.proteinGoal}g
-          </Typo>
-        </View>
 
-        <View style={styles.macroItem}>
-          <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            {t("nutrition_carbs")}
-          </Typo>
-          <View style={styles.macroProgressBar}>
-            <View style={[styles.macroProgressFill, carbsFillStyle]} />
+          <View style={styles.macroItem}>
+            <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
+              {t("nutrition_fat")}
+            </Typo>
+            <View style={styles.macroProgressBar}>
+              <View style={[styles.macroProgressFill, fatFillStyle]} />
+            </View>
+            <Typo
+              size={14}
+              fontWeight="600"
+              color={colors.white}
+              style={styles.macroValue}
+            >
+              {Math.round(stats.totalMacros.fat)}g / {stats.fatGoal}g
+            </Typo>
           </View>
-          <Typo
-            size={14}
-            fontWeight="600"
-            color={colors.white}
-            style={styles.macroValue}
-          >
-            {Math.round(stats.totalMacros.carbs)}g / {stats.carbsGoal}g
-          </Typo>
-        </View>
-
-        <View style={styles.macroItem}>
-          <Typo size={12} color={colors.neutral400} style={styles.macroLabel}>
-            {t("nutrition_fat")}
-          </Typo>
-          <View style={styles.macroProgressBar}>
-            <View style={[styles.macroProgressFill, fatFillStyle]} />
-          </View>
-          <Typo
-            size={14}
-            fontWeight="600"
-            color={colors.white}
-            style={styles.macroValue}
-          >
-            {Math.round(stats.totalMacros.fat)}g / {stats.fatGoal}g
-          </Typo>
         </View>
       </View>
     </Animated.View>
@@ -223,12 +226,25 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
 export default React.memo(NutritionObjectiveCard);
 
 const styles = StyleSheet.create({
+  cardOuter: {
+    position: "relative",
+    marginBottom: spacingY._20,
+    marginRight: 6,
+  },
+  cardShadow: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.cardShadow,
+    borderRadius: radius._17,
+  },
   objectiveCard: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    marginBottom: spacingY._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   mainContent: {
@@ -313,3 +329,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+

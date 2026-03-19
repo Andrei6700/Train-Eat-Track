@@ -224,7 +224,7 @@ export default PrivacyPolicy;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.black,
+    backgroundColor: colors.surface,
   },
   header: {
     paddingHorizontal: spacingX._20,
@@ -247,18 +247,18 @@ const styles = StyleSheet.create({
     gap: spacingY._12,
   },
   introCard: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surfaceCard,
     borderRadius: radius._15,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
+    borderWidth: 2,
+    borderColor: colors.border,
     paddingVertical: spacingY._12,
     paddingHorizontal: spacingX._15,
   },
   sectionCard: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surfaceCard,
     borderRadius: radius._15,
-    borderWidth: 1,
-    borderColor: colors.neutral700,
+    borderWidth: 2,
+    borderColor: colors.border,
     paddingVertical: spacingY._12,
     paddingHorizontal: spacingX._15,
     gap: spacingY._7,
@@ -270,3 +270,4 @@ const styles = StyleSheet.create({
     lineHeight: verticalScale(20),
   },
 });
+

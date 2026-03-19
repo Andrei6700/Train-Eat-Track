@@ -313,7 +313,7 @@ export default Settings;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.black,
+    backgroundColor: colors.surface,
   },
   header: {
     paddingHorizontal: spacingX._20,
@@ -333,11 +333,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacingY._10,
   },
   section: {
-    backgroundColor: colors.neutral900,
+    backgroundColor: colors.surfaceCard,
     marginHorizontal: spacingX._20,
     borderRadius: radius._15,
     overflow: "hidden",
     marginBottom: spacingY._10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   settingItem: {
     flexDirection: "row",
@@ -346,7 +348,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._15,
     paddingHorizontal: spacingX._15,
     borderBottomWidth: 0.5,
-    borderBottomColor: colors.neutral800,
+    borderBottomColor: colors.border,
   },
   settingLeft: {
     flexDirection: "row",
@@ -357,7 +359,7 @@ const styles = StyleSheet.create({
     width: verticalScale(45),
     height: verticalScale(45),
     borderRadius: radius._12,
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surfaceMid,
     alignItems: "center",
     justifyContent: "center",
     marginRight: spacingX._15,

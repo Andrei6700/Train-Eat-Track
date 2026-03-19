@@ -1,17 +1,20 @@
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
+  StatusBarStyle,
   TextInput,
   TextInputProps,
   TextProps,
   TextStyle,
-  TouchableOpacityProps,
+  PressableProps,
   ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
   style?: ViewStyle;
   children: React.ReactNode;
+  statusBarStyle?: StatusBarStyle;
+  statusBarBackgroundColor?: string;
 };
 export type ModalWrapperProps = {
   style?: ViewStyle;
@@ -26,7 +29,7 @@ export type accountOptionType = {
   routeName?: any;
 };
 
-export type TypoProps = {
+export type TypoProps = TextProps & {
   size?: number;
   color?: string;
   fontWeight?: TextStyle["fontWeight"];
@@ -60,6 +63,7 @@ export type HeaderProps = {
 
 export type BackButtonProps = {
   style?: ViewStyle;
+  buttonStyle?: ViewStyle;
   iconSize?: number;
   onPress?: () => void;
 };
@@ -79,10 +83,12 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
   inputRef?: React.RefObject<TextInput>;
+  hasError?: boolean;
 }
 
-export interface CustomButtonProps extends TouchableOpacityProps {
+export interface CustomButtonProps extends PressableProps {
   style?: ViewStyle;
+  buttonStyle?: ViewStyle;
   onPress?: () => void;
   loading?: boolean;
   children: React.ReactNode;

@@ -161,8 +161,8 @@ const SyncManager = () => {
 
 const StackLayout = () => {
   return (
-    <View style={{ flex: 1, backgroundColor: colors.neutral900 }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.neutral900} />
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
       <OfflineBanner />
       <SyncManager />
       <Stack
@@ -170,7 +170,7 @@ const StackLayout = () => {
           headerShown: false,
           animation: "none",
           contentStyle: {
-            backgroundColor: colors.neutral900,
+            backgroundColor: colors.surface,
           },
         }}
       >

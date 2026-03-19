@@ -31,43 +31,43 @@ export default function CustomTabs({
     index: (isFocused: boolean) => (
       <Icons.HouseIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
     statistics: (isFocused: boolean) => (
       <Icons.ChartBarIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
     workout: (isFocused: boolean) => (
       <Icons.BarbellIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
     history: (isFocused: boolean) => (
       <Icons.ClockUserIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
     nutrition: (isFocused: boolean) => (
       <Icons.ForkKnifeIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
     profile: (isFocused: boolean) => (
       <Icons.UserIcon
         size={verticalScale(28)}
-        weight={isFocused ? "fill" : "regular"}
-        color={isFocused ? colors.primary : colors.neutral400}
+        weight={isFocused ? "fill" : "bold"}
+        color={isFocused ? colors.primary : colors.textMuted}
       />
     ),
   };
@@ -127,7 +127,7 @@ export default function CustomTabs({
               ellipsizeMode="clip"
               style={[
                 styles.tabLabel,
-                { color: isFocused ? colors.primary : colors.neutral400 },
+                { color: isFocused ? colors.primary : colors.textMuted },
               ]}
             >
               {tabbarLabels[route.name]}
@@ -143,23 +143,24 @@ const styles = StyleSheet.create({
   tabbar: {
     flexDirection: "row",
     width: "100%",
-    backgroundColor: colors.black,
+    backgroundColor: colors.surface,
     justifyContent: "space-around",
     alignItems: "center",
-    borderTopColor: colors.neutral700,
+    borderTopColor: colors.border,
     borderTopWidth: 1,
   },
   tabbarItem: {
     justifyContent: "flex-end",
     alignItems: "center",
     flex: 1,
+    minHeight: 44,
     minWidth: 0,
   },
   tabLabel: {
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: 14,
     marginTop: 4,
-    fontWeight: "500",
+    fontWeight: "700",
     textAlign: "center",
     width: "100%",
   },

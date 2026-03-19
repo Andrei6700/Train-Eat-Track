@@ -1255,7 +1255,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     paddingVertical: spacingY._5,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     shadowColor: "#000",
     shadowOffset: {
@@ -1312,7 +1312,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     padding: spacingX._12,
@@ -1343,7 +1343,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     paddingVertical: spacingY._12,
@@ -1388,7 +1388,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     marginBottom: spacingY._10,
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
     height: verticalScale(120),
     borderRadius: radius._15,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionPreview: {
@@ -1472,7 +1472,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionItem: {
@@ -1489,7 +1489,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.green,
     shadowColor: "#000",
     shadowOffset: {
@@ -1501,3 +1501,4 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 });
+

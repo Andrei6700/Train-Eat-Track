@@ -105,6 +105,8 @@ const ProfileModal = () => {
               onChangeText={(value) =>
                 setUserData({ ...userData, name: value })
               }
+              containerStyle={styles.nameInput}
+              inputStyle={styles.nameInputText}
             />
           </View>
         </ScrollView>
@@ -154,7 +156,7 @@ const styles = StyleSheet.create({
     height: verticalScale(135),
     width: verticalScale(135),
     borderRadius: 200,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral500,
     // overflow: "hidden",
     // position: "relative",
@@ -175,4 +177,13 @@ const styles = StyleSheet.create({
   inputContainer: {
     gap: spacingY._10,
   },
+  nameInput: {
+    backgroundColor: colors.surfaceMid,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  nameInputText: {
+    color: colors.textLight,
+  },
 });
+

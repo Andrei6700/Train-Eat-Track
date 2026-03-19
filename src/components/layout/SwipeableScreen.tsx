@@ -102,6 +102,6 @@ export default SwipeableScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral900,
+    backgroundColor: colors.surface,
   },
 });

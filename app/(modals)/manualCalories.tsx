@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     padding: spacingX._15,
     marginBottom: spacingY._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: "dashed",
   },
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   footer: {
@@ -580,3 +580,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.neutral700,
   },
 });
+

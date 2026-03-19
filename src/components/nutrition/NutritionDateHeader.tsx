@@ -20,22 +20,25 @@ const NutritionDateHeader = ({
   const { t } = useLanguage();
 
   return (
-    <Animated.View entering={FadeInDown.duration(400)} style={styles.dateHeader}>
-      <View style={styles.dateHeaderContent}>
-        <Typo size={24} fontWeight="700">
-          {dateLabel}
-        </Typo>
-        <View style={styles.actions}>
-          <TouchableOpacity
-            onPress={onOpenCalendarLog}
-            accessibilityRole="button"
-            accessibilityLabel={t("nutrition_open_calendar_log_a11y")}
-          >
-            <Icons.CalendarBlank size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onOpenSettings}>
-            <Icons.Gear size={24} color={colors.primary} />
-          </TouchableOpacity>
+    <Animated.View entering={FadeInDown.duration(400)} style={styles.dateHeaderOuter}>
+      <View style={styles.dateHeaderShadow} />
+      <View style={styles.dateHeader}>
+        <View style={styles.dateHeaderContent}>
+          <Typo size={24} fontWeight="700">
+            {dateLabel}
+          </Typo>
+          <View style={styles.actions}>
+            <TouchableOpacity
+              onPress={onOpenCalendarLog}
+              accessibilityRole="button"
+              accessibilityLabel={t("nutrition_open_calendar_log_a11y")}
+            >
+              <Icons.CalendarBlank size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onOpenSettings}>
+              <Icons.Gear size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -45,12 +48,25 @@ const NutritionDateHeader = ({
 export default React.memo(NutritionDateHeader);
 
 const styles = StyleSheet.create({
+  dateHeaderOuter: {
+    position: "relative",
+    marginVertical: spacingY._15,
+    marginRight: 6,
+  },
+  dateHeaderShadow: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.cardShadow,
+    borderRadius: radius._17,
+  },
   dateHeader: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    marginVertical: spacingY._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   dateHeaderContent: {
@@ -64,3 +80,4 @@ const styles = StyleSheet.create({
     gap: spacingX._15,
   },
 });
+

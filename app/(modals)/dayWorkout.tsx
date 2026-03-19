@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     marginBottom: spacingY._12,
   },
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
     gap: spacingX._5,
     paddingVertical: spacingY._10,
     marginTop: spacingY._7,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
     borderRadius: radius._10,
     borderStyle: "dashed",
@@ -494,3 +494,4 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
 });
+

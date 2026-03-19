@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
     gap: spacingX._12,
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     paddingVertical: spacingY._12,
     paddingHorizontal: spacingX._15,
@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   splitOptionActive: {
@@ -848,7 +848,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: spacingX._7,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   statsContainer: {
@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     padding: spacingX._15,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     gap: verticalScale(4),
   },
@@ -874,7 +874,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   dayCardActive: {
@@ -935,7 +935,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._20,
     marginTop: spacingY._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   footerSticky: {
@@ -956,7 +956,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._20,
     width: '100%',
     maxWidth: 400,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   infoHeader: {
@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._20,
     width: "100%",
     maxWidth: 420,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     padding: spacingX._20,
     gap: spacingY._12,
@@ -1008,7 +1008,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: verticalScale(52),
     borderRadius: radius._17,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     backgroundColor: colors.neutral900,
     justifyContent: "center",
@@ -1018,3 +1018,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
