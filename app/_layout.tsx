@@ -224,6 +224,10 @@ const StackLayout = () => {
           name="(modals)/privacyPolicy"
           options={{ presentation: "modal", animation: "slide_from_right" }}
         />
+        <Stack.Screen
+          name="(modals)/maintenanceTracker"
+          options={{ presentation: "modal", animation: "slide_from_bottom" }}
+        />
       </Stack>
     </View>
   );

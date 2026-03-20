@@ -1263,6 +1263,10 @@ const Nutrition = () => {
     router.push("/(modals)/nutritionSettings");
   }, [router]);
 
+  const handleOpenMaintenance = useCallback(() => {
+    router.push("/(modals)/maintenanceTracker");
+  }, [router]);
+
   const handleOpenCalendarLog = useCallback(() => {
     setShowCalendarLogModal(true);
   }, []);
@@ -1485,6 +1489,7 @@ const Nutrition = () => {
             dateLabel={dateHeaderLabel}
             onOpenCalendarLog={handleOpenCalendarLog}
             onOpenSettings={handleOpenSettings}
+            onOpenMaintenance={handleOpenMaintenance}
           />
 
           <Typo size={24} fontWeight="700" style={styles.calendarMonthTitle}>

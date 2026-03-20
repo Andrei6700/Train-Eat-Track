@@ -31,7 +31,10 @@ const Login = () => {
 
   const handleSubmit = async () => {
     if (!emailRef.current || !passwordRef.current) {
-      Alert.alert(t("auth_login_alert_title"), t("common_validation_fill_all_fields"));
+      Alert.alert(
+        t("auth_login_alert_title"),
+        t("common_validation_fill_all_fields"),
+      );
       return;
     }
     setIsLoading(true);
@@ -118,7 +121,11 @@ const Login = () => {
               )}
             </Pressable>
           </View>
-          <Typo size={14} color={AUTH_COLORS.text} style={{ alignSelf: "flex-end" }}>
+          <Typo
+            size={14}
+            color={AUTH_COLORS.text}
+            style={{ alignSelf: "flex-end" }}
+          >
             {t("auth_login_forgot_password")}
           </Typo>
           <Button
@@ -132,7 +139,9 @@ const Login = () => {
           </Button>
         </View>
         <View style={styles.footer}>
-          <Typo size={15} color={AUTH_COLORS.text}>{t("auth_login_no_account")}</Typo>
+          <Typo size={15} color={AUTH_COLORS.text}>
+            {t("auth_login_no_account")}
+          </Typo>
           <Pressable onPress={() => router.navigate("/(auth)/register")}>
             <Typo size={15} fontWeight={"700"} color={AUTH_COLORS.accent}>
               {t("auth_login_sign_up")}

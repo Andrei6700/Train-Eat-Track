@@ -10,12 +10,14 @@ type NutritionDateHeaderProps = {
   dateLabel: string;
   onOpenCalendarLog: () => void;
   onOpenSettings: () => void;
+  onOpenMaintenance: () => void;
 };
 
 const NutritionDateHeader = ({
   dateLabel,
   onOpenCalendarLog,
   onOpenSettings,
+  onOpenMaintenance,
 }: NutritionDateHeaderProps) => {
   const { t } = useLanguage();
 
@@ -28,6 +30,13 @@ const NutritionDateHeader = ({
             {dateLabel}
           </Typo>
           <View style={styles.actions}>
+            <TouchableOpacity
+              onPress={onOpenMaintenance}
+              accessibilityRole="button"
+              accessibilityLabel="Tracker mentenanță"
+            >
+              <Icons.Scales size={24} color={colors.primary} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={onOpenCalendarLog}
               accessibilityRole="button"
