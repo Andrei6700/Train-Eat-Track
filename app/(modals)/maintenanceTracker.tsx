@@ -1,38 +1,47 @@
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import Header from "@/src/components/layout/Header";
+import ModalWrapper from "@/src/components/layout/ModalWrapper";
+import MaintenanceAnalysis from "@/src/components/maintenance/MaintenanceAnalysis";
+import OnboardingCarousel from "@/src/components/maintenance/OnboardingCarousel";
+import WeeklyTable from "@/src/components/maintenance/WeeklyTable";
+import WeightEntryForm from "@/src/components/maintenance/WeightEntryForm";
+import BackButton from "@/src/components/navigation/BackButton";
+import Loading from "@/src/components/ui/Loading";
+import Typo from "@/src/components/ui/Typo";
+import { useAuth } from "@/src/contexts/authContext";
+import {
+  analyzeMaintenanceStatus,
+  getWeightEntries,
+  groupEntriesByWeek,
+  hasSeenOnboarding,
+  saveWeightEntry,
+  setOnboardingSeen,
+} from "@/src/services/maintenanceService";
+import {
+  MaintenanceAnalysisResult,
+  WeeklyData,
+  WeightEntry,
+} from "@/src/types/maintenance";
+import { scale, verticalScale } from "@/src/utils/styling";
+import { PlusCircle, Table } from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
   Easing,
   FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
-import { PlusCircle, Table } from "phosphor-react-native";
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { verticalScale, scale } from "@/src/utils/styling";
-import ModalWrapper from "@/src/components/layout/ModalWrapper";
-import Header from "@/src/components/layout/Header";
-import BackButton from "@/src/components/navigation/BackButton";
-import Typo from "@/src/components/ui/Typo";
-import Loading from "@/src/components/ui/Loading";
-import OnboardingCarousel from "@/src/components/maintenance/OnboardingCarousel";
-import WeightEntryForm from "@/src/components/maintenance/WeightEntryForm";
-import WeeklyTable from "@/src/components/maintenance/WeeklyTable";
-import MaintenanceAnalysis from "@/src/components/maintenance/MaintenanceAnalysis";
-import { useAuth } from "@/src/contexts/authContext";
-import { WeightEntry, WeeklyData, MaintenanceAnalysisResult } from "@/src/types/maintenance";
-import {
-  hasSeenOnboarding,
-  setOnboardingSeen,
-  getWeightEntries,
-  saveWeightEntry,
-  groupEntriesByWeek,
-  analyzeMaintenanceStatus,
-} from "@/src/services/maintenanceService";
 
 type TabType = "add" | "table";
 
 const TAB_WIDTH = scale(150);
+
+// Onboarding behavior toggle:
+// - true  => show popup every time this screen opens for testing
+// - false => show popup one time
+const FORCE_SHOW_ONBOARDING = true;
 
 const MaintenanceTrackerScreen = () => {
   const { user } = useAuth();
@@ -42,7 +51,9 @@ const MaintenanceTrackerScreen = () => {
   const [saving, setSaving] = useState(false);
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [weeks, setWeeks] = useState<WeeklyData[]>([]);
-  const [analysis, setAnalysis] = useState<MaintenanceAnalysisResult | null>(null);
+  const [analysis, setAnalysis] = useState<MaintenanceAnalysisResult | null>(
+    null,
+  );
 
   const tabIndicatorPosition = useSharedValue(0);
 
@@ -57,9 +68,13 @@ const MaintenanceTrackerScreen = () => {
       setLoading(true);
 
       // Check onboarding
-      const seen = await hasSeenOnboarding();
-      if (!seen) {
+      if (FORCE_SHOW_ONBOARDING) {
         setShowOnboarding(true);
+      } else {
+        const seen = await hasSeenOnboarding();
+        if (!seen) {
+          setShowOnboarding(true);
+        }
       }
 
       // Load weight entries
@@ -96,7 +111,7 @@ const MaintenanceTrackerScreen = () => {
         easing: Easing.out(Easing.ease),
       });
     },
-    [tabIndicatorPosition]
+    [tabIndicatorPosition],
   );
 
   const handleOnboardingDismiss = useCallback(async () => {
@@ -124,21 +139,20 @@ const MaintenanceTrackerScreen = () => {
         setSaving(false);
       }
     },
-    [user?.uid, loadData]
+    [user?.uid, loadData],
   );
 
   return (
     <ModalWrapper>
       <View style={styles.container}>
-        <Header
-          title="Tracker Mentenanță"
-          leftIcon={<BackButton />}
-        />
+        <Header title="Tracker Mentenanță" leftIcon={<BackButton />} />
 
         {/* Tab Bar */}
         <Animated.View entering={FadeIn.delay(100)} style={styles.tabBar}>
           <View style={styles.tabContainer}>
-            <Animated.View style={[styles.tabIndicator, animatedIndicatorStyle]} />
+            <Animated.View
+              style={[styles.tabIndicator, animatedIndicatorStyle]}
+            />
             <Pressable
               style={styles.tab}
               onPress={() => handleTabChange("add")}
@@ -202,7 +216,8 @@ const MaintenanceTrackerScreen = () => {
                     color={colors.textMuted}
                     style={styles.helpText}
                   >
-                    Continuă să înregistrezi greutatea pentru cel puțin 2 săptămâni pentru a vedea analiza mentenanței.
+                    Continuă să înregistrezi greutatea pentru cel puțin 2
+                    săptămâni pentru a vedea analiza mentenanței.
                   </Typo>
                 </View>
               )}
