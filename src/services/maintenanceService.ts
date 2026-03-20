@@ -67,22 +67,38 @@ export const setOnboardingSeen = async (): Promise<void> => {
 };
 
 // AsyncStorage: Local cache for weight entries
-export const getCachedWeightEntries = async (): Promise<WeightEntry[]> => {
+const getWeightEntriesCacheKey = (userID: string): string =>
+  `${MAINTENANCE_STORAGE_KEYS.WEIGHT_ENTRIES}:${userID}`;
+
+export const getCachedWeightEntries = async (userID: string): Promise<WeightEntry[]> => {
   try {
-    const value = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEYS.WEIGHT_ENTRIES);
+    const perUserKey = getWeightEntriesCacheKey(userID);
+    const value = await AsyncStorage.getItem(perUserKey);
     if (value) {
       return JSON.parse(value);
     }
+
+    // Backward compatibility for legacy global cache key
+    const legacyValue = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEYS.WEIGHT_ENTRIES);
+    if (legacyValue) {
+      const parsedLegacyEntries = JSON.parse(legacyValue);
+      await AsyncStorage.setItem(perUserKey, JSON.stringify(parsedLegacyEntries));
+      return parsedLegacyEntries;
+    }
+
     return [];
   } catch {
     return [];
   }
 };
 
-export const setCachedWeightEntries = async (entries: WeightEntry[]): Promise<void> => {
+export const setCachedWeightEntries = async (
+  userID: string,
+  entries: WeightEntry[]
+): Promise<void> => {
   try {
     await AsyncStorage.setItem(
-      MAINTENANCE_STORAGE_KEYS.WEIGHT_ENTRIES,
+      getWeightEntriesCacheKey(userID),
       JSON.stringify(entries)
     );
   } catch (error) {
@@ -119,7 +135,7 @@ export const getWeightEntries = async (userID: string): Promise<ResponseType> =>
     entries.sort((a, b) => b.date.localeCompare(a.date));
 
     // Cache locally
-    await setCachedWeightEntries(entries);
+    await setCachedWeightEntries(userID, entries);
 
     return { success: true, data: entries };
   } catch (error: any) {
@@ -127,7 +143,7 @@ export const getWeightEntries = async (userID: string): Promise<ResponseType> =>
       console.error("[MaintenanceService] Error fetching weight entries:", error);
     }
     // Try to return cached data on error
-    const cached = await getCachedWeightEntries();
+    const cached = await getCachedWeightEntries(userID);
     if (cached.length > 0) {
       return { success: true, data: cached };
     }
@@ -179,7 +195,7 @@ export const saveWeightEntry = async (
     }
 
     // Update local cache
-    const cached = await getCachedWeightEntries();
+    const cached = await getCachedWeightEntries(userID);
     const existingIndex = cached.findIndex((e) => e.date === entry.date);
     if (existingIndex >= 0) {
       cached[existingIndex] = entry;
@@ -187,7 +203,7 @@ export const saveWeightEntry = async (
       cached.push(entry);
     }
     cached.sort((a, b) => b.date.localeCompare(a.date));
-    await setCachedWeightEntries(cached);
+    await setCachedWeightEntries(userID, cached);
 
     return { success: true };
   } catch (error: any) {
@@ -222,9 +238,9 @@ export const deleteWeightEntry = async (
     }
 
     // Update local cache
-    const cached = await getCachedWeightEntries();
+    const cached = await getCachedWeightEntries(userID);
     const filtered = cached.filter((e) => e.date !== date);
-    await setCachedWeightEntries(filtered);
+    await setCachedWeightEntries(userID, filtered);
 
     return { success: true };
   } catch (error: any) {
