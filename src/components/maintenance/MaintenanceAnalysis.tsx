@@ -9,6 +9,7 @@ import {
   ArrowRight,
 } from "phosphor-react-native";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import { MaintenanceAnalysisResult, MaintenanceStatus } from "@/src/types/maintenance";
@@ -52,13 +53,14 @@ const getStatusConfig = (
 
 const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
   const statusConfig = getStatusConfig(analysis.status);
+  const reduceMotion = useReduceMotion();
 
   const differenceText =
     analysis.difference >= 0 ? `+${analysis.difference}` : `${analysis.difference}`;
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(200).springify()}
+      entering={reduceMotion ? undefined : FadeInDown.delay(200).springify()}
       style={styles.container}
     >
       <View style={styles.header}>

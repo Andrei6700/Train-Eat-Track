@@ -1,6 +1,7 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { DayWorkout, WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
@@ -40,10 +41,11 @@ const WorkoutContentState = ({
   onLogWorkout,
 }: WorkoutContentStateProps) => {
   const { t } = useLanguage();
+  const reduceMotion = useReduceMotion();
   if (selectedWorkout) {
     return (
       <Animated.View
-        entering={FadeInDown.duration(400).delay(200)}
+        entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(200)}
         style={styles.workoutSection}
       >
         <View style={styles.sectionHeader}>
@@ -144,7 +146,7 @@ const WorkoutContentState = ({
 
     return (
       <Animated.View
-        entering={FadeInDown.duration(400).delay(200)}
+        entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(200)}
         style={styles.workoutSection}
       >
         <View style={styles.sectionHeader}>
@@ -225,7 +227,7 @@ const WorkoutContentState = ({
   if (shouldShowLogButton) {
     return (
       <Animated.View
-        entering={FadeInDown.duration(400).delay(200)}
+        entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(200)}
         style={styles.emptyContainer}
       >
         <View style={styles.emptyIconContainer}>
@@ -470,7 +472,7 @@ const styles = StyleSheet.create({
   },
   warningBox: {
     borderColor: colors.rose,
-    backgroundColor: "rgba(244, 63, 94, 0.08)",
+    backgroundColor: colors.surfaceRaised,
   },
   infoText: {
     flex: 1,

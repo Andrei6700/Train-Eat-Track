@@ -9,7 +9,7 @@ const ScreenWrapper = React.memo(
     style,
     children,
     statusBarStyle = "light-content",
-    statusBarBackgroundColor = colors.surface,
+    statusBarBackgroundColor = colors.background,
   }: ScreenWrapperProps) => {
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(insets.top, 12);
@@ -32,6 +32,6 @@ export default ScreenWrapper;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
 });

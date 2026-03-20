@@ -66,14 +66,14 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
             </Typo>
             <View style={styles.durationRow}>
               <Icons.TimerIcon size={16} color={colors.white} />
-              <Typo size={14} color={colors.white}>
+              <Typo size={14} variant="mono" color={colors.white}>
                 {formatDuration(workout.duration)}
               </Typo>
             </View>
           </View>
 
-          <View style={styles.iconContainer}>
-            <Icons.BarbellIcon size={24} color={colors.white} weight="fill" />
+        <View style={styles.iconContainer}>
+            <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
           </View>
         </View>
 
@@ -136,21 +136,24 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   container: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: scale(20),
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
     width: "100%",
     minHeight: verticalScale(120),
   },
   pressed: {
-    transform: [{ translateX: 3 }, { translateY: 3 }],
-    opacity: 0.95,
+    transform: [{ scale: 0.98 }],
+    opacity: 0.85,
   },
   header: {
     flexDirection: "row",
@@ -168,8 +171,8 @@ const styles = StyleSheet.create({
     marginTop: spacingY._5,
   },
   iconContainer: {
-    backgroundColor: colors.primary,
-    borderWidth: 2,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
     borderColor: colors.border,
     width: verticalScale(48),
     height: verticalScale(48),
@@ -184,8 +187,8 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
   },
   statBadge: {
-    backgroundColor: colors.primary,
-    borderWidth: 2,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius._10,
     paddingHorizontal: spacingX._12,
@@ -200,8 +203,8 @@ const styles = StyleSheet.create({
     gap: spacingX._7,
   },
   exerciseBadge: {
-    backgroundColor: colors.black,
-    borderWidth: 2,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius._10,
     paddingHorizontal: spacingX._12,

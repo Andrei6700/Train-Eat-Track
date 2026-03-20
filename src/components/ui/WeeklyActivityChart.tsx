@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { HomeWeekData } from "@/src/features/home/homeSelectors";
 import { WEEK_DAY_SHORT_NAMES } from "@/src/i18n/translations";
@@ -15,22 +16,26 @@ type WeeklyActivityChartProps = {
 
 const WeeklyActivityChart = React.memo(({ weekData }: WeeklyActivityChartProps) => {
   const { language, t } = useLanguage();
+  const reduceMotion = useReduceMotion();
 
   return (
-    <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.outer}>
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(100)}
+      style={styles.outer}
+    >
       <View style={styles.shadowLayer} />
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <View style={styles.titleIconWrap}>
-              <TrendUp size={22} color={colors.white} weight="fill" />
+              <TrendUp size={22} color={colors.black} weight="fill" />
             </View>
-            <Typo size={18} fontWeight="800" color={colors.white}>
+            <Typo size={20} variant="heading">
               {t("home_this_week")}
             </Typo>
           </View>
           <View style={styles.progressBadge}>
-            <Typo size={13} fontWeight="700" color={colors.white}>
+            <Typo size={12} variant="label" uppercase color={colors.textPrimary}>
               {t("home_days_progress", { count: weekData.workoutDaysCount })}
             </Typo>
           </View>
@@ -55,7 +60,7 @@ const WeeklyActivityChart = React.memo(({ weekData }: WeeklyActivityChartProps) 
                     />
                   )}
                 </View>
-                <Typo size={11} color={colors.white} style={styles.dayLabel}>
+                <Typo size={11} color={colors.textMuted} style={styles.dayLabel}>
                   {day}
                 </Typo>
               </View>
@@ -83,14 +88,15 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._20,
   },
   container: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._20,
     padding: spacingX._20,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   header: {
@@ -109,17 +115,17 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: radius._10,
     backgroundColor: colors.primary,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   progressBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surfaceRaised,
     paddingHorizontal: spacingX._12,
     paddingVertical: verticalScale(4),
-    borderRadius: radius._10,
-    borderWidth: 2,
+    borderRadius: radius._12,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   chartBars: {
@@ -139,7 +145,7 @@ const styles = StyleSheet.create({
   bar: {
     width: verticalScale(28),
     height: verticalScale(20),
-    backgroundColor: colors.black,
+    backgroundColor: colors.border,
     borderRadius: radius._10,
   },
   barActive: {
@@ -153,13 +159,14 @@ const styles = StyleSheet.create({
     height: verticalScale(60),
     width: verticalScale(28),
     backgroundColor: "transparent",
-    borderWidth: 2,
+    borderWidth: 1,
     borderStyle: "dashed",
     borderColor: colors.success,
     borderRadius: radius._10,
   },
   dayLabel: {
     marginTop: spacingY._7,
+    color: colors.textMuted,
   },
 });
 

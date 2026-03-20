@@ -107,13 +107,13 @@ const getStatusForDay = (
   const excess = dayData.calories - dayData.goal;
 
   if (percentage >= 100 && excess <= 50) {
-    return { type: "complete", percentage: 100, color: "#10B981" };
+    return { type: "complete", percentage: 100, color: colors.chartSuccess };
   }
   if (percentage >= 100 && excess <= 350) {
-    return { type: "warning", percentage: 100, color: "#F59E0B" };
+    return { type: "warning", percentage: 100, color: colors.chartWarning };
   }
   if (percentage >= 100) {
-    return { type: "danger", percentage: 100, color: "#EF4444" };
+    return { type: "danger", percentage: 100, color: colors.chartDanger };
   }
 
   return {
@@ -172,7 +172,7 @@ const DayCardInner = ({
               cx="26"
               cy="26"
               r={`${RING_RADIUS}`}
-              stroke={colors.neutral700}
+              stroke={colors.border}
               strokeWidth="3.5"
               fill="none"
             />

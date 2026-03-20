@@ -8,9 +8,9 @@ import Svg, { Circle } from "react-native-svg";
 import * as Icons from "phosphor-react-native";
 import NutritionFoodRow, { FoodWithBrand } from "./NutritionFoodRow";
 
-const PROTEIN_COLOR = "#10B981";
-const CARBS_COLOR = "#EF4444";
-const FAT_COLOR = "#F59E0B";
+const PROTEIN_COLOR = colors.macroProtein;
+const CARBS_COLOR = colors.macroCarbs;
+const FAT_COLOR = colors.macroFat;
 const CIRCUMFERENCE = 2 * Math.PI * 40;
 
 type MacroValues = {
@@ -52,7 +52,7 @@ const NutritionMealCard = ({
       <View style={styles.cardShadow} />
       <View style={styles.mealCard}>
         <View style={styles.mealHeader}>
-          <Typo size={18} fontWeight="700" color={colors.white}>
+          <Typo size={20} variant="heading" color={colors.textPrimary}>
             {getMealLabel(language, summary.mealName)}
           </Typo>
         </View>
@@ -64,7 +64,7 @@ const NutritionMealCard = ({
                 cx="50"
                 cy="50"
                 r="40"
-                stroke={colors.neutral700}
+                stroke={colors.border}
                 strokeWidth="8"
                 fill="none"
               />
@@ -106,8 +106,8 @@ const NutritionMealCard = ({
             <View style={styles.circleText}>
               <Typo
                 size={16}
-                fontWeight="600"
-                color={colors.white}
+                variant="metric"
+                color={colors.primary}
                 style={styles.calorieValueText}
               >
                 {summary.calories.toFixed(0)}
@@ -126,16 +126,16 @@ const NutritionMealCard = ({
             <View style={styles.macroColumnItem}>
               <Typo
                 size={12}
-                fontWeight="600"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroPercent}
               >
                 {summary.percentages.protein}%
               </Typo>
               <Typo
                 size={14}
-                fontWeight="700"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroValue}
               >
                 {Math.round(summary.macros.protein)} g
@@ -148,16 +148,16 @@ const NutritionMealCard = ({
             <View style={styles.macroColumnItem}>
               <Typo
                 size={12}
-                fontWeight="600"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroPercent}
               >
                 {summary.percentages.carbs}%
               </Typo>
               <Typo
                 size={14}
-                fontWeight="700"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroValue}
               >
                 {Math.round(summary.macros.carbs)} g
@@ -170,16 +170,16 @@ const NutritionMealCard = ({
             <View style={styles.macroColumnItem}>
               <Typo
                 size={12}
-                fontWeight="600"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroPercent}
               >
                 {summary.percentages.fat}%
               </Typo>
               <Typo
                 size={14}
-                fontWeight="700"
-                color={colors.white}
+                variant="mono"
+                color={colors.textPrimary}
                 style={styles.macroValue}
               >
                 {Math.round(summary.macros.fat)} g
@@ -207,6 +207,8 @@ const NutritionMealCard = ({
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => onMealPress(summary.mealName)}
+          accessibilityRole="button"
+          accessibilityLabel={t("nutrition_add_foods")}
         >
           <Icons.Plus size={18} color={colors.primary} weight="bold" />
           <Typo size={15} fontWeight="600" color={colors.primary}>
@@ -231,15 +233,16 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   mealCard: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 2,
-    borderColor: colors.neutral700,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   mealHeader: {
     marginBottom: 16,
@@ -248,10 +251,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.neutral900,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: radius._12,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   circleContainer: {
     position: "relative",
@@ -301,12 +306,15 @@ const styles = StyleSheet.create({
   addButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "center",
     gap: 8,
+    minHeight: 48,
     paddingVertical: 14,
-    paddingHorizontal: 0,
-    backgroundColor: "transparent",
-    borderRadius: 0,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius._12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });
 

@@ -5,9 +5,8 @@ import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Icons from "phosphor-react-native";
 import {
   Platform,
+  Pressable,
   StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,7 +21,9 @@ export default function CustomTabs({
   const isAndroid = Platform.OS === "android";
   const androidBottomInset = isAndroid ? insets.bottom : 0;
   const tabbarHeight =
-    Platform.OS === "ios" ? verticalScale(85) : verticalScale(70) + androidBottomInset;
+    Platform.OS === "ios"
+      ? verticalScale(82)
+      : verticalScale(66) + androidBottomInset;
   const tabbarPaddingBottom =
     Platform.OS === "ios"
       ? spacingY._15
@@ -113,26 +114,31 @@ export default function CustomTabs({
           });
         };
 
+        const routeLabel = tabbarLabels[route.name] || route.name;
+
         return (
-          <TouchableOpacity
+          <Pressable
             key={route.name}
             accessibilityState={isFocused ? { selected: true } : {}}
+            accessibilityRole="button"
+            accessibilityLabel={routeLabel}
             onPress={onPress}
             onLongPress={onLongPress}
-            style={styles.tabbarItem}
+            style={({ pressed }) => [
+              styles.tabbarItem,
+              pressed && styles.pressedTab,
+            ]}
           >
-            {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="clip"
+            <View style={styles.iconWrap}>
+              {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
+            </View>
+            <View
               style={[
-                styles.tabLabel,
-                { color: isFocused ? colors.primary : colors.textMuted },
+                styles.activeIndicator,
+                isFocused && styles.activeIndicatorVisible,
               ]}
-            >
-              {tabbarLabels[route.name]}
-            </Text>
-          </TouchableOpacity>
+            />
+          </Pressable>
         );
       })}
     </View>
@@ -143,25 +149,36 @@ const styles = StyleSheet.create({
   tabbar: {
     flexDirection: "row",
     width: "100%",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.tabBar,
     justifyContent: "space-around",
     alignItems: "center",
     borderTopColor: colors.border,
     borderTopWidth: 1,
   },
   tabbarItem: {
-    justifyContent: "flex-end",
+    justifyContent: "center",
     alignItems: "center",
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     minWidth: 0,
+    gap: 6,
   },
-  tabLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 4,
-    fontWeight: "700",
-    textAlign: "center",
-    width: "100%",
+  pressedTab: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  iconWrap: {
+    minHeight: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "transparent",
+  },
+  activeIndicatorVisible: {
+    backgroundColor: colors.tabIndicator,
   },
 });

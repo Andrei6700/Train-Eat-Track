@@ -1,4 +1,15 @@
 import { colors } from "@/constants/theme";
+import { BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+} from "@expo-google-fonts/inter";
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_600SemiBold,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useFonts } from "expo-font";
 import OfflineBanner from "@/src/components/ui/OfflineBanner";
 import SyncStatusBanner from "@/src/components/ui/SyncStatusBanner";
 import { AuthProvider } from "@/src/contexts/authContext";
@@ -13,6 +24,7 @@ import {
   SyncQueueSummary,
 } from "@/src/services/syncQueueService";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef } from "react";
 import { Alert, StatusBar, View } from "react-native";
 import "react-native-reanimated";
@@ -39,6 +51,8 @@ const EMPTY_SUMMARY: SyncQueueSummary = {
   conflicts: 0,
   nextRetryAt: null,
 };
+
+void SplashScreen.preventAutoHideAsync().catch(() => null);
 
 const SyncManager = () => {
   const { isConnected } = useNetwork();
@@ -161,8 +175,8 @@ const SyncManager = () => {
 
 const StackLayout = () => {
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       <OfflineBanner />
       <SyncManager />
       <Stack
@@ -170,7 +184,7 @@ const StackLayout = () => {
           headerShown: false,
           animation: "none",
           contentStyle: {
-            backgroundColor: colors.surface,
+            backgroundColor: colors.background,
           },
         }}
       >
@@ -234,6 +248,24 @@ const StackLayout = () => {
 };
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    BebasNeue_400Regular,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_600SemiBold,
+  });
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    void SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <NetworkProvider>
       <LanguageProvider>

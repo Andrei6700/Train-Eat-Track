@@ -32,7 +32,7 @@ const RecentWorkoutRow = React.memo(
               </Typo>
               <View style={styles.workoutMeta}>
                 <Timer size={14} color={colors.white} weight="fill" />
-                <Typo size={13} color={colors.white}>
+                <Typo size={13} variant="mono" color={colors.white}>
                   {formatDuration(workout.duration)}
                 </Typo>
               </View>
@@ -49,7 +49,7 @@ const RecentWorkoutRow = React.memo(
                 </Typo>
               ))}
               {moreCountLabel && (
-                <Typo size={12} color={colors.primary}>
+                <Typo size={12} color={colors.accent}>
                   {moreCountLabel}
                 </Typo>
               )}
@@ -57,7 +57,7 @@ const RecentWorkoutRow = React.memo(
           </View>
 
           <View style={styles.workoutRight}>
-            <CaretRight size={20} color={colors.white} weight="bold" />
+            <CaretRight size={20} color={colors.primary} weight="bold" />
           </View>
         </Pressable>
       </View>
@@ -82,21 +82,24 @@ const styles = StyleSheet.create({
     right: -4,
     bottom: -4,
     borderRadius: radius._17,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
   },
   workoutItem: {
     flexDirection: "row",
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: spacingX._15,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
     alignItems: "center",
     minHeight: 44,
   },
   pressed: {
-    transform: [{ translateX: 3 }, { translateY: 3 }],
-    opacity: 0.95,
+    transform: [{ scale: 0.98 }],
+    opacity: 0.85,
   },
   workoutLeft: {
     flex: 1,
@@ -117,9 +120,9 @@ const styles = StyleSheet.create({
     marginLeft: spacingX._15,
     width: 32,
     height: 32,
-    borderRadius: radius._10,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
+    borderRadius: radius._12,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",

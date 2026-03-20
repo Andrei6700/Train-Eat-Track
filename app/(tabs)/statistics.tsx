@@ -333,7 +333,7 @@ const Statistics = React.memo(() => {
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Typo size={28} fontWeight="700">
+          <Typo size={32} variant="heading">
             {t("tab_statistics")}
           </Typo>
         </View>
@@ -387,12 +387,7 @@ const Statistics = React.memo(() => {
             <View style={styles.shadowRounded17} />
             <View style={styles.statCard}>
               <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
-              <Typo
-                size={28}
-                fontWeight="700"
-                color={colors.white}
-                style={{ marginTop: spacingY._7 }}
-              >
+              <Typo size={40} variant="metric" color={colors.primary} style={{ marginTop: spacingY._7 }}>
                 {getTotalWorkouts()}
               </Typo>
               <Typo size={13} color={colors.neutral400}>
@@ -405,12 +400,7 @@ const Statistics = React.memo(() => {
             <View style={styles.shadowRounded17} />
             <View style={styles.statCard}>
               <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
-              <Typo
-                size={28}
-                fontWeight="700"
-                color={colors.white}
-                style={{ marginTop: spacingY._7 }}
-              >
+              <Typo size={40} variant="metric" color={colors.chartSuccess} style={{ marginTop: spacingY._7 }}>
                 {getTotalTime()}
               </Typo>
               <Typo size={13} color={colors.neutral400}>
@@ -512,12 +502,7 @@ const Statistics = React.memo(() => {
                     color={colors.primary}
                     weight="fill"
                   />
-                  <Typo
-                    size={24}
-                    fontWeight="700"
-                    color={colors.white}
-                    style={{ marginTop: spacingY._7 }}
-                  >
+                  <Typo size={32} variant="metric" color={colors.primary} style={{ marginTop: spacingY._7 }}>
                     {exerciseStats.maxWeight} kg
                   </Typo>
                   <Typo size={13} color={colors.neutral400}>
@@ -530,12 +515,7 @@ const Statistics = React.memo(() => {
                 <View style={styles.shadowRounded15} />
                 <View style={styles.exerciseStatCard}>
                   <Icons.HashIcon size={24} color={colors.green} weight="fill" />
-                  <Typo
-                    size={24}
-                    fontWeight="700"
-                    color={colors.white}
-                    style={{ marginTop: spacingY._7 }}
-                  >
+                  <Typo size={32} variant="metric" color={colors.chartSuccess} style={{ marginTop: spacingY._7 }}>
                     {exerciseStats.totalReps}
                   </Typo>
                   <Typo size={13} color={colors.neutral400}>
@@ -547,13 +527,8 @@ const Statistics = React.memo(() => {
               <View style={styles.stackedOuterFlex}>
                 <View style={styles.shadowRounded15} />
                 <View style={styles.exerciseStatCard}>
-                  <Icons.ScalesIcon size={24} color={"#B413BF"} weight="fill" />
-                  <Typo
-                    size={24}
-                    fontWeight="700"
-                    color={colors.white}
-                    style={{ marginTop: spacingY._7 }}
-                  >
+                  <Icons.ScalesIcon size={24} color={colors.accent} weight="fill" />
+                  <Typo size={32} variant="metric" color={colors.accent} style={{ marginTop: spacingY._7 }}>
                     {exerciseStats.totalWeight}
                   </Typo>
                   <Typo size={13} color={colors.neutral400}>

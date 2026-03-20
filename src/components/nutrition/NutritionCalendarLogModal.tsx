@@ -38,10 +38,10 @@ const STATUS_EMPTY: DayStatus = {
   color: colors.neutral350,
 };
 
-const ORANGE = "#F59E0B";
-const RED = "#EF4444";
-const CYAN = "#67E8F9";
-const GREEN = "#74D67A";
+const ORANGE = colors.chartWarning;
+const RED = colors.chartDanger;
+const CYAN = colors.primary;
+const GREEN = colors.chartSuccess;
 
 const startOfMonth = (date: Date): Date =>
   new Date(date.getFullYear(), date.getMonth(), 1);
@@ -484,7 +484,7 @@ const NutritionCalendarLogModal = ({
             </View>
 
             <View style={styles.chainRow}>
-              <Icons.CrownSimple size={verticalScale(26)} color="#FACC15" weight="fill" />
+              <Icons.CrownSimple size={verticalScale(26)} color={colors.chartWarning} weight="fill" />
               <Typo size={18} fontWeight="500" color={colors.neutral200} style={styles.chainText}>
                 {t("nutrition_log_best_streak", { count: bestStreak })}
               </Typo>

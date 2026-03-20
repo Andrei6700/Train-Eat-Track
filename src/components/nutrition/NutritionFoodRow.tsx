@@ -16,9 +16,9 @@ type NutritionFoodRowProps = {
   onLongPress: () => void;
 };
 
-const PROTEIN_COLOR = "#10B981";
-const CARBS_COLOR = "#EF4444";
-const FAT_COLOR = "#F59E0B";
+const PROTEIN_COLOR = colors.macroProtein;
+const CARBS_COLOR = colors.macroCarbs;
+const FAT_COLOR = colors.macroFat;
 
 const roundSafe = (value: number | undefined): number => {
   if (!Number.isFinite(value)) return 0;
@@ -101,10 +101,12 @@ export default React.memo(NutritionFoodRow);
 
 const styles = StyleSheet.create({
   foodItem: {
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    padding: 0,
-    borderWidth: 0,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 48,
   },
   foodMainRow: {
     flexDirection: "row",
@@ -113,7 +115,7 @@ const styles = StyleSheet.create({
   foodIconBox: {
     width: 32,
     height: 32,
-    backgroundColor: colors.neutral900,
+    backgroundColor: colors.surface,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",

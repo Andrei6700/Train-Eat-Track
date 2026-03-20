@@ -26,6 +26,7 @@ import {
 } from "phosphor-react-native";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import Typo from "@/src/components/ui/Typo";
 import Button from "@/src/components/ui/Button";
 
@@ -72,6 +73,7 @@ type OnboardingCarouselProps = {
 };
 
 const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => {
+  const reduceMotion = useReduceMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
   const translateX = useSharedValue(0);
   const fadeOut = useSharedValue(1);
@@ -114,7 +116,7 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
     fadeOut.value = withTiming(
       0,
       {
-        duration: 300,
+        duration: reduceMotion ? 0 : 300,
         easing: Easing.out(Easing.ease),
       },
       (finished) => {
@@ -123,7 +125,7 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
         }
       }
     );
-  }, [fadeOut, onDismiss]);
+  }, [fadeOut, onDismiss, reduceMotion]);
 
   const handleDotPress = useCallback(
     (index: number) => {
@@ -139,7 +141,11 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
       <Animated.View style={[styles.backdrop, animatedBackdropStyle]} />
       <View style={styles.centeredContainer}>
         <Animated.View
-          entering={SlideInDown.springify().damping(20).stiffness(100)}
+          entering={
+            reduceMotion
+              ? undefined
+              : SlideInDown.springify().damping(20).stiffness(100)
+          }
           style={[styles.modalContent, animatedContentStyle]}
         >
           <View style={styles.slidesContainer}>
@@ -175,7 +181,7 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
                 hitSlop={8}
               >
                 <Animated.View
-                  entering={FadeIn.delay(index * 100)}
+                  entering={reduceMotion ? undefined : FadeIn.delay(index * 100)}
                   style={[
                     styles.dot,
                     index === currentIndex && styles.dotActive,

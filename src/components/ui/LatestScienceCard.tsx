@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import { ArrowRight, Database, Flask } from "phosphor-react-native";
@@ -35,21 +36,29 @@ const DEFAULT_ARTICLES: Article[] = [
 
 const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestScienceCardProps) => {
   const { t } = useLanguage();
+  const reduceMotion = useReduceMotion();
 
   const handleArticlePress = (url: string) => {
     Linking.openURL(url);
   };
 
   return (
-    <Animated.View entering={FadeInDown.duration(600).delay(300).springify()} style={styles.cardOuter}>
+    <Animated.View
+      entering={
+        reduceMotion
+          ? undefined
+          : FadeInDown.duration(600).delay(300).springify()
+      }
+      style={styles.cardOuter}
+    >
       <View style={styles.cardShadow} />
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <View style={styles.iconContainer}>
-              <Flask size={22} color={colors.white} weight="fill" />
+              <Flask size={22} color={colors.black} weight="fill" />
             </View>
-            <Typo size={18} fontWeight="800" color={colors.white}>
+            <Typo size={20} variant="heading">
               {t("home_latest_science")}
             </Typo>
           </View>
@@ -63,24 +72,24 @@ const LatestScienceCard = React.memo(({ articles = DEFAULT_ARTICLES }: LatestSci
               onPress={() => handleArticlePress(article.url)}
             >
               <View style={styles.articleContent}>
-                <Typo size={15} fontWeight="700" color={colors.white} numberOfLines={2}>
+                <Typo size={15} fontWeight="600" color={colors.textPrimary} numberOfLines={2}>
                   {article.title}
                 </Typo>
-                <Typo size={13} color={colors.white} numberOfLines={2} style={styles.articleSummary}>
+                <Typo size={13} color={colors.textMuted} numberOfLines={2} style={styles.articleSummary}>
                   {article.summary}
                 </Typo>
               </View>
 
               <View style={styles.arrowIcon}>
-                <ArrowRight size={18} color={colors.white} weight="bold" />
+                <ArrowRight size={18} color={colors.primary} weight="bold" />
               </View>
             </Pressable>
           ))}
         </View>
 
         <View style={styles.footer}>
-          <Database size={14} color={colors.white} weight="fill" />
-          <Typo size={11} color={colors.white}>
+          <Database size={14} color={colors.textMuted} weight="fill" />
+          <Typo size={11} color={colors.textMuted}>
             PubMed - National Library of Medicine
           </Typo>
         </View>
@@ -105,14 +114,15 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._20,
   },
   container: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._20,
     padding: spacingX._20,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   header: {
@@ -127,7 +137,7 @@ const styles = StyleSheet.create({
     width: verticalScale(40),
     height: verticalScale(40),
     backgroundColor: colors.primary,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius._12,
     alignItems: "center",
@@ -141,16 +151,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._12,
-    backgroundColor: colors.black,
+    backgroundColor: colors.surfaceRaised,
     padding: spacingX._15,
     borderRadius: radius._15,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     minHeight: 44,
   },
   pressed: {
-    transform: [{ translateX: 3 }, { translateY: 3 }],
-    opacity: 0.95,
+    transform: [{ scale: 0.98 }],
+    opacity: 0.85,
   },
   articleContent: {
     flex: 1,
@@ -162,9 +172,9 @@ const styles = StyleSheet.create({
   arrowIcon: {
     width: verticalScale(32),
     height: verticalScale(32),
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surface,
     borderRadius: radius._10,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",

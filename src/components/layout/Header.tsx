@@ -9,8 +9,9 @@ const Header = ({title= "", leftIcon, rightIcon, style}: HeaderProps) => {
     <View style={[styles.container, style]}>
       {leftIcon &&<View style={styles.leftIcon}>{leftIcon}</View>}
       {title && (
-        <Typo size={22} 
-        fontWeight={"800"}
+        <Typo size={32} 
+        variant="heading"
+        color={colors.textPrimary}
         style={{
             textAlign: 'center', 
             width: leftIcon || rightIcon ? "76%" : "100%",
@@ -31,17 +32,23 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        minHeight: 56,
+        minHeight: 52,
         backgroundColor: colors.surface,
-        borderBottomWidth: 2,
+        borderBottomWidth: 1,
         borderBottomColor: colors.border,
         paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingVertical: 6,
     },
     leftIcon: {
-        alignSelf: "flex-start"
+        alignSelf: "flex-start",
+        minWidth: 48,
+        minHeight: 48,
+        justifyContent: "center",
     },
     rightIcon: {
         alignSelf: 'flex-start',
+        minWidth: 48,
+        minHeight: 48,
+        justifyContent: "center",
     },
 })

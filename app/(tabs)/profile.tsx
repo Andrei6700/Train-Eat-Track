@@ -3,6 +3,7 @@ import Header from "@/src/components/layout/Header";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import Typo from "@/src/components/ui/Typo";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { auth } from "@/src/config/firebase";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
@@ -21,11 +22,12 @@ const Profile = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
+  const reduceMotion = useReduceMotion();
   const accountOptions: accountOptionType[] = [
     {
       id: "edit-profile",
       title: t("profile_edit_profile"),
-      icon: <Icons.UserIcon size={24} color={colors.white} weight="fill" />,
+      icon: <Icons.UserIcon size={24} color={colors.black} weight="fill" />,
       routeName: "/(modals)/profileModal",
       bgColor: colors.primary,
     },
@@ -104,7 +106,7 @@ const Profile = () => {
             </View>
             {/* name and mail */}
             <View style={styles.nameContainer}>
-              <Typo size={24} fontWeight={"800"} color={colors.textLight}>
+              <Typo size={32} variant="heading" color={colors.textPrimary}>
                 {user?.name}
               </Typo>
               <Typo size={15} color={colors.textMuted}>
@@ -119,9 +121,11 @@ const Profile = () => {
             return (
               <Animated.View
                 key={index.toString()}
-                entering={FadeInDown.delay(index * 50)
-                  .springify()
-                  .damping(14)}
+                entering={
+                  reduceMotion
+                    ? undefined
+                    : FadeInDown.delay(index * 50).springify().damping(14)
+                }
                 style={styles.listItem}
               >
                 <View style={styles.listItemShadow} />
@@ -142,7 +146,7 @@ const Profile = () => {
                     size={16}
                     style={{ flex: 1 }}
                     color={item.id === "logout" ? colors.danger : colors.textLight}
-                    fontWeight={"700"}
+                    fontWeight={"600"}
                   >
                     {item.title}
                   </Typo>
@@ -176,8 +180,8 @@ const styles = StyleSheet.create({
   userInfo: {
     alignItems: "center",
     gap: spacingY._15,
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 2,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius._17,
     paddingVertical: spacingY._20,
@@ -194,7 +198,8 @@ const styles = StyleSheet.create({
     left: 1,
     right: -1,
     bottom: -1,
-    backgroundColor: colors.border,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   avatarContainer: {
@@ -207,7 +212,7 @@ const styles = StyleSheet.create({
     height: verticalScale(135),
     width: verticalScale(135),
     borderRadius: radius._20,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     // overflow: "hidden",
     // position: "relative",
@@ -236,7 +241,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius._10,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   listItem: {
@@ -250,7 +255,8 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.border,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._15,
   },
   accountOptions: {
@@ -260,17 +266,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._10,
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 2,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius._15,
-    minHeight: 44,
+    minHeight: 52,
     paddingHorizontal: spacingX._12,
     paddingVertical: spacingY._10,
   },
   pressed: {
-    transform: [{ translateX: 3 }, { translateY: 3 }],
-    opacity: 0.95,
+    transform: [{ scale: 0.97 }],
+    opacity: 0.8,
   },
   logoutRow: {
     borderColor: colors.danger,

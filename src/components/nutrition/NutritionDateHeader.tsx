@@ -1,10 +1,11 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { useLanguage } from "@/src/contexts/languageContext";
 import Typo from "@/src/components/ui/Typo";
-import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { useLanguage } from "@/src/contexts/languageContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import * as Icons from "phosphor-react-native";
+import React from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 type NutritionDateHeaderProps = {
   dateLabel: string;
@@ -20,33 +21,44 @@ const NutritionDateHeader = ({
   onOpenMaintenance,
 }: NutritionDateHeaderProps) => {
   const { t } = useLanguage();
+  const reduceMotion = useReduceMotion();
 
   return (
-    <Animated.View entering={FadeInDown.duration(400)} style={styles.dateHeaderOuter}>
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(400)}
+      style={styles.dateHeaderOuter}
+    >
       <View style={styles.dateHeaderShadow} />
       <View style={styles.dateHeader}>
         <View style={styles.dateHeaderContent}>
-          <Typo size={24} fontWeight="700">
+          <Typo size={32} variant="heading">
             {dateLabel}
           </Typo>
           <View style={styles.actions}>
-            <TouchableOpacity
+            <Pressable
               onPress={onOpenMaintenance}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Tracker mentenanță"
+              accessibilityLabel="Maintenance tracker"
             >
               <Icons.Scales size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               onPress={onOpenCalendarLog}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t("nutrition_open_calendar_log_a11y")}
             >
               <Icons.CalendarBlank size={24} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onOpenSettings}>
+            </Pressable>
+            <Pressable
+              onPress={onOpenSettings}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t("profile_settings")}
+            >
               <Icons.Gear size={24} color={colors.primary} />
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -68,15 +80,16 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   dateHeader: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 2,
-    borderColor: colors.neutral700,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dateHeaderContent: {
     flexDirection: "row",
@@ -86,7 +99,16 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacingX._15,
+    gap: spacingX._10,
+  },
+  iconButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
   },
 });
-

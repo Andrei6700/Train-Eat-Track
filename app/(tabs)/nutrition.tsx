@@ -18,6 +18,7 @@ import NutritionCalendar, {
   NutritionCalendarDayData,
 } from "@/src/components/ui/NutritionCalendar";
 import Typo from "@/src/components/ui/Typo";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
@@ -56,7 +57,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  View,
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -296,6 +296,7 @@ const Nutrition = () => {
   const router = useRouter();
   const { user } = useAuth();
   const { language, t } = useLanguage();
+  const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
   const {
     todayNutrition,
@@ -1492,7 +1493,7 @@ const Nutrition = () => {
             onOpenMaintenance={handleOpenMaintenance}
           />
 
-          <Typo size={24} fontWeight="700" style={styles.calendarMonthTitle}>
+          <Typo size={32} variant="heading" style={styles.calendarMonthTitle}>
             {calendarMonthLabel}
           </Typo>
 
@@ -1513,7 +1514,7 @@ const Nutrition = () => {
           <NutritionObjectiveCard stats={nutritionStats} />
 
           <Animated.View
-            entering={FadeInDown.duration(400).delay(300)}
+            entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(300)}
             style={styles.mealsSection}
           >
             {mealSummaries.map((summary) => (

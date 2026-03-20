@@ -36,6 +36,9 @@ export type TypoProps = TextProps & {
   children: any | null;
   style?: TextStyle;
   textProps?: TextProps;
+  variant?: "body" | "heading" | "metric" | "mono" | "label";
+  family?: "body" | "heading" | "mono";
+  uppercase?: boolean;
 };
 
 export type IconComponent = React.ComponentType<{

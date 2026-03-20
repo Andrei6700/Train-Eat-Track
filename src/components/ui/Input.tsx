@@ -1,4 +1,4 @@
-import { colors } from '@/constants/theme';
+import { colors, fontFamilies, radius } from '@/constants/theme';
 import { InputProps } from '@/src/types/index';
 import { verticalScale, scale } from '@/src/utils/styling';
 import React, { useState } from 'react';
@@ -29,7 +29,7 @@ const Input = (props: InputProps) => {
       {icon && icon}
       <TextInput 
         style={[styles.input, inputStyle]}
-        placeholderTextColor={colors.neutral400}
+        placeholderTextColor={colors.textMuted}
         ref={inputRef && inputRef}
         {...textInputProps}
         onFocus={(event) => {
@@ -50,29 +50,31 @@ export default Input
 const styles = StyleSheet.create({
     container:{
         flexDirection: 'row',
-        minHeight: 52,
+        minHeight: verticalScale(52),
         alignItems: 'center',
         justifyContent: "center",
-        borderWidth: 0,
+        borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 12,
-        backgroundColor: colors.surfaceMid,
-        paddingHorizontal: 14,
-        paddingVertical: 0,
+        borderRadius: radius._12,
+        backgroundColor: colors.surfaceRaised,
+        paddingHorizontal: scale(16),
+        paddingVertical: verticalScale(12),
         gap: scale(8),
         width: '100%',
     },
     containerFocused: {
-      borderWidth: 2,
+      borderWidth: 1.5,
       borderColor: colors.primary,
     },
     containerError: {
-      borderWidth: 2,
-      borderColor: colors.danger,
+      borderWidth: 1.5,
+      borderColor: colors.secondary,
     },
     input:{
         flex: 1,
-        color: colors.textLight,
-        fontSize: verticalScale(15),
+        color: colors.textPrimary,
+        fontSize: verticalScale(16),
+        fontFamily: fontFamilies.bodyRegular,
+        minHeight: verticalScale(24),
     }
 })

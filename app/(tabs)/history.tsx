@@ -387,7 +387,7 @@ const History = () => {
           <Header title={t("tab_history")} style={styles.header} />
 
           <View style={styles.monthHeader}>
-            <Typo size={20} fontWeight="600" color={colors.text}>
+            <Typo size={24} variant="heading" color={colors.textPrimary}>
               {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
             </Typo>
             <View style={styles.statsRow}>

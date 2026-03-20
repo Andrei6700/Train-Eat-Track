@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
@@ -23,14 +24,14 @@ export type NutritionStats = {
   fatProgress: number;
 };
 
-const PROTEIN_COLOR = "#10B981";
-const CARBS_COLOR = "#EF4444";
-const FAT_COLOR = "#F59E0B";
-const FIRE_COLOR = "#FF6B35";
-const RING_COLOR_REMAINING = "#7DDC8A";
-const RING_COLOR_OVER_WARNING = "#F6B64E";
-const RING_COLOR_OVER_DANGER = "#EE7B80";
-const RING_TRACK_COLOR = "#A3A8AE";
+const PROTEIN_COLOR = colors.macroProtein;
+const CARBS_COLOR = colors.macroCarbs;
+const FAT_COLOR = colors.macroFat;
+const FIRE_COLOR = colors.secondary;
+const RING_COLOR_REMAINING = colors.success;
+const RING_COLOR_OVER_WARNING = colors.chartWarning;
+const RING_COLOR_OVER_DANGER = colors.secondary;
+const RING_TRACK_COLOR = colors.border;
 const RING_SIZE = verticalScale(124);
 const RING_RADIUS = 54;
 const RING_STROKE_WIDTH = 12;
@@ -38,6 +39,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
   const { t } = useLanguage();
+  const reduceMotion = useReduceMotion();
   const proteinFillStyle = useMemo<ViewStyle>(
     () => ({
       width: `${stats.proteinProgress}%`,
@@ -74,7 +76,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(400).delay(100)}
+      entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(100)}
       style={styles.cardOuter}
     >
       <View style={styles.cardShadow} />
@@ -85,14 +87,14 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
               <View style={styles.objectiveItem}>
                 <View style={styles.objectiveHeader}>
                   <Icons.Target size={20} color={colors.primary} weight="fill" />
-                  <Typo size={16} fontWeight="600" color={colors.white}>
+                  <Typo size={12} variant="label" uppercase color={colors.textMuted}>
                     {t("nutrition_target")}
                   </Typo>
                 </View>
                 <Typo
-                  size={20}
-                  fontWeight="700"
-                  color={colors.white}
+                  size={32}
+                  variant="metric"
+                  color={colors.primary}
                   style={styles.calorieValue}
                 >
                   {stats.calorieGoal} kcal
@@ -101,14 +103,14 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
               <View style={styles.objectiveItem}>
                 <View style={styles.objectiveHeader}>
                   <Icons.Fire size={20} color={FIRE_COLOR} weight="fill" />
-                  <Typo size={16} fontWeight="600" color={colors.white}>
+                  <Typo size={12} variant="label" uppercase color={colors.textMuted}>
                     {t("nutrition_consumed")}
                   </Typo>
                 </View>
                 <Typo
-                  size={20}
-                  fontWeight="700"
-                  color={colors.white}
+                  size={32}
+                  variant="metric"
+                  color={colors.textPrimary}
                   style={styles.calorieValue}
                 >
                   {stats.totalCalories} kcal
@@ -147,7 +149,7 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
               <View style={styles.circleInner}>
                 <Typo
                   size={21}
-                  fontWeight="700"
+                  variant="metric"
                   color={ringColor}
                   style={styles.centerValue}
                 >
@@ -176,8 +178,8 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
             </View>
             <Typo
               size={14}
-              fontWeight="600"
-              color={colors.white}
+              variant="mono"
+              color={colors.textPrimary}
               style={styles.macroValue}
             >
               {Math.round(stats.totalMacros.protein)}g / {stats.proteinGoal}g
@@ -193,8 +195,8 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
             </View>
             <Typo
               size={14}
-              fontWeight="600"
-              color={colors.white}
+              variant="mono"
+              color={colors.textPrimary}
               style={styles.macroValue}
             >
               {Math.round(stats.totalMacros.carbs)}g / {stats.carbsGoal}g
@@ -210,8 +212,8 @@ const NutritionObjectiveCard = ({ stats }: { stats: NutritionStats }) => {
             </View>
             <Typo
               size={14}
-              fontWeight="600"
-              color={colors.white}
+              variant="mono"
+              color={colors.textPrimary}
               style={styles.macroValue}
             >
               {Math.round(stats.totalMacros.fat)}g / {stats.fatGoal}g
@@ -237,15 +239,16 @@ const styles = StyleSheet.create({
     left: 4,
     right: -4,
     bottom: -4,
-    backgroundColor: colors.cardShadow,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   objectiveCard: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 2,
-    borderColor: colors.neutral700,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   mainContent: {
     flexDirection: "row",
@@ -303,6 +306,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: spacingX._7,
   },
   macroItem: {
     alignItems: "center",
@@ -314,16 +318,16 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(4),
   },
   macroProgressBar: {
-    width: "80%",
-    height: 4,
-    backgroundColor: colors.neutral700,
-    borderRadius: 2,
+    width: "90%",
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: radius.full,
     overflow: "hidden",
     marginBottom: verticalScale(4),
   },
   macroProgressFill: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: radius.full,
   },
   macroValue: {
     textAlign: "center",

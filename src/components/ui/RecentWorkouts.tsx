@@ -1,4 +1,5 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { WorkoutHistory } from "@/src/types/index";
@@ -19,6 +20,7 @@ type RecentWorkoutsProps = {
 const RecentWorkouts = React.memo(({ recentWorkouts, loading }: RecentWorkoutsProps) => {
   const router = useRouter();
   const { language, t } = useLanguage();
+  const reduceMotion = useReduceMotion();
 
   const formatDate = (date: Date | string) => {
     const workoutDate = new Date(date);
@@ -51,19 +53,22 @@ const RecentWorkouts = React.memo(({ recentWorkouts, loading }: RecentWorkoutsPr
   };
 
   return (
-    <Animated.View entering={FadeInDown.duration(400).delay(150)} style={styles.container}>
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(150)}
+      style={styles.container}
+    >
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={styles.titleIconWrap}>
-            <Calendar size={20} color={colors.white} weight="fill" />
+            <Calendar size={20} color={colors.black} weight="fill" />
           </View>
-          <Typo size={18} fontWeight="800">
+          <Typo size={20} variant="heading">
             {t("home_recent_activity")}
           </Typo>
         </View>
         {recentWorkouts.length > 0 && (
           <Pressable onPress={handleViewAll} style={({ pressed }) => [styles.viewAllButton, pressed && styles.pressed]}>
-            <Typo size={13} color={colors.white} fontWeight="800">
+            <Typo size={12} variant="label" uppercase color={colors.textPrimary}>
               {t("home_see_all")}
             </Typo>
           </Pressable>
@@ -81,11 +86,11 @@ const RecentWorkouts = React.memo(({ recentWorkouts, loading }: RecentWorkoutsPr
         <View style={styles.placeholderOuter}>
           <View style={styles.placeholderShadow} />
           <View style={styles.emptyState}>
-            <Barbell size={48} color={colors.black} weight="fill" />
-            <Typo size={16} color={colors.white} style={styles.emptyTitle}>
+            <Barbell size={48} color={colors.secondary} weight="fill" />
+            <Typo size={16} color={colors.textPrimary} style={styles.emptyTitle}>
               {t("home_no_workouts_yet")}
             </Typo>
-            <Typo size={14} color={colors.white} style={styles.emptySubtitle}>
+            <Typo size={14} color={colors.textMuted} style={styles.emptySubtitle}>
               {t("home_start_training_history")}
             </Typo>
           </View>
@@ -134,7 +139,7 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: radius._10,
     backgroundColor: colors.primary,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
@@ -144,14 +149,14 @@ const styles = StyleSheet.create({
     minWidth: 44,
     paddingHorizontal: spacingX._10,
     justifyContent: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius._10,
-    borderWidth: 2,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radius._12,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   pressed: {
-    transform: [{ translateX: 3 }, { translateY: 3 }],
-    opacity: 0.95,
+    transform: [{ scale: 0.97 }],
+    opacity: 0.8,
   },
   placeholderOuter: {
     position: "relative",
@@ -165,23 +170,24 @@ const styles = StyleSheet.create({
     right: -4,
     bottom: -4,
     backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
   },
   placeholderCard: {
     height: verticalScale(120),
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   emptyState: {
-    backgroundColor: colors.neutral800,
+    backgroundColor: colors.surface,
     borderRadius: radius._17,
     padding: spacingY._50,
     alignItems: "center",
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   workoutsList: {

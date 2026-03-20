@@ -5,6 +5,7 @@ import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import WorkoutCalendarStrip from "@/src/components/workout/WorkoutCalendarStrip";
 import WorkoutContentState from "@/src/components/workout/WorkoutContentState";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
@@ -115,6 +116,7 @@ const Workout = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
+  const reduceMotion = useReduceMotion();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -459,10 +461,10 @@ const Workout = () => {
         <ScreenWrapper>
           <View style={styles.container}>
             <Animated.View
-              entering={FadeIn.duration(400)}
+              entering={reduceMotion ? undefined : FadeIn.duration(400)}
               style={styles.header}
             >
-              <Typo size={28} fontWeight="700">
+              <Typo size={32} variant="heading">
                 {t("tab_workout")}
               </Typo>
               {workoutPlan && (
@@ -492,8 +494,11 @@ const Workout = () => {
     <SwipeableScreen>
       <ScreenWrapper>
         <View style={styles.container}>
-          <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
-            <Typo size={28} fontWeight="700">
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(400)}
+            style={styles.header}
+          >
+            <Typo size={32} variant="heading">
               {t("tab_workout")}
             </Typo>
             {workoutPlan && (
@@ -514,10 +519,12 @@ const Workout = () => {
           </Animated.View>
 
           <Animated.View
-            entering={FadeInDown.duration(400).delay(100)}
+            entering={
+              reduceMotion ? undefined : FadeInDown.duration(400).delay(100)
+            }
             style={styles.monthHeader}
           >
-            <Typo size={20} fontWeight="600" color={colors.text}>
+            <Typo size={24} variant="heading" color={colors.textPrimary}>
               {MONTH_NAMES[language][currentMonth.getMonth()]}{" "}
               {currentMonth.getFullYear()}
             </Typo>
@@ -533,7 +540,9 @@ const Workout = () => {
 
           {calendarDays.length > 0 && (
             <Animated.View
-              entering={FadeInDown.duration(400).delay(200)}
+              entering={
+                reduceMotion ? undefined : FadeInDown.duration(400).delay(200)
+              }
               style={styles.calendarSection}
             >
               <WorkoutCalendarStrip
