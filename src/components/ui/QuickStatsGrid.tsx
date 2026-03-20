@@ -1,4 +1,4 @@
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { colors, radius, spacingX } from "@/constants/theme";
 import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { HomeQuickStats } from "@/src/features/home/homeSelectors";
@@ -34,45 +34,99 @@ const QuickStatsGrid = React.memo(({ stats, loading }: QuickStatsGridProps) => {
       <View style={styles.cardWrap}>
         <View style={styles.cardShadow} />
         <View style={styles.statCard}>
-          <View style={[styles.statIcon, styles.primaryIconBackground]}>
-            <Barbell size={24} color={colors.black} weight="fill" />
+          <View style={styles.iconSlot}>
+            <View style={[styles.statIcon, styles.primaryIconBackground]}>
+              <Barbell size={24} color={colors.black} weight="fill" />
+            </View>
           </View>
-          <Typo size={40} variant="metric" style={styles.statValue}>
-            {stats.totalWorkouts}
-          </Typo>
-          <Typo size={12} variant="label" uppercase color={colors.textMuted} style={styles.statLabel}>
-            {t("home_total_workouts")}
-          </Typo>
+          <View style={styles.valueSlot}>
+            <Typo
+              size={36}
+              variant="metric"
+              style={styles.statValue}
+              textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }}
+            >
+              {stats.totalWorkouts}
+            </Typo>
+          </View>
+          <View style={styles.labelSlot}>
+            <Typo
+              size={12}
+              variant="label"
+              uppercase
+              color={colors.textMuted}
+              style={styles.statLabel}
+              textProps={{ numberOfLines: 3 }}
+            >
+              {t("home_total_workouts")}
+            </Typo>
+          </View>
         </View>
       </View>
 
       <View style={styles.cardWrap}>
         <View style={styles.cardShadow} />
         <View style={styles.statCard}>
-          <View style={[styles.statIcon, styles.streakIconBackground]}>
-            <Fire size={24} color={colors.white} weight="fill" />
+          <View style={styles.iconSlot}>
+            <View style={[styles.statIcon, styles.streakIconBackground]}>
+              <Fire size={24} color={colors.white} weight="fill" />
+            </View>
           </View>
-          <Typo size={40} variant="metric" style={styles.statValue}>
-            {stats.currentStreak}
-          </Typo>
-          <Typo size={12} variant="label" uppercase color={colors.textMuted} style={styles.statLabel}>
-            {t("home_day_streak")}
-          </Typo>
+          <View style={styles.valueSlot}>
+            <Typo
+              size={36}
+              variant="metric"
+              style={styles.statValue}
+              textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }}
+            >
+              {stats.currentStreak}
+            </Typo>
+          </View>
+          <View style={styles.labelSlot}>
+            <Typo
+              size={12}
+              variant="label"
+              uppercase
+              color={colors.textMuted}
+              style={styles.statLabel}
+              textProps={{ numberOfLines: 3 }}
+            >
+              {t("home_day_streak")}
+            </Typo>
+          </View>
         </View>
       </View>
 
       <View style={styles.cardWrap}>
         <View style={styles.cardShadow} />
         <View style={styles.statCard}>
-          <View style={[styles.statIcon, styles.durationIconBackground]}>
-            <Timer size={24} color={colors.white} weight="fill" />
+          <View style={styles.iconSlot}>
+            <View style={[styles.statIcon, styles.durationIconBackground]}>
+              <Timer size={24} color={colors.white} weight="fill" />
+            </View>
           </View>
-          <Typo size={40} variant="metric" style={styles.statValue}>
-            {stats.totalHoursDisplay}h
-          </Typo>
-          <Typo size={12} variant="label" uppercase color={colors.textMuted} style={styles.statLabel}>
-            {t("home_total_time")}
-          </Typo>
+          <View style={styles.valueSlot}>
+            <Typo
+              size={36}
+              variant="metric"
+              style={styles.statValue}
+              textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.65 }}
+            >
+              {stats.totalHoursDisplay} h
+            </Typo>
+          </View>
+          <View style={styles.labelSlot}>
+            <Typo
+              size={12}
+              variant="label"
+              uppercase
+              color={colors.textMuted}
+              style={styles.statLabel}
+              textProps={{ numberOfLines: 3 }}
+            >
+              {t("home_total_time")}
+            </Typo>
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -117,9 +171,14 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     padding: spacingX._15,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  iconSlot: {
+    height: verticalScale(52),
+    alignItems: "center",
+    justifyContent: "center",
   },
   statIcon: {
     width: verticalScale(44),
@@ -140,14 +199,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   statValue: {
-    marginTop: spacingY._10,
-    minHeight: verticalScale(42),
+    minHeight: verticalScale(46),
     textAlign: "center",
     color: colors.primary,
   },
+  valueSlot: {
+    height: verticalScale(64),
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+  },
+  labelSlot: {
+    height: verticalScale(66),
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+  },
   statLabel: {
     textAlign: "center",
-    minHeight: verticalScale(34),
+    minHeight: verticalScale(52),
     lineHeight: verticalScale(18),
   },
 });

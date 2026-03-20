@@ -132,7 +132,6 @@ const Profile = () => {
                 <Pressable
                   style={({ pressed }) => [
                     styles.flexRow,
-                    item.id === "logout" && styles.logoutRow,
                     pressed && styles.pressed,
                   ]}
                   onPress={() => handlePress(item)}
@@ -277,8 +276,5 @@ const styles = StyleSheet.create({
   pressed: {
     transform: [{ scale: 0.97 }],
     opacity: 0.8,
-  },
-  logoutRow: {
-    borderColor: colors.danger,
   },
 });

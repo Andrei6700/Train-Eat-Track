@@ -38,6 +38,7 @@ const NutritionDateHeader = ({
             <Pressable
               onPress={onOpenMaintenance}
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Maintenance tracker"
             >
@@ -46,6 +47,7 @@ const NutritionDateHeader = ({
             <Pressable
               onPress={onOpenCalendarLog}
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t("nutrition_open_calendar_log_a11y")}
             >
@@ -54,6 +56,7 @@ const NutritionDateHeader = ({
             <Pressable
               onPress={onOpenSettings}
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t("profile_settings")}
             >
@@ -99,11 +102,11 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacingX._10,
+    gap: spacingX._3,
   },
   iconButton: {
-    minWidth: 48,
-    minHeight: 48,
+    minWidth: 40,
+    minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
   },

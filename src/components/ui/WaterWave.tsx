@@ -109,7 +109,7 @@ const WaterWave = ({ percentage, total, goal, size = 150 }: WaterWaveProps) => {
           />
           <AnimatedPath
             animatedProps={animatedProps2}
-            fill={colors.accent}
+            fill={colors.waterAccent}
             opacity="0.5"
           />
         </G>
@@ -127,10 +127,10 @@ const WaterWave = ({ percentage, total, goal, size = 150 }: WaterWaveProps) => {
 
       {/* Text overlay  */}
       <View style={styles.textOverlay}>
-        <Typo size={48} variant="metric" color={colors.primary} style={styles.percentageText}>
+        <Typo size={48} variant="metric" color={colors.white} style={styles.percentageText}>
           {Math.round(percentage)}%
         </Typo>
-        <Typo size={14} variant="mono" color={colors.textMuted} style={styles.waterText}>
+        <Typo size={14} variant="mono" color={colors.neutral100} style={styles.waterText}>
           {formatWaterText()}
         </Typo>
       </View>
@@ -156,9 +156,15 @@ const styles = StyleSheet.create({
   },
   percentageText: {
     textAlign: "center",
+    textShadowColor: colors.black,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   waterText: {
     textAlign: "center",
     marginTop: 4,
+    textShadowColor: colors.black,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });

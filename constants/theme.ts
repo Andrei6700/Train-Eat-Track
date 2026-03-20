@@ -2,9 +2,9 @@ import { scale, verticalScale } from '@/src/utils/styling';
 
 export const colors = {
   // Brand
-  primary: "#C8FF00",
-  primaryLight: "#E4FF7A",
-  primaryDark: "#8FB700",
+  primary: "#A8E10C",
+  primaryLight: "#C8F45A",
+  primaryDark: "#6E9800",
   secondary: "#FF3D00",
   accent: "#7B61FF",
 
@@ -52,19 +52,20 @@ export const colors = {
 
   // Navigation
   tabBar: "#0D0D0D",
-  tabIndicator: "#C8FF00",
+  tabIndicator: "#A8E10C",
 
   // Charts / nutrition / badges
   purple: "#7B61FF",
   chartSuccess: "#22C55E",
   chartWarning: "#FFB020",
   chartDanger: "#FF3D00",
-  chartProgress: "#C8FF00",
+  chartProgress: "#A8E10C",
   macroProtein: "#22C55E",
   macroCarbs: "#7B61FF",
   macroFat: "#FFB020",
-  waterStart: "#B6F500",
-  waterEnd: "#7B61FF",
+  waterStart: "#60A5FA",
+  waterEnd: "#2563EB",
+  waterAccent: "#3B82F6",
   badgeStreakBackground: "#1A1A00",
 };
 

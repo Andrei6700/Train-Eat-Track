@@ -7,21 +7,23 @@ import Typo from "../ui/Typo";
 const Header = ({ title = "", leftIcon, rightIcon, style }: HeaderProps) => {
   return (
     <View style={[styles.container, style]}>
-      {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
-      {title && (
-        <Typo
-          size={32}
-          variant="heading"
-          color={colors.textPrimary}
-          style={{
-            textAlign: "center",
-            width: leftIcon || rightIcon ? "76%" : "100%",
-          }}
-        >
-          {title}
-        </Typo>
+      <View style={styles.sideSlot}>{leftIcon}</View>
+      {title ? (
+        <View style={styles.titleSlot}>
+          <Typo
+            size={32}
+            variant="heading"
+            color={colors.textPrimary}
+            style={styles.titleText}
+            textProps={{ numberOfLines: 1, adjustsFontSizeToFit: true }}
+          >
+            {title}
+          </Typo>
+        </View>
+      ) : (
+        <View style={styles.titleSlot} />
       )}
-      {rightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
+      <View style={styles.sideSlot}>{rightIcon}</View>
     </View>
   );
 };
@@ -41,16 +43,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  leftIcon: {
-    alignSelf: "flex-start",
+  sideSlot: {
     minWidth: 48,
     minHeight: 48,
+    width: 48,
     justifyContent: "center",
+    alignItems: "center",
   },
-  rightIcon: {
-    alignSelf: "flex-start",
-    minWidth: 48,
-    minHeight: 48,
+  titleSlot: {
+    flex: 1,
+    alignItems: "center",
     justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 8,
+  },
+  titleText: {
+    textAlign: "center",
+    width: "100%",
   },
 });
