@@ -8,9 +8,9 @@ import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { buildSyncHandlers } from "@/src/services/syncEngineService";
 import {
-  processSyncQueueV2,
-  subscribeToSyncQueue,
-  SyncQueueSummary,
+    processSyncQueueV2,
+    subscribeToSyncQueue,
+    SyncQueueSummary,
 } from "@/src/services/syncQueueService";
 import { Stack } from "expo-router";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -93,7 +93,11 @@ const SyncManager = () => {
     (summary: SyncQueueSummary) => {
       clearRetryTimer();
 
-      if (!isConnected || summary.retryScheduled === 0 || !summary.nextRetryAt) {
+      if (
+        !isConnected ||
+        summary.retryScheduled === 0 ||
+        !summary.nextRetryAt
+      ) {
         return;
       }
 

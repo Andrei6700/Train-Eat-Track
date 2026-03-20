@@ -1,24 +1,27 @@
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import Typo from "@/src/components/ui/Typo";
+import {
+  MaintenanceAnalysisResult,
+  MaintenanceStatus,
+} from "@/src/types/maintenance";
+import { scale, verticalScale } from "@/src/utils/styling";
+import {
+  ArrowRight,
+  CheckCircle,
+  Fire,
+  TrendDown,
+  TrendUp,
+} from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import {
-  CheckCircle,
-  TrendUp,
-  TrendDown,
-  Fire,
-  ArrowRight,
-} from "phosphor-react-native";
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { verticalScale, scale } from "@/src/utils/styling";
-import Typo from "@/src/components/ui/Typo";
-import { MaintenanceAnalysisResult, MaintenanceStatus } from "@/src/types/maintenance";
 
 type MaintenanceAnalysisProps = {
   analysis: MaintenanceAnalysisResult;
 };
 
 const getStatusConfig = (
-  status: MaintenanceStatus
+  status: MaintenanceStatus,
 ): {
   icon: React.ReactNode;
   color: string;
@@ -28,21 +31,39 @@ const getStatusConfig = (
   switch (status) {
     case "maintenance":
       return {
-        icon: <CheckCircle size={verticalScale(24)} color={colors.success} weight="fill" />,
+        icon: (
+          <CheckCircle
+            size={verticalScale(24)}
+            color={colors.success}
+            weight="fill"
+          />
+        ),
         color: colors.success,
         backgroundColor: "rgba(22, 163, 74, 0.15)",
         emoji: "🟢",
       };
     case "surplus":
       return {
-        icon: <TrendUp size={verticalScale(24)} color={colors.danger} weight="bold" />,
+        icon: (
+          <TrendUp
+            size={verticalScale(24)}
+            color={colors.danger}
+            weight="bold"
+          />
+        ),
         color: colors.danger,
         backgroundColor: "rgba(220, 38, 38, 0.15)",
         emoji: "🔴",
       };
     case "deficit":
       return {
-        icon: <TrendDown size={verticalScale(24)} color={colors.primary} weight="bold" />,
+        icon: (
+          <TrendDown
+            size={verticalScale(24)}
+            color={colors.primary}
+            weight="bold"
+          />
+        ),
         color: colors.primary,
         backgroundColor: "rgba(0, 119, 188, 0.15)",
         emoji: "🔵",
@@ -54,7 +75,9 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
   const statusConfig = getStatusConfig(analysis.status);
 
   const differenceText =
-    analysis.difference >= 0 ? `+${analysis.difference}` : `${analysis.difference}`;
+    analysis.difference >= 0
+      ? `+${analysis.difference}`
+      : `${analysis.difference}`;
 
   return (
     <Animated.View
@@ -68,7 +91,12 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
       </View>
 
       {/* Status Badge */}
-      <View style={[styles.statusBadge, { backgroundColor: statusConfig.backgroundColor }]}>
+      <View
+        style={[
+          styles.statusBadge,
+          { backgroundColor: statusConfig.backgroundColor },
+        ]}
+      >
         {statusConfig.icon}
         <View style={styles.statusTextContainer}>
           <Typo
@@ -84,7 +112,11 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
       {/* Week Comparison */}
       <View style={styles.comparisonContainer}>
         <View style={styles.weekBox}>
-          <Typo size={verticalScale(11)} fontWeight="600" color={colors.textMuted}>
+          <Typo
+            size={verticalScale(11)}
+            fontWeight="600"
+            color={colors.textMuted}
+          >
             SĂPT. 1
           </Typo>
           <Typo size={verticalScale(20)} fontWeight="700" color={colors.text}>
@@ -107,7 +139,11 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
         </View>
 
         <View style={styles.weekBox}>
-          <Typo size={verticalScale(11)} fontWeight="600" color={colors.textMuted}>
+          <Typo
+            size={verticalScale(11)}
+            fontWeight="600"
+            color={colors.textMuted}
+          >
             SĂPT. 2
           </Typo>
           <Typo size={verticalScale(20)} fontWeight="700" color={colors.text}>
@@ -123,17 +159,26 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
       {analysis.estimatedMaintenance && (
         <View style={styles.maintenanceEstimate}>
           <View style={styles.estimateHeader}>
-            <Fire size={verticalScale(18)} color={colors.warning} weight="fill" />
+            <Fire
+              size={verticalScale(18)}
+              color={colors.warning}
+              weight="fill"
+            />
             <Typo size={verticalScale(13)} fontWeight="600" color={colors.text}>
               Mentenanță estimată
             </Typo>
           </View>
           <View style={styles.estimateValue}>
-            <Typo size={verticalScale(24)} fontWeight="700" color={colors.warning}>
+            <Typo
+              size={verticalScale(24)}
+              fontWeight="700"
+              color={colors.warning}
+            >
               {analysis.estimatedMaintenance.toLocaleString()}
             </Typo>
             <Typo size={verticalScale(14)} color={colors.textMuted}>
-              {" "}kcal/zi
+              {" "}
+              kcal/zi
             </Typo>
           </View>
           <Typo
@@ -148,7 +193,11 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
 
       {/* Interpretation Help */}
       <View style={styles.helpContainer}>
-        <Typo size={verticalScale(12)} color={colors.textMuted} style={styles.helpText}>
+        <Typo
+          size={verticalScale(12)}
+          color={colors.textMuted}
+          style={styles.helpText}
+        >
           {analysis.status === "maintenance" &&
             "Greutatea ta este stabilă. Acesta e nivelul tău de mentenanță."}
           {analysis.status === "surplus" &&

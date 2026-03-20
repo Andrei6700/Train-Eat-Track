@@ -4,18 +4,18 @@ import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
 import NutritionCalendarLogModal from "@/src/components/nutrition/NutritionCalendarLogModal";
 import NutritionDateHeader from "@/src/components/nutrition/NutritionDateHeader";
 import NutritionEditQuantityModal, {
-  EditableFoodState,
+    EditableFoodState,
 } from "@/src/components/nutrition/NutritionEditQuantityModal";
 import NutritionFoodActionsModal from "@/src/components/nutrition/NutritionFoodActionsModal";
 import NutritionMealCard, {
-  MealSummary,
+    MealSummary,
 } from "@/src/components/nutrition/NutritionMealCard";
 import NutritionObjectiveCard, {
-  NutritionStats,
+    NutritionStats,
 } from "@/src/components/nutrition/NutritionObjectiveCard";
 import NutritionWaterCard from "@/src/components/nutrition/NutritionWaterCard";
 import NutritionCalendar, {
-  NutritionCalendarDayData,
+    NutritionCalendarDayData,
 } from "@/src/components/ui/NutritionCalendar";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
@@ -23,40 +23,39 @@ import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
 import {
-  batchGetCachedNutritionDays,
-  cacheNutritionDay,
-  getCachedNutritionForDate,
-  getNutritionCacheKey,
+    batchGetCachedNutritionDays,
+    cacheNutritionDay,
+    getCachedNutritionForDate,
+    getNutritionCacheKey,
 } from "@/src/services/cacheService";
 import {
-  getCachedNutritionCalendarSummary,
-  NutritionCalendarSummary,
-  setCachedNutritionCalendarSummary,
-  upsertNutritionCalendarSummaryDay,
+    getCachedNutritionCalendarSummary,
+    NutritionCalendarSummary,
+    setCachedNutritionCalendarSummary,
+    upsertNutritionCalendarSummaryDay,
 } from "@/src/services/nutritionCalendarCacheService";
 import {
-  awaitNutritionCalendarPrefetch,
-  getDailyNutrition,
-  getMemoryEarliestDate,
-  getUserNutritionEarliestDate,
+    awaitNutritionCalendarPrefetch,
+    getDailyNutrition,
+    getMemoryEarliestDate,
+    getUserNutritionEarliestDate,
 } from "@/src/services/nutritionService";
 import { DailyNutrition, Food } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { measureAsync } from "@/src/utils/perf";
 import { useRouter } from "expo-router";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
+    Alert,
+    RefreshControl,
+    ScrollView,
+    StyleSheet
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -715,7 +714,10 @@ const Nutrition = () => {
         }
       } catch (error) {
         if (__DEV__) {
-          console.error("[Nutrition] Error loading calendar day summary:", error);
+          console.error(
+            "[Nutrition] Error loading calendar day summary:",
+            error,
+          );
         }
       } finally {
         pendingDayKeysRef.current.delete(dateKey);

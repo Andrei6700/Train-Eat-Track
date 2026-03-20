@@ -1,25 +1,24 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { firestore } from "@/src/config/firebase";
+import { ResponseType } from "@/src/types/index";
+import {
+  MAINTENANCE_STORAGE_KEYS,
+  MaintenanceAnalysisResult,
+  MaintenanceStatus,
+  WeeklyData,
+  WeightEntry,
+} from "@/src/types/maintenance";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
   serverTimestamp,
-  Timestamp,
   updateDoc,
-  where,
-  deleteDoc,
+  where
 } from "firebase/firestore";
-import {
-  WeightEntry,
-  WeeklyData,
-  MaintenanceAnalysisResult,
-  MaintenanceStatus,
-  MAINTENANCE_STORAGE_KEYS,
-} from "@/src/types/maintenance";
-import { ResponseType } from "@/src/types/index";
 
 const COLLECTION_NAME = "weight_entries";
 const REMOTE_TIMEOUT_MS = 8000;
@@ -385,8 +384,8 @@ export const analyzeMaintenanceStatus = (
 export const generateWeekDays = (
   weekStart: Date,
   entries: WeightEntry[]
-): Array<{ date: string; dayOfWeek: number; entry: WeightEntry | null }> => {
-  const days: Array<{ date: string; dayOfWeek: number; entry: WeightEntry | null }> = [];
+): { date: string; dayOfWeek: number; entry: WeightEntry | null }[] => {
+  const days: { date: string; dayOfWeek: number; entry: WeightEntry | null }[] = [];
   const entryMap = new Map(entries.map((e) => [e.date, e]));
 
   for (let i = 0; i < 7; i++) {

@@ -1,10 +1,10 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { useLanguage } from "@/src/contexts/languageContext";
 import Typo from "@/src/components/ui/Typo";
+import { useLanguage } from "@/src/contexts/languageContext";
+import * as Icons from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import * as Icons from "phosphor-react-native";
 
 type NutritionDateHeaderProps = {
   dateLabel: string;
@@ -22,7 +22,10 @@ const NutritionDateHeader = ({
   const { t } = useLanguage();
 
   return (
-    <Animated.View entering={FadeInDown.duration(400)} style={styles.dateHeaderOuter}>
+    <Animated.View
+      entering={FadeInDown.duration(400)}
+      style={styles.dateHeaderOuter}
+    >
       <View style={styles.dateHeaderShadow} />
       <View style={styles.dateHeader}>
         <View style={styles.dateHeaderContent}>
@@ -89,4 +92,3 @@ const styles = StyleSheet.create({
     gap: spacingX._15,
   },
 });
-

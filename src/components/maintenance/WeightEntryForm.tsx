@@ -9,11 +9,16 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { Calendar, CalendarIcon, FloppyDisk, Fire } from "phosphor-react-native";
+import {
+  Calendar,
+  CalendarIcon,
+  FloppyDisk,
+  Fire,
+} from "phosphor-react-native";
 import { Calendar as RNCalendar, DateData } from "react-native-calendars";
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { colors, radi, WEEK_DAYS_RO us, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
-import Typo from "@/src/components/ui/Typo";
+
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
 import { WeightEntry } from "@/src/types/maintenance";
@@ -32,10 +37,12 @@ const WeightEntryForm = ({
   existingEntry,
 }: WeightEntryFormProps) => {
   const today = formatDateKey(new Date());
-  const [selectedDate, setSelectedDate] = useState(existingEntry?.date || today);
+  const [selectedDate, setSelectedDate] = useState(
+    existingEntry?.date || today,
+  );
   const [weight, setWeight] = useState(existingEntry?.weight?.toString() || "");
   const [calories, setCalories] = useState(
-    existingEntry?.calories?.toString() || ""
+    existingEntry?.calories?.toString() || "",
   );
   const [showCalendar, setShowCalendar] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +52,18 @@ const WeightEntryForm = ({
     const date = new Date(year, month - 1, day);
     const dayName = WEEK_DAYS_RO[date.getDay()];
     const monthNames = [
-      "Ian", "Feb", "Mar", "Apr", "Mai", "Iun",
-      "Iul", "Aug", "Sep", "Oct", "Noi", "Dec",
+      "Ian",
+      "Feb",
+      "Mar",
+      "Apr",
+      "Mai",
+      "Iun",
+      "Iul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Noi",
+      "Dec",
     ];
     return `${dayName}, ${day} ${monthNames[month - 1]} ${year}`;
   };
@@ -113,7 +130,10 @@ const WeightEntryForm = ({
           >
             Data
           </Typo>
-          <Pressable style={styles.dateButton} onPress={() => setShowCalendar(true)}>
+          <Pressable
+            style={styles.dateButton}
+            onPress={() => setShowCalendar(true)}
+          >
             <CalendarIcon size={verticalScale(20)} color={colors.primary} />
             <Typo size={verticalScale(16)} color={colors.text}>
               {formatDisplayDate(selectedDate)}
@@ -139,7 +159,11 @@ const WeightEntryForm = ({
             hasError={!!error}
           />
           {error && (
-            <Typo size={verticalScale(12)} color={colors.danger} style={styles.errorText}>
+            <Typo
+              size={verticalScale(12)}
+              color={colors.danger}
+              style={styles.errorText}
+            >
               {error}
             </Typo>
           )}
@@ -177,7 +201,11 @@ const WeightEntryForm = ({
           <Button onPress={handleSave} loading={loading} disabled={!weight}>
             <View style={styles.buttonContent}>
               <FloppyDisk size={verticalScale(20)} color={colors.black} />
-              <Typo size={verticalScale(16)} fontWeight="700" color={colors.black}>
+              <Typo
+                size={verticalScale(16)}
+                fontWeight="700"
+                color={colors.black}
+              >
                 Salvează
               </Typo>
             </View>

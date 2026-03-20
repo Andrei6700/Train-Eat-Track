@@ -1,11 +1,14 @@
-import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import { WeeklyData } from "@/src/types/maintenance";
-import { WEEK_DAYS_RO } from "@/src/types/maintenance";
-import { generateWeekDays, parseDateKey } from "@/src/services/maintenanceService";
+import { scale, verticalScale } from "@/src/utils/styling";
+import React from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+
+import {
+  generateWeekDays,
+  parseDateKey,
+} from "@/src/services/maintenanceService";
 
 type WeeklyTableProps = {
   weeks: WeeklyData[];
@@ -14,8 +17,18 @@ type WeeklyTableProps = {
 const formatShortDate = (dateKey: string): string => {
   const [year, month, day] = dateKey.split("-").map(Number);
   const monthNames = [
-    "Ian", "Feb", "Mar", "Apr", "Mai", "Iun",
-    "Iul", "Aug", "Sep", "Oct", "Noi", "Dec",
+    "Ian",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mai",
+    "Iun",
+    "Iul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Noi",
+    "Dec",
   ];
   return `${day} ${monthNames[month - 1]}`;
 };
@@ -37,7 +50,11 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
   if (weeks.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Typo size={verticalScale(14)} color={colors.textMuted} style={styles.emptyText}>
+        <Typo
+          size={verticalScale(14)}
+          color={colors.textMuted}
+          style={styles.emptyText}
+        >
           Nu există date încă. Adaugă prima ta înregistrare de greutate.
         </Typo>
       </View>
@@ -56,17 +73,29 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
       {/* Table Header */}
       <View style={styles.tableHeader}>
         <View style={[styles.headerCell, styles.dayColumn]}>
-          <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
+          <Typo
+            size={verticalScale(12)}
+            fontWeight="700"
+            color={colors.textMuted}
+          >
             Zi
           </Typo>
         </View>
         <View style={[styles.headerCell, styles.dateColumn]}>
-          <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
+          <Typo
+            size={verticalScale(12)}
+            fontWeight="700"
+            color={colors.textMuted}
+          >
             Data
           </Typo>
         </View>
         <View style={[styles.headerCell, styles.weightColumn]}>
-          <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
+          <Typo
+            size={verticalScale(12)}
+            fontWeight="700"
+            color={colors.textMuted}
+          >
             Greutate (kg)
           </Typo>
         </View>
@@ -81,7 +110,11 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
           <View key={week.startDate} style={styles.weekContainer}>
             {/* Week Label */}
             <View style={styles.weekLabel}>
-              <Typo size={verticalScale(11)} fontWeight="600" color={colors.primary}>
+              <Typo
+                size={verticalScale(11)}
+                fontWeight="600"
+                color={colors.primary}
+              >
                 Săptămâna {week.weekNumber}
               </Typo>
             </View>
@@ -132,17 +165,29 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
             {/* Week Average Row */}
             <View style={styles.averageRow}>
               <View style={[styles.cell, styles.dayColumn]}>
-                <Typo size={verticalScale(13)} fontWeight="700" color={colors.primary}>
+                <Typo
+                  size={verticalScale(13)}
+                  fontWeight="700"
+                  color={colors.primary}
+                >
                   MEDIE
                 </Typo>
               </View>
               <View style={[styles.cell, styles.dateColumn]}>
-                <Typo size={verticalScale(12)} fontWeight="600" color={colors.primary}>
+                <Typo
+                  size={verticalScale(12)}
+                  fontWeight="600"
+                  color={colors.primary}
+                >
                   S{week.weekNumber}
                 </Typo>
               </View>
               <View style={[styles.cell, styles.weightColumn]}>
-                <Typo size={verticalScale(14)} fontWeight="700" color={colors.primary}>
+                <Typo
+                  size={verticalScale(14)}
+                  fontWeight="700"
+                  color={colors.primary}
+                >
                   {week.average !== null ? week.average.toFixed(1) : "—"}
                 </Typo>
               </View>
