@@ -121,13 +121,16 @@ const Login = () => {
               )}
             </Pressable>
           </View>
-          <Typo
-            size={14}
-            color={AUTH_COLORS.text}
-            style={{ alignSelf: "flex-end" }}
-          >
-            {t("auth_login_forgot_password")}
-          </Typo>
+          <Pressable onPress={() => router.navigate("/(auth)/forgotPassword")}>
+            <Typo
+              size={14}
+              color={AUTH_COLORS.text}
+              fontWeight={"600"}
+              style={{ alignSelf: "flex-end" }}
+            >
+              {t("auth_login_forgot_password")}
+            </Typo>
+          </Pressable>
           <Button
             loading={isLoading}
             onPress={handleSubmit}

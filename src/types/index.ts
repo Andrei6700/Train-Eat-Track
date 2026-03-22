@@ -1,13 +1,13 @@
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-  StatusBarStyle,
-  TextInput,
-  TextInputProps,
-  TextProps,
-  TextStyle,
-  PressableProps,
-  ViewStyle
+    PressableProps,
+    StatusBarStyle,
+    TextInput,
+    TextInputProps,
+    TextProps,
+    TextStyle,
+    ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
@@ -129,6 +129,9 @@ export type AuthContextType = {
     email: string,
     password: string,
     name: string
+  ) => Promise<{ success: boolean; msg?: string }>;
+  forgotPassword: (
+    email: string
   ) => Promise<{ success: boolean; msg?: string }>;
   updateUserData: (userId: string) => Promise<void>;
 };

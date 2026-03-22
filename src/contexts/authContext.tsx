@@ -1,12 +1,13 @@
 import { auth, firestore } from "@/src/config/firebase";
 import { clearNutritionCalendarSummaryCache } from "@/src/services/nutritionCalendarCacheService";
 import { clearWorkoutHistoryCache } from "@/src/services/workoutHistoryCacheService";
-import { AuthContextType, UserType } from '@/src/types/index';
+import { AuthContextType, UserType } from "@/src/types/index";
 import { useRouter } from "expo-router";
 import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    onAuthStateChanged,
+    sendPasswordResetEmail,
+    signInWithEmailAndPassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -51,7 +52,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
-      if (msg.includes("(auth/network-request-failed)")) msg = "Network error, please try again";
+      if (msg.includes("(auth/network-request-failed)"))
+        msg = "Network error, please try again";
       return { success: false, msg };
     }
   };
@@ -61,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       let response = await createUserWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
       await setDoc(doc(firestore, "users", response?.user?.uid), {
         name,
@@ -74,8 +76,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (__DEV__) {
         console.log("error message:", msg);
       }
-      if (msg.includes("(auth/email-already-in-use)")) msg = "This email is already in use";
+      if (msg.includes("(auth/email-already-in-use)"))
+        msg = "This email is already in use";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      return { success: false, msg };
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true };
+    } catch (error: any) {
+      let msg = error.message;
+      if (__DEV__) {
+        console.log("error message:", msg);
+      }
+      if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/user-not-found)"))
+        msg = "No account found with this email";
       return { success: false, msg };
     }
   };
@@ -99,7 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       let msg = error.message;
       // return { success: false, msg };
       if (__DEV__) {
-        console.log("error:",error)
+        console.log("error:", error);
       }
     }
   };
@@ -109,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser,
     login,
     register,
+    forgotPassword,
     updateUserData,
   };
 
