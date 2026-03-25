@@ -1,34 +1,28 @@
-import React, { useCallback, useState } from "react";
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import Button from "@/src/components/ui/Button";
+import Typo from "@/src/components/ui/Typo";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
+import { scale, verticalScale } from "@/src/utils/styling";
 import {
-  Dimensions,
-  Modal,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  runOnJS,
-  Easing,
-  interpolate,
-  FadeIn,
-  SlideInDown,
-} from "react-native-reanimated";
-import {
+  ChartLineUp,
+  Info,
   Scales,
   SunHorizon,
-  ChartLineUp,
   TrendUp,
-  Info,
 } from "phosphor-react-native";
-import { colors, radius, spacingX, spacingY } from "@/constants/theme";
-import { verticalScale, scale } from "@/src/utils/styling";
-import useReduceMotion from "@/src/hooks/useReduceMotion";
-import Typo from "@/src/components/ui/Typo";
-import Button from "@/src/components/ui/Button";
+import React, { useCallback, useEffect, useState } from "react";
+import { Dimensions, Modal, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  interpolate,
+  runOnJS,
+  SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SLIDE_WIDTH = SCREEN_WIDTH - scale(48);
@@ -41,27 +35,53 @@ type OnboardingSlide = {
 
 const SLIDES: OnboardingSlide[] = [
   {
-    icon: <Scales size={verticalScale(64)} color={colors.primary} weight="duotone" />,
+    icon: (
+      <Scales
+        size={verticalScale(64)}
+        color={colors.primary}
+        weight="duotone"
+      />
+    ),
     title: "Ce este mentenanța?",
     text: "Mentenanța calorică = numărul de calorii la care greutatea ta rămâne stabilă. O găsim urmărind greutatea și caloriile timp de 2 săptămâni fără să schimbi nimic.",
   },
   {
-    icon: <SunHorizon size={verticalScale(64)} color={colors.warning} weight="duotone" />,
+    icon: (
+      <SunHorizon
+        size={verticalScale(64)}
+        color={colors.warning}
+        weight="duotone"
+      />
+    ),
     title: "Cum îți cântărești greutatea corect",
     text: "Cântărește-te în fiecare dimineață, după baie, înainte de mâncare și băutură. Dacă poți, zilnic — sau minim 3x/săptămână, incluzând o zi de weekend.",
   },
   {
-    icon: <ChartLineUp size={verticalScale(64)} color={colors.success} weight="duotone" />,
+    icon: (
+      <ChartLineUp
+        size={verticalScale(64)}
+        color={colors.success}
+        weight="duotone"
+      />
+    ),
     title: "De ce contează media săptămânală",
     text: "Greutatea zilnică fluctuează normal cu 1–2%. Media săptămânală este singurul număr care contează — nu greutatea dintr-o zi anume.",
   },
   {
-    icon: <TrendUp size={verticalScale(64)} color={colors.secondary} weight="duotone" />,
+    icon: (
+      <TrendUp
+        size={verticalScale(64)}
+        color={colors.secondary}
+        weight="duotone"
+      />
+    ),
     title: "Cum interpretezi trendurile",
     text: "Dacă media Săpt. 2 > media Săpt. 1 → ești peste mentenanță. Dacă e egală → ești la mentenanță. Dacă e mai mică → ești sub mentenanță.",
   },
   {
-    icon: <Info size={verticalScale(64)} color={colors.primary} weight="duotone" />,
+    icon: (
+      <Info size={verticalScale(64)} color={colors.primary} weight="duotone" />
+    ),
     title: "Fluctuațiile nu înseamnă grăsime",
     text: "Sare în plus, carbohidrați, stres, ciclul menstrual — toate cresc temporar greutatea. Nu intra în panică. Urmărește trendul pe 2 săptămâni.",
   },
@@ -72,11 +92,23 @@ type OnboardingCarouselProps = {
   onDismiss: () => void;
 };
 
-const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => {
+const OnboardingCarousel = ({
+  visible,
+  onDismiss,
+}: OnboardingCarouselProps) => {
   const reduceMotion = useReduceMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
   const translateX = useSharedValue(0);
   const fadeOut = useSharedValue(1);
+
+  // Reset state when modal becomes visible again
+  useEffect(() => {
+    if (visible) {
+      fadeOut.value = 1;
+      translateX.value = 0;
+      setCurrentIndex(0);
+    }
+  }, [visible, fadeOut, translateX]);
 
   const animatedContainerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -103,7 +135,7 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
       });
       setCurrentIndex(index);
     },
-    [translateX]
+    [translateX],
   );
 
   const handleNext = useCallback(() => {
@@ -123,7 +155,7 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
         if (finished) {
           runOnJS(onDismiss)();
         }
-      }
+      },
     );
   }, [fadeOut, onDismiss, reduceMotion]);
 
@@ -131,13 +163,18 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
     (index: number) => {
       goToSlide(index);
     },
-    [goToSlide]
+    [goToSlide],
   );
 
   const isLastSlide = currentIndex === SLIDES.length - 1;
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+    >
       <Animated.View style={[styles.backdrop, animatedBackdropStyle]} />
       <View style={styles.centeredContainer}>
         <Animated.View
@@ -149,9 +186,14 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
           style={[styles.modalContent, animatedContentStyle]}
         >
           <View style={styles.slidesContainer}>
-            <Animated.View style={[styles.slidesWrapper, animatedContainerStyle]}>
+            <Animated.View
+              style={[styles.slidesWrapper, animatedContainerStyle]}
+            >
               {SLIDES.map((slide, index) => (
-                <View key={index} style={[styles.slide, { width: SLIDE_WIDTH }]}>
+                <View
+                  key={index}
+                  style={[styles.slide, { width: SLIDE_WIDTH }]}
+                >
                   <View style={styles.iconContainer}>{slide.icon}</View>
                   <Typo
                     size={verticalScale(20)}
@@ -181,7 +223,9 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
                 hitSlop={8}
               >
                 <Animated.View
-                  entering={reduceMotion ? undefined : FadeIn.delay(index * 100)}
+                  entering={
+                    reduceMotion ? undefined : FadeIn.delay(index * 100)
+                  }
                   style={[
                     styles.dot,
                     index === currentIndex && styles.dotActive,
@@ -194,13 +238,21 @@ const OnboardingCarousel = ({ visible, onDismiss }: OnboardingCarouselProps) => 
           <View style={styles.buttonContainer}>
             {isLastSlide ? (
               <Button onPress={handleDismiss}>
-                <Typo size={verticalScale(16)} fontWeight="700" color={colors.black}>
+                <Typo
+                  size={verticalScale(16)}
+                  fontWeight="700"
+                  color={colors.black}
+                >
                   Am înțeles, să începem!
                 </Typo>
               </Button>
             ) : (
               <Button onPress={handleNext}>
-                <Typo size={verticalScale(16)} fontWeight="700" color={colors.black}>
+                <Typo
+                  size={verticalScale(16)}
+                  fontWeight="700"
+                  color={colors.black}
+                >
                   Următorul
                 </Typo>
               </Button>

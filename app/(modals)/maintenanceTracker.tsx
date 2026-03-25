@@ -41,7 +41,7 @@ const TAB_WIDTH = scale(150);
 // Onboarding behavior toggle:
 // - true  => show popup every time this screen opens for testing
 // - false => show popup one time
-const FORCE_SHOW_ONBOARDING = true;
+const FORCE_SHOW_ONBOARDING = false;
 
 const MaintenanceTrackerScreen = () => {
   const { user } = useAuth();
