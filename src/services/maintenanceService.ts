@@ -1,25 +1,24 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { firestore } from "@/src/config/firebase";
+import { ResponseType } from "@/src/types/index";
+import {
+  MAINTENANCE_STORAGE_KEYS,
+  MaintenanceAnalysisResult,
+  MaintenanceStatus,
+  WeeklyData,
+  WeightEntry,
+} from "@/src/types/maintenance";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
   serverTimestamp,
-  Timestamp,
   updateDoc,
-  where,
-  deleteDoc,
+  where
 } from "firebase/firestore";
-import {
-  WeightEntry,
-  WeeklyData,
-  MaintenanceAnalysisResult,
-  MaintenanceStatus,
-  MAINTENANCE_STORAGE_KEYS,
-} from "@/src/types/maintenance";
-import { ResponseType } from "@/src/types/index";
 
 const COLLECTION_NAME = "weight_entries";
 const REMOTE_TIMEOUT_MS = 8000;
@@ -46,19 +45,22 @@ const withTimeout = async <T>(
   }
 };
 
-// AsyncStorage: Onboarding
-export const hasSeenOnboarding = async (): Promise<boolean> => {
+// AsyncStorage: Onboarding (per-user)
+const getOnboardingSeenKey = (userID: string): string =>
+  `${MAINTENANCE_STORAGE_KEYS.ONBOARDING_SEEN}:${userID}`;
+
+export const hasSeenOnboarding = async (userID: string): Promise<boolean> => {
   try {
-    const value = await AsyncStorage.getItem(MAINTENANCE_STORAGE_KEYS.ONBOARDING_SEEN);
+    const value = await AsyncStorage.getItem(getOnboardingSeenKey(userID));
     return value === "true";
   } catch {
     return false;
   }
 };
 
-export const setOnboardingSeen = async (): Promise<void> => {
+export const setOnboardingSeen = async (userID: string): Promise<void> => {
   try {
-    await AsyncStorage.setItem(MAINTENANCE_STORAGE_KEYS.ONBOARDING_SEEN, "true");
+    await AsyncStorage.setItem(getOnboardingSeenKey(userID), "true");
   } catch (error) {
     if (__DEV__) {
       console.error("[MaintenanceService] Error saving onboarding status:", error);
@@ -401,8 +403,8 @@ export const analyzeMaintenanceStatus = (
 export const generateWeekDays = (
   weekStart: Date,
   entries: WeightEntry[]
-): Array<{ date: string; dayOfWeek: number; entry: WeightEntry | null }> => {
-  const days: Array<{ date: string; dayOfWeek: number; entry: WeightEntry | null }> = [];
+): { date: string; dayOfWeek: number; entry: WeightEntry | null }[] => {
+  const days: { date: string; dayOfWeek: number; entry: WeightEntry | null }[] = [];
   const entryMap = new Map(entries.map((e) => [e.date, e]));
 
   for (let i = 0; i < 7; i++) {

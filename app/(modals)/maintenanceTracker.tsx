@@ -10,28 +10,28 @@ import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import {
-  analyzeMaintenanceStatus,
-  getWeightEntries,
-  groupEntriesByWeek,
-  hasSeenOnboarding,
-  saveWeightEntry,
-  setOnboardingSeen,
+    analyzeMaintenanceStatus,
+    getWeightEntries,
+    groupEntriesByWeek,
+    hasSeenOnboarding,
+    saveWeightEntry,
+    setOnboardingSeen,
 } from "@/src/services/maintenanceService";
 import {
-  MaintenanceAnalysisResult,
-  WeeklyData,
-  WeightEntry,
+    MaintenanceAnalysisResult,
+    WeeklyData,
+    WeightEntry,
 } from "@/src/types/maintenance";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { PlusCircle, Table } from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
-  Easing,
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+    Easing,
+    FadeIn,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
 } from "react-native-reanimated";
 
 type TabType = "add" | "table";
@@ -71,7 +71,7 @@ const MaintenanceTrackerScreen = () => {
       if (FORCE_SHOW_ONBOARDING) {
         setShowOnboarding(true);
       } else {
-        const seen = await hasSeenOnboarding();
+        const seen = await hasSeenOnboarding(user.uid);
         if (!seen) {
           setShowOnboarding(true);
         }
@@ -116,8 +116,8 @@ const MaintenanceTrackerScreen = () => {
 
   const handleOnboardingDismiss = useCallback(async () => {
     setShowOnboarding(false);
-    await setOnboardingSeen();
-  }, []);
+    await setOnboardingSeen(user.uid);
+  }, [user.uid]);
 
   const handleSaveEntry = useCallback(
     async (entry: WeightEntry) => {
