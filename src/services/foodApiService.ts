@@ -1,4 +1,9 @@
 import { addFoodsToCache } from "@/src/services/cacheService";
+import {
+  getCustomProductByBarcode,
+  searchCustomProducts,
+  toSimplifiedFromCustom,
+} from "@/src/services/customProductService";
 import { Food, ResponseType } from "@/src/types/index";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -502,18 +507,31 @@ export const searchFoodHybrid = async (
     };
   }
 
+  // Get local matches from Firebase
   const localResults = getLocalMatches(
     normalizedQuery,
     context.localFoods || [],
     maxResults,
   );
 
+  // Get custom products from Supabase
+  const customProducts = await searchCustomProducts(normalizedQuery);
+  const customResults = customProducts
+    .slice(0, maxResults)
+    .map(toSimplifiedFromCustom);
+
   if (!includeRemote) {
+    const merged = mergeUniqueFoods(localResults, customResults, maxResults);
     return {
-      foods: localResults,
-      source: "local",
+      foods: merged,
+      source:
+        localResults.length > 0 && customResults.length > 0
+          ? "mixed"
+          : customResults.length > 0
+            ? "remote"
+            : "local",
       localCount: localResults.length,
-      remoteCount: 0,
+      remoteCount: customResults.length,
       fromQueryCache: false,
     };
   }
@@ -524,13 +542,13 @@ export const searchFoodHybrid = async (
     Date.now() - (cachedRemote?.createdAt || 0) < queryCacheTtlMs;
 
   if (hasFreshRemoteCache && cachedRemote) {
-    const mergedCached = mergeUniqueFoods(
+    const merged = mergeUniqueFoods(
       localResults,
-      cachedRemote.results,
+      mergeUniqueFoods(customResults, cachedRemote.results, maxResults),
       maxResults,
     );
     return {
-      foods: mergedCached,
+      foods: merged,
       source:
         localResults.length > 0 && cachedRemote.results.length > 0
           ? "mixed"
@@ -538,7 +556,7 @@ export const searchFoodHybrid = async (
             ? "remote"
             : "local",
       localCount: localResults.length,
-      remoteCount: cachedRemote.results.length,
+      remoteCount: cachedRemote.results.length + customResults.length,
       fromQueryCache: true,
     };
   }
@@ -561,7 +579,11 @@ export const searchFoodHybrid = async (
 
   cacheRemoteFoods(remoteResults);
 
-  const merged = mergeUniqueFoods(localResults, remoteResults, maxResults);
+  const merged = mergeUniqueFoods(
+    localResults,
+    mergeUniqueFoods(customResults, remoteResults, maxResults),
+    maxResults,
+  );
   return {
     foods: merged,
     source:
@@ -571,13 +593,13 @@ export const searchFoodHybrid = async (
           ? "remote"
           : "local",
     localCount: localResults.length,
-    remoteCount: remoteResults.length,
+    remoteCount: remoteResults.length + customResults.length,
     fromQueryCache: false,
   };
 };
 
 /**
- * Get food details by barcode (with in-memory + disk cache)
+ * Get food details by barcode (with in-memory + disk cache + Supabase custom products)
  */
 export const getFoodByBarcode = async (
   barcode: string,
@@ -596,6 +618,22 @@ export const getFoodByBarcode = async (
       cachedAt: Date.now(),
     });
     return diskResult;
+  }
+
+  // Check Supabase custom products
+  const customProduct = await getCustomProductByBarcode(barcode);
+  if (customProduct) {
+    const simplifiedFood = toSimplifiedFromCustom(customProduct);
+    const successResult: ResponseType = { success: true, data: simplifiedFood };
+    barcodeMemoryCache.set(barcode, {
+      result: successResult,
+      cachedAt: Date.now(),
+    });
+    writeBarcodeDiskCache(barcode, successResult);
+    if (__DEV__) {
+      console.log("[FoodAPI] Found product in custom database");
+    }
+    return successResult;
   }
 
   try {
