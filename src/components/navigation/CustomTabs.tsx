@@ -3,12 +3,7 @@ import { useLanguage } from "@/src/contexts/languageContext";
 import { verticalScale } from "@/src/utils/styling";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Icons from "phosphor-react-native";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function CustomTabs({
@@ -132,12 +127,6 @@ export default function CustomTabs({
             <View style={styles.iconWrap}>
               {tabbarIcons[route.name] && tabbarIcons[route.name](isFocused)}
             </View>
-            <View
-              style={[
-                styles.activeIndicator,
-                isFocused && styles.activeIndicatorVisible,
-              ]}
-            />
           </Pressable>
         );
       })}
@@ -171,14 +160,5 @@ const styles = StyleSheet.create({
     minHeight: 32,
     alignItems: "center",
     justifyContent: "center",
-  },
-  activeIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "transparent",
-  },
-  activeIndicatorVisible: {
-    backgroundColor: colors.tabIndicator,
   },
 });
