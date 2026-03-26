@@ -1,6 +1,7 @@
 import { auth, firestore } from "@/src/config/firebase";
 import { clearNutritionCalendarSummaryCache } from "@/src/services/nutritionCalendarCacheService";
 import { clearWorkoutHistoryCache } from "@/src/services/workoutHistoryCacheService";
+import { clearWorkoutHistoryMemoryCache } from "@/src/services/workoutHistoryMemoryCache";
 import { AuthContextType, UserType } from "@/src/types/index";
 import { useRouter } from "expo-router";
 import {
@@ -23,6 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        clearWorkoutHistoryMemoryCache();
         setUser({
           uid: firebaseUser?.uid,
           email: firebaseUser?.email,
@@ -35,6 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser(null);
         void clearWorkoutHistoryCache();
         void clearNutritionCalendarSummaryCache();
+        clearWorkoutHistoryMemoryCache();
         router.replace("/(auth)/welcome");
       }
     });

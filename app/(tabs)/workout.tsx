@@ -225,7 +225,7 @@ const Workout = () => {
   }, [selectedDay, workoutPlan]);
 
   const isSelectedDayRestDay =
-    hasLoggedRestDay || Boolean(selectedPlanDay?.isRestDay) || isAutoRestDay;
+    hasLoggedRestDay || (workoutPlan && Boolean(selectedPlanDay?.isRestDay)) || isAutoRestDay;
 
   const restDayDateSet = useMemo(() => {
     const set = new Set<string>(loggedRestDayDateSet);
