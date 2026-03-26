@@ -33,9 +33,19 @@ type RemoteQueryCacheEntry = {
 };
 
 const remoteQueryCache = new Map<string, RemoteQueryCacheEntry>();
+const REMOTE_QUERY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Evict oldest entries when cache exceeds max size
+// Evict oldest entries when cache exceeds max size, and remove expired entries
 const evictRemoteQueryCache = () => {
+  const now = Date.now();
+  // First, remove expired entries
+  for (const [key, entry] of remoteQueryCache.entries()) {
+    if (now - entry.createdAt >= REMOTE_QUERY_CACHE_TTL_MS) {
+      remoteQueryCache.delete(key);
+    }
+  }
+
+  // Then, if still over size limit, evict oldest entries
   if (remoteQueryCache.size <= REMOTE_QUERY_CACHE_MAX_SIZE) return;
   const entries = [...remoteQueryCache.entries()].sort(
     (a, b) => a[1].createdAt - b[1].createdAt,
@@ -76,15 +86,18 @@ const readBarcodeDiskCache = async (
 };
 
 const writeBarcodeDiskCache = (barcode: string, result: ResponseType): void => {
-  void (async () => {
+  (async () => {
     try {
       const entry: BarcodeCacheEntry = { result, cachedAt: Date.now() };
       await AsyncStorage.setItem(
         getBarcodeDiskCacheKey(barcode),
         JSON.stringify(entry),
       );
-    } catch {
-      // fire-and-forget
+    } catch (error) {
+      // Log cache write failures in dev mode but don't crash
+      if (__DEV__) {
+        console.warn("[FoodAPI] Failed to write barcode cache:", error);
+      }
     }
   })();
 };
@@ -298,13 +311,13 @@ const toFoodCachePayload = (food: SimplifiedFood): Food => ({
 const cacheRemoteFoods = (foods: SimplifiedFood[]) => {
   if (foods.length === 0) return;
 
-  void (async () => {
+  (async () => {
     try {
       const batch = foods.slice(0, 8).map(toFoodCachePayload);
       await addFoodsToCache(batch);
     } catch (error) {
       if (__DEV__) {
-        console.error("[FoodAPI] Error caching remote foods:", error);
+        console.warn("[FoodAPI] Error caching remote foods:", error);
       }
     }
   })();

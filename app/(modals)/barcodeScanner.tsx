@@ -11,6 +11,7 @@ import {
   SimplifiedFood,
 } from "@/src/services/foodApiService";
 import { verticalScale } from "@/src/utils/styling";
+import { auth } from "@/src/config/firebase";
 import { Camera, CameraView } from "expo-camera";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -180,9 +181,14 @@ const BarcodeScanner = () => {
     setSavingCustomProduct(true);
 
     try {
-      // Get current user ID - for now using a placeholder
-      // TODO: Get from Firebase auth
-      const user_id = "anonymous";
+      // Get current user ID from Firebase auth
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert(t("common_error"), "You must be logged in to save products");
+        setSavingCustomProduct(false);
+        return;
+      }
+      const user_id = currentUser.uid;
 
       const saved = await saveCustomProduct(
         currentBarcode,
@@ -248,7 +254,7 @@ const BarcodeScanner = () => {
       quality: 0.7,
     });
 
-    if (!result.canceled) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       setCustomProductImage(result.assets[0].uri);
     }
   };
@@ -328,6 +334,7 @@ const BarcodeScanner = () => {
       <CameraView
         style={styles.camera}
         facing="back"
+        enableTorch={flashEnabled}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: [
