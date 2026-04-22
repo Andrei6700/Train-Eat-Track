@@ -9,6 +9,7 @@ import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import { MONTH_NAMES } from "@/src/i18n/translations";
 import {
   clearWorkoutHistoryMemoryCache,
   getWorkoutHistoryMemoryCache,
@@ -17,12 +18,12 @@ import {
 import { getUserWorkouts } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
-import { MONTH_NAMES } from "@/src/i18n/translations";
+import { verticalScale } from "@/src/utils/styling";
 import {
+  getCycleDayIndicesWithWorkouts,
   getCycleDayNameFromDate,
   shouldAutoConvertToRestDay,
 } from "@/src/utils/workoutPlanCycle";
-import { verticalScale } from "@/src/utils/styling";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -34,7 +35,9 @@ const normalizeWorkoutHistory = (data: unknown): WorkoutHistory[] => {
   return data as WorkoutHistory[];
 };
 
-const getSafeParamDate = (value: string | string[] | undefined): Date | null => {
+const getSafeParamDate = (
+  value: string | string[] | undefined,
+): Date | null => {
   const rawDate = Array.isArray(value) ? value[0] : value;
   const parsedDate = toValidDate(rawDate);
   if (!parsedDate) return null;
@@ -44,7 +47,10 @@ const getSafeParamDate = (value: string | string[] | undefined): Date | null => 
   return normalizedDate > today ? today : normalizedDate;
 };
 
-const getInitialIndex = (calendarDays: Date[], targetDateKey: string): number | null => {
+const getInitialIndex = (
+  calendarDays: Date[],
+  targetDateKey: string,
+): number | null => {
   if (calendarDays.length === 0) return null;
 
   const selectedIndex = calendarDays.findIndex(
@@ -53,7 +59,9 @@ const getInitialIndex = (calendarDays: Date[], targetDateKey: string): number | 
   if (selectedIndex !== -1) return selectedIndex;
 
   const todayKey = toDateKey(startOfDay(new Date()));
-  const todayIndex = calendarDays.findIndex((day) => toDateKey(day) === todayKey);
+  const todayIndex = calendarDays.findIndex(
+    (day) => toDateKey(day) === todayKey,
+  );
 
   if (todayIndex !== -1) return todayIndex;
   return Math.max(calendarDays.length - 2, 0);
@@ -64,13 +72,15 @@ const History = () => {
   const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
 
-  const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>(
-    [],
-  );
+  const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
-  const [currentMonth, setCurrentMonth] = useState<Date>(startOfDay(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date>(
+    startOfDay(new Date()),
+  );
+  const [currentMonth, setCurrentMonth] = useState<Date>(
+    startOfDay(new Date()),
+  );
 
   const requestIdRef = useRef(0);
   const lastVisibleIndexRef = useRef<number | null>(null);
@@ -95,7 +105,10 @@ const History = () => {
         return;
       }
 
-      const cachedHistory = getWorkoutHistoryMemoryCache(userId, CACHE_MAX_AGE_MS);
+      const cachedHistory = getWorkoutHistoryMemoryCache(
+        userId,
+        CACHE_MAX_AGE_MS,
+      );
       if (cachedHistory) {
         setWorkoutsHistory(cachedHistory);
         setIsLoading(false);
@@ -242,10 +255,7 @@ const History = () => {
     return days;
   }, [earliestWorkoutDate]);
 
-  const initialIndex = getInitialIndex(
-    calendarDays,
-    initialDateKeyRef.current,
-  );
+  const initialIndex = getInitialIndex(calendarDays, initialDateKeyRef.current);
 
   const workoutPlanByDayName = useMemo(() => {
     const map = new Map<string, DayWorkout>();
@@ -259,13 +269,22 @@ const History = () => {
     const set = new Set<string>(loggedRestDayDateSet);
     if (!workoutPlan || calendarDays.length === 0) return set;
 
+    // Pre-compute cycle day indices with workouts once (O(m))
+    // instead of checking for every calendar day (avoiding O(n*m))
+    const cycleDayIndicesWithWorkouts = getCycleDayIndicesWithWorkouts(
+      workoutsHistory,
+      workoutPlan,
+    );
+
     for (const day of calendarDays) {
       const dayName = getCycleDayNameFromDate(day, workoutPlan);
-      const isPlannedRestDay = Boolean(workoutPlanByDayName.get(dayName)?.isRestDay);
+      const isPlannedRestDay = Boolean(
+        workoutPlanByDayName.get(dayName)?.isRestDay,
+      );
       const isAutoRestDay = shouldAutoConvertToRestDay(
         day,
         workoutPlan,
-        workoutsHistory,
+        cycleDayIndicesWithWorkouts,
       );
 
       if (isPlannedRestDay || isAutoRestDay) {
@@ -308,7 +327,15 @@ const History = () => {
 
   const isSelectedDayAutoRestDay = useMemo(() => {
     if (!workoutPlan) return false;
-    return shouldAutoConvertToRestDay(selectedDate, workoutPlan, workoutsHistory);
+    const cycleDayIndicesWithWorkouts = getCycleDayIndicesWithWorkouts(
+      workoutsHistory,
+      workoutPlan,
+    );
+    return shouldAutoConvertToRestDay(
+      selectedDate,
+      workoutPlan,
+      cycleDayIndicesWithWorkouts,
+    );
   }, [selectedDate, workoutPlan, workoutsHistory]);
 
   const isSelectedDayRestDay =
@@ -361,12 +388,18 @@ const History = () => {
     });
   }, []);
 
-  const workoutPlanUpdatedAt = toValidDate(workoutPlan?.updatedAt)?.getTime() ?? 0;
+  const workoutPlanUpdatedAt =
+    toValidDate(workoutPlan?.updatedAt)?.getTime() ?? 0;
 
   const calendarExtraDataToken = useMemo(
     () =>
       `${selectedDateKey}-${historySignature}-${restDayDateSet.size}-${workoutPlanUpdatedAt}`,
-    [historySignature, restDayDateSet.size, selectedDateKey, workoutPlanUpdatedAt],
+    [
+      historySignature,
+      restDayDateSet.size,
+      selectedDateKey,
+      workoutPlanUpdatedAt,
+    ],
   );
 
   if (isLoading) {
@@ -388,7 +421,8 @@ const History = () => {
 
           <View style={styles.monthHeader}>
             <Typo size={24} variant="heading" color={colors.textPrimary}>
-              {MONTH_NAMES[language][currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              {MONTH_NAMES[language][currentMonth.getMonth()]}{" "}
+              {currentMonth.getFullYear()}
             </Typo>
             <View style={styles.statsRow}>
               <Typo size={14} color={colors.neutral400}>

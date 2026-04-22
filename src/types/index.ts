@@ -189,6 +189,15 @@ export type DayWorkout = {
   notes?: string;
 };
 
+export type WorkoutTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  daysPerWeek: number;
+  splitDays: string[];
+  days: DayWorkout[];
+};
+
 export type WorkoutPlan = {
   id?: string;
   userID: string;

@@ -1197,6 +1197,8 @@ const Nutrition = () => {
   useEffect(() => {
     return () => {
       calendarRequestIdRef.current += 1;
+      // Clear accumulated week keys to prevent memory leak
+      loggedWeekKeysRef.current.clear();
     };
   }, []);
 

@@ -1,8 +1,9 @@
 import { WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import { DAY_IN_MS, startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import {
-  getCycleDayNameFromDate,
-  shouldAutoConvertToRestDay,
+    getCycleDayIndicesWithWorkouts,
+    getCycleDayNameFromDate,
+    shouldAutoConvertToRestDay,
 } from "@/src/utils/workoutPlanCycle";
 
 export type HomeQuickStats = {
@@ -197,6 +198,12 @@ export const getHomeDerivedData = (
 
   if (workoutPlan && isPlanUsableForCycle(workoutPlan)) {
     const planDayMap = buildPlanDayMap(workoutPlan);
+    // Pre-compute cycle day indices with workouts once (O(m))
+    // instead of computing for every day in the week (avoiding O(7*m))
+    const cycleDayIndicesWithWorkouts = getCycleDayIndicesWithWorkouts(
+      workouts,
+      workoutPlan,
+    );
 
     for (let idx = 0; idx < 7; idx += 1) {
       const day = shiftDays(monday, idx);
@@ -208,7 +215,11 @@ export const getHomeDerivedData = (
       }
 
       const isPlanned = isPlannedRestDay(day, workoutPlan, planDayMap);
-      const isAutoRest = shouldAutoConvertToRestDay(day, workoutPlan, workouts);
+      const isAutoRest = shouldAutoConvertToRestDay(
+        day,
+        workoutPlan,
+        cycleDayIndicesWithWorkouts,
+      );
 
       if (isPlanned || isAutoRest) {
         weekRestDays[idx] = true;

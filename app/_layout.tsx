@@ -1,15 +1,4 @@
 import { colors } from "@/constants/theme";
-import { BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-} from "@expo-google-fonts/inter";
-import {
-  JetBrainsMono_400Regular,
-  JetBrainsMono_600SemiBold,
-} from "@expo-google-fonts/jetbrains-mono";
-import { useFonts } from "expo-font";
 import OfflineBanner from "@/src/components/ui/OfflineBanner";
 import SyncStatusBanner from "@/src/components/ui/SyncStatusBanner";
 import { AuthProvider } from "@/src/contexts/authContext";
@@ -19,10 +8,21 @@ import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { buildSyncHandlers } from "@/src/services/syncEngineService";
 import {
-  processSyncQueueV2,
-  subscribeToSyncQueue,
-  SyncQueueSummary,
+    processSyncQueueV2,
+    subscribeToSyncQueue,
+    SyncQueueSummary,
 } from "@/src/services/syncQueueService";
+import { BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
+import {
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+} from "@expo-google-fonts/inter";
+import {
+    JetBrainsMono_400Regular,
+    JetBrainsMono_600SemiBold,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -107,7 +107,11 @@ const SyncManager = () => {
     (summary: SyncQueueSummary) => {
       clearRetryTimer();
 
-      if (!isConnected || summary.retryScheduled === 0 || !summary.nextRetryAt) {
+      if (
+        !isConnected ||
+        summary.retryScheduled === 0 ||
+        !summary.nextRetryAt
+      ) {
         return;
       }
 
@@ -197,6 +201,10 @@ const StackLayout = () => {
         />
         <Stack.Screen
           name="(modals)/addWorkout"
+          options={{ presentation: "modal" }}
+        />
+        <Stack.Screen
+          name="(modals)/workoutPlanSelection"
           options={{ presentation: "modal" }}
         />
         <Stack.Screen

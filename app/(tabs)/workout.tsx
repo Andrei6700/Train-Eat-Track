@@ -5,10 +5,10 @@ import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import WorkoutCalendarStrip from "@/src/components/workout/WorkoutCalendarStrip";
 import WorkoutContentState from "@/src/components/workout/WorkoutContentState";
-import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { MONTH_NAMES } from "@/src/i18n/translations";
 import {
     clearWorkoutHistoryMemoryCache,
@@ -24,6 +24,7 @@ import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { verticalScale } from "@/src/utils/styling";
 import {
     getCycleDayIndex,
+    getCycleDayIndicesWithWorkouts,
     getCycleDayNameFromDate,
     isFirstCycle,
     isFirstCycleEmptyDay,
@@ -216,7 +217,15 @@ const Workout = () => {
 
   const isAutoRestDay = useMemo(() => {
     if (!workoutPlan) return false;
-    return shouldAutoConvertToRestDay(selectedDay, workoutPlan, workoutsHistory);
+    const cycleDayIndicesWithWorkouts = getCycleDayIndicesWithWorkouts(
+      workoutsHistory,
+      workoutPlan,
+    );
+    return shouldAutoConvertToRestDay(
+      selectedDay,
+      workoutPlan,
+      cycleDayIndicesWithWorkouts,
+    );
   }, [selectedDay, workoutPlan, workoutsHistory]);
 
   const isSelectedFirstCycleEmpty = useMemo(() => {
@@ -225,7 +234,9 @@ const Workout = () => {
   }, [selectedDay, workoutPlan]);
 
   const isSelectedDayRestDay =
-    hasLoggedRestDay || (workoutPlan && Boolean(selectedPlanDay?.isRestDay)) || isAutoRestDay;
+    hasLoggedRestDay ||
+    (workoutPlan && Boolean(selectedPlanDay?.isRestDay)) ||
+    isAutoRestDay;
 
   const restDayDateSet = useMemo(() => {
     const set = new Set<string>(loggedRestDayDateSet);
@@ -262,7 +273,13 @@ const Workout = () => {
     }
 
     return set;
-  }, [calendarDays, loggedRestDayDateSet, workoutPlan, workoutPlanByDayName, workoutsHistory]);
+  }, [
+    calendarDays,
+    loggedRestDayDateSet,
+    workoutPlan,
+    workoutPlanByDayName,
+    workoutsHistory,
+  ]);
 
   const shouldShowLogButton = useMemo(() => {
     if (isSelectedDayToday) return false;
@@ -444,8 +461,13 @@ const Workout = () => {
   }, [hasWorkoutToday, isSelectedDayToday, router]);
 
   const handleEditPlan = useCallback(() => {
-    router.push("/(modals)/workoutPlan");
-  }, [router]);
+    // Open editor when a saved plan or local draft exists; otherwise open creation flow
+    if (workoutPlan) {
+      router.push("/(modals)/workoutPlan");
+    } else {
+      router.push("/(modals)/workoutPlanSelection");
+    }
+  }, [router, workoutPlan]);
 
   const onRefresh = useCallback(() => {
     const nextSelectedDay = startOfDay(new Date());

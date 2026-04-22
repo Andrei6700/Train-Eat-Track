@@ -9,25 +9,26 @@ import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
-import {
-  createWorkoutPlan,
-  getUserWorkoutPlan,
-  updateWorkoutPlan
-} from "@/src/services/workoutPlanService";
+import { getTemplateById } from "@/src/data/workoutTemplates";
 import { importWorkoutPlanFromExcel } from "@/src/services/workoutPlanImportService";
+import {
+    createWorkoutPlan,
+    getUserWorkoutPlan,
+    updateWorkoutPlan,
+} from "@/src/services/workoutPlanService";
 import { DayWorkout, WorkoutPlan } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
-import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View
+    Alert,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,19 +37,96 @@ const SPLIT_OPTIONS = [1, 2, 4, 7, 9, 14];
 const MIN_CUSTOM_SPLIT_DAYS = 1;
 const MAX_CUSTOM_SPLIT_DAYS = 60;
 const FOOTER_BUTTON_HEIGHT = verticalScale(52);
+const WEEKLY_CYCLE_DAYS = 7;
+
+const normalizeWeekdayLabel = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/[ăâ]/g, "a")
+    .replace(/î/g, "i")
+    .replace(/[șş]/g, "s")
+    .replace(/[țţ]/g, "t")
+    .trim();
+};
+
+const getWeekdayIndex = (value: string): number | null => {
+  const normalized = normalizeWeekdayLabel(value);
+  if (normalized.startsWith("luni")) return 0;
+  if (normalized.startsWith("marti")) return 1;
+  if (normalized.startsWith("miercuri")) return 2;
+  if (normalized.startsWith("joi")) return 3;
+  if (normalized.startsWith("vineri")) return 4;
+  if (normalized.startsWith("sambata")) return 5;
+  if (normalized.startsWith("duminica")) return 6;
+  return null;
+};
+
+const normalizeTemplateToCycleDays = (template: {
+  daysPerWeek: number;
+  splitDays: string[];
+  days: DayWorkout[];
+}): { normalizedDays: DayWorkout[]; cycleLength: number } => {
+  const workoutDays = template.days.filter((day) => !day.isRestDay);
+  const splitDayIndexes = template.splitDays.map((splitLabel) => {
+    const weekDayToken = splitLabel.split("(")[0]?.trim() || splitLabel;
+    return getWeekdayIndex(weekDayToken);
+  });
+
+  const hasValidWeeklyMapping =
+    workoutDays.length > 0 &&
+    splitDayIndexes.length === workoutDays.length &&
+    splitDayIndexes.every((index) => index !== null) &&
+    new Set(splitDayIndexes).size === splitDayIndexes.length;
+
+  if (hasValidWeeklyMapping && workoutDays.length < WEEKLY_CYCLE_DAYS) {
+    const weeklyDays: DayWorkout[] = Array.from(
+      { length: WEEKLY_CYCLE_DAYS },
+      (_, index) => ({
+        day: `Day ${index + 1}`,
+        isRestDay: true,
+        exercises: [],
+      }),
+    );
+
+    workoutDays.forEach((workoutDay, index) => {
+      const targetDayIndex = splitDayIndexes[index];
+      if (targetDayIndex === null) return;
+
+      weeklyDays[targetDayIndex] = {
+        ...workoutDay,
+        day: `Day ${targetDayIndex + 1}`,
+        isRestDay: false,
+      };
+    });
+
+    return {
+      normalizedDays: weeklyDays,
+      cycleLength: WEEKLY_CYCLE_DAYS,
+    };
+  }
+
+  const normalizedDays = template.days.map((day, index) => ({
+    ...day,
+    day: `Day ${index + 1}`,
+  }));
+
+  return {
+    normalizedDays,
+    cycleLength: Math.max(normalizedDays.length, template.daysPerWeek, 1),
+  };
+};
 
 const WorkoutPlanScreen = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
-  const {
-    workoutPlan,
-    refreshPlan,
-    deletePlan,
-    setPlanDraft,
-    clearPlanDraft,
-  } = useWorkoutPlan();
+  const params = useLocalSearchParams<{
+    templateId?: string;
+    fromImport?: string;
+  }>();
+  const { workoutPlan, refreshPlan, deletePlan, setPlanDraft, clearPlanDraft } =
+    useWorkoutPlan();
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,15 +138,20 @@ const WorkoutPlanScreen = () => {
   const [showCustomSplitModal, setShowCustomSplitModal] = useState(false);
   const [customSplitInput, setCustomSplitInput] = useState("");
   const [days, setDays] = useState<DayWorkout[]>([]);
+  const [isFromTemplate, setIsFromTemplate] = useState(false);
+  const [isFromImport, setIsFromImport] = useState(false);
   const footerBottomOffset = insets.bottom + spacingY._12;
-  const footerReserve = footerBottomOffset + FOOTER_BUTTON_HEIGHT + spacingY._15;
+  const footerReserve =
+    footerBottomOffset + FOOTER_BUTTON_HEIGHT + spacingY._15;
 
   const daysOfWeek = useMemo(() => {
     return Array.from({ length: splitDays }, (_, i) => `Day ${i + 1}`);
   }, [splitDays]);
 
   const availableSplitOptions = useMemo(() => {
-    return Array.from(new Set([...SPLIT_OPTIONS, splitDays])).sort((a, b) => a - b);
+    return Array.from(new Set([...SPLIT_OPTIONS, splitDays])).sort(
+      (a, b) => a - b,
+    );
   }, [splitDays]);
 
   useEffect(() => {
@@ -90,7 +173,12 @@ const WorkoutPlanScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadWorkoutPlan();
-    }, [user?.uid, workoutPlan?.id])
+    }, [
+      user?.uid,
+      workoutPlan?.id,
+      params.templateId as string,
+      params.fromImport as string,
+    ]),
   );
 
   useEffect(() => {
@@ -102,6 +190,43 @@ const WorkoutPlanScreen = () => {
   const loadWorkoutPlan = async () => {
     if (!user?.uid) return;
 
+    // Check if we have template data in params
+    if (params.templateId) {
+      const template = getTemplateById(params.templateId as string);
+      if (template) {
+        const { normalizedDays, cycleLength } =
+          normalizeTemplateToCycleDays(template);
+
+        setExistingPlanId(null);
+        setPlanName(template.name); // Auto-fill template name
+        setSplitDays(cycleLength);
+        setDays(normalizedDays);
+        setIsFromTemplate(true);
+        setIsFromImport(false);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Check if we have imported data from context (set by selection screen)
+    if (params.fromImport && workoutPlan && !workoutPlan.id) {
+      setExistingPlanId(null);
+      setPlanName(workoutPlan.planName || "");
+      setSplitDays(workoutPlan.splitDays || 1);
+      setDays(workoutPlan.days || []);
+      setIsFromTemplate(false);
+      setIsFromImport(true);
+      setLoading(false);
+      return;
+    }
+
+    // Custom plan (no template, no import)
+    if (!params.templateId && !params.fromImport) {
+      setIsFromTemplate(false);
+      setIsFromImport(false);
+    }
+
+    // Otherwise, load existing plan if available
     if (workoutPlan && !workoutPlan.id) {
       setExistingPlanId(null);
       setPlanName(workoutPlan.planName || "");
@@ -164,7 +289,10 @@ const WorkoutPlanScreen = () => {
 
   const handleSave = async () => {
     if (!planName.trim()) {
-      Alert.alert(t("common_error"), t("workout_plan_modal_alert_missing_name"));
+      Alert.alert(
+        t("common_error"),
+        t("workout_plan_modal_alert_missing_name"),
+      );
       return;
     }
     if (!user?.uid) return;
@@ -177,7 +305,9 @@ const WorkoutPlanScreen = () => {
       planName: planName.trim(),
       splitDays,
       days,
-      createdAt: existingPlanId ? workoutPlan?.createdAt || new Date() : new Date(),
+      createdAt: existingPlanId
+        ? workoutPlan?.createdAt || new Date()
+        : new Date(),
       updatedAt: new Date(),
     };
 
@@ -210,12 +340,13 @@ const WorkoutPlanScreen = () => {
         queuedOffline
           ? t("workout_plan_modal_saved_offline_message")
           : t("workout_plan_modal_saved_success_message"),
-        [
-        { text: t("common_ok"), onPress: () => router.back() },
-        ],
+        [{ text: t("common_ok"), onPress: () => router.replace("/(tabs)/workout") }],
       );
     } else {
-      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_save"));
+      Alert.alert(
+        t("common_error"),
+        result.msg || t("workout_plan_modal_error_save"),
+      );
     }
   };
 
@@ -242,15 +373,15 @@ const WorkoutPlanScreen = () => {
       const details = result.errors?.length
         ? `\n\n${result.errors.slice(0, 6).join("\n")}`
         : "";
-      Alert.alert(
-        t("common_error"),
-        `${result.msg || fallbackMsg}${details}`,
-      );
+      Alert.alert(t("common_error"), `${result.msg || fallbackMsg}${details}`);
       return;
     }
 
     if (!result.data) {
-      Alert.alert(t("common_error"), t("workout_plan_modal_import_error_generic"));
+      Alert.alert(
+        t("common_error"),
+        t("workout_plan_modal_import_error_generic"),
+      );
       return;
     }
 
@@ -289,12 +420,12 @@ const WorkoutPlanScreen = () => {
       t("workout_plan_modal_delete_confirm_message"),
       [
         { text: t("common_cancel"), style: "cancel" },
-        { 
+        {
           text: t("workout_plan_modal_delete_confirm_action"),
-          style: "destructive", 
-          onPress: performDelete 
+          style: "destructive",
+          onPress: performDelete,
         },
-      ]
+      ],
     );
   };
 
@@ -302,7 +433,7 @@ const WorkoutPlanScreen = () => {
     setDeleting(true);
     const result = await deletePlan();
     setDeleting(false);
-    
+
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       clearPlanDraft();
@@ -310,14 +441,17 @@ const WorkoutPlanScreen = () => {
         t("workout_plan_modal_delete_success_title"),
         result.msg || t("workout_plan_modal_delete_success_message"),
         [
-          { 
+          {
             text: t("common_ok"),
-            onPress: () => router.back() 
-          }
-        ]
+            onPress: () => router.back(),
+          },
+        ],
       );
     } else {
-      Alert.alert(t("common_error"), result.msg || t("workout_plan_modal_error_delete"));
+      Alert.alert(
+        t("common_error"),
+        result.msg || t("workout_plan_modal_error_delete"),
+      );
     }
   };
 
@@ -334,11 +468,11 @@ const WorkoutPlanScreen = () => {
   };
 
   const getRestDaysCount = () => {
-    return days.filter(d => d.isRestDay).length;
+    return days.filter((d) => d.isRestDay).length;
   };
 
   const getWorkoutDaysCount = () => {
-    return days.filter(d => !d.isRestDay && d.exercises.length > 0).length;
+    return days.filter((d) => !d.isRestDay && d.exercises.length > 0).length;
   };
 
   const getDisplayDayLabel = (dayValue: string) => {
@@ -363,7 +497,10 @@ const WorkoutPlanScreen = () => {
       parsedValue < MIN_CUSTOM_SPLIT_DAYS ||
       parsedValue > MAX_CUSTOM_SPLIT_DAYS
     ) {
-      Alert.alert(t("common_error"), t("workout_plan_modal_custom_split_invalid"));
+      Alert.alert(
+        t("common_error"),
+        t("workout_plan_modal_custom_split_invalid"),
+      );
       return;
     }
 
@@ -375,7 +512,10 @@ const WorkoutPlanScreen = () => {
   if (loading) {
     return (
       <ModalWrapper>
-        <Header title={t("workout_plan_modal_title")} leftIcon={<BackButton />} />
+        <Header
+          title={t("workout_plan_modal_title")}
+          leftIcon={<BackButton />}
+        />
         <Loading />
       </ModalWrapper>
     );
@@ -395,10 +535,13 @@ const WorkoutPlanScreen = () => {
         />
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: footerReserve }]}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: footerReserve },
+          ]}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View 
+          <Animated.View
             entering={FadeInDown.duration(400)}
             style={styles.inputContainer}
           >
@@ -413,13 +556,16 @@ const WorkoutPlanScreen = () => {
             />
           </Animated.View>
 
-          {!existingPlanId && (
+          {!existingPlanId && !isFromTemplate && !isFromImport && (
             <Animated.View
               entering={FadeInDown.duration(400).delay(40)}
               style={styles.importContainer}
             >
               <TouchableOpacity
-                style={[styles.importButton, importing && styles.importButtonDisabled]}
+                style={[
+                  styles.importButton,
+                  importing && styles.importButtonDisabled,
+                ]}
                 onPress={handleImportWorkoutPlan}
                 disabled={importing}
                 activeOpacity={0.85}
@@ -431,7 +577,11 @@ const WorkoutPlanScreen = () => {
                       ? t("workout_plan_modal_import_loading")
                       : t("workout_plan_modal_import_button")}
                   </Typo>
-                  <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                  <Typo
+                    size={12}
+                    color={colors.neutral400}
+                    style={{ marginTop: 2 }}
+                  >
                     {t("workout_plan_modal_import_caption")}
                   </Typo>
                 </View>
@@ -439,7 +589,7 @@ const WorkoutPlanScreen = () => {
             </Animated.View>
           )}
 
-          <Animated.View 
+          <Animated.View
             entering={FadeInDown.duration(400).delay(50)}
             style={styles.splitContainer}
           >
@@ -490,7 +640,7 @@ const WorkoutPlanScreen = () => {
             </View>
           </Animated.View>
 
-          <Animated.View 
+          <Animated.View
             entering={FadeInDown.duration(400).delay(100)}
             style={styles.statsContainer}
           >
@@ -548,26 +698,42 @@ const WorkoutPlanScreen = () => {
                   >
                     <View style={styles.cardHeader}>
                       <View style={styles.dayTitleRow}>
-                        <Typo size={18} fontWeight="700" color={isRest ? colors.neutral400 : colors.white}>
+                        <Typo
+                          size={18}
+                          fontWeight="700"
+                          color={isRest ? colors.neutral400 : colors.white}
+                        >
                           {getDisplayDayLabel(day)}
                         </Typo>
                         {isRest && (
                           <View style={styles.restBadge}>
-                            <Icons.Coffee size={14} color={colors.neutral400} weight="fill" />
-                            <Typo size={12} color={colors.neutral400} fontWeight="600">
+                            <Icons.Coffee
+                              size={14}
+                              color={colors.neutral400}
+                              weight="fill"
+                            />
+                            <Typo
+                              size={12}
+                              color={colors.neutral400}
+                              fontWeight="600"
+                            >
                               {t("workout_plan_modal_rest_badge")}
                             </Typo>
                           </View>
                         )}
                         {!isRest && hasExercises && (
-                           <View style={styles.countBadge}>
-                             <Typo size={12} color={colors.black} fontWeight="700">
-                               {exerciseCount}{" "}
-                               {exerciseCount === 1
-                                 ? t("workout_plan_modal_exercise_singular")
-                                 : t("workout_plan_modal_exercise_plural")}
-                             </Typo>
-                           </View>
+                          <View style={styles.countBadge}>
+                            <Typo
+                              size={12}
+                              color={colors.black}
+                              fontWeight="700"
+                            >
+                              {exerciseCount}{" "}
+                              {exerciseCount === 1
+                                ? t("workout_plan_modal_exercise_singular")
+                                : t("workout_plan_modal_exercise_plural")}
+                            </Typo>
+                          </View>
                         )}
                       </View>
                       <Icons.CaretRight size={20} color={colors.neutral500} />
@@ -577,19 +743,27 @@ const WorkoutPlanScreen = () => {
                       <View style={styles.cardBody}>
                         {dayData.exercises.slice(0, 3).map((ex, idx) => (
                           <View key={idx} style={styles.exerciseRow}>
-                             <View style={styles.dot} />
-                             <Typo size={14} color={colors.neutral300} textProps={{ numberOfLines: 1 }}>
-                               {ex.exerciseName}
-                             </Typo>
-                             <Typo size={13} color={colors.neutral500}>
-                               {t("workout_plan_modal_sets_count", {
-                                 count: ex.sets.length,
-                               })}
-                             </Typo>
+                            <View style={styles.dot} />
+                            <Typo
+                              size={14}
+                              color={colors.neutral300}
+                              textProps={{ numberOfLines: 1 }}
+                            >
+                              {ex.exerciseName}
+                            </Typo>
+                            <Typo size={13} color={colors.neutral500}>
+                              {t("workout_plan_modal_sets_count", {
+                                count: ex.sets.length,
+                              })}
+                            </Typo>
                           </View>
                         ))}
                         {exerciseCount > 3 && (
-                          <Typo size={13} color={colors.primary} style={{ marginTop: 4, marginLeft: 14 }}>
+                          <Typo
+                            size={13}
+                            color={colors.primary}
+                            style={{ marginTop: 4, marginLeft: 14 }}
+                          >
                             {t("workout_plan_modal_more_exercises", {
                               count: exerciseCount - 3,
                             })}
@@ -599,7 +773,11 @@ const WorkoutPlanScreen = () => {
                     )}
 
                     {!isRest && !hasExercises && (
-                      <Typo size={14} color={colors.neutral500} style={{ marginTop: spacingY._5 }}>
+                      <Typo
+                        size={14}
+                        color={colors.neutral500}
+                        style={{ marginTop: spacingY._5 }}
+                      >
                         {t("workout_plan_modal_tap_add_exercises")}
                       </Typo>
                     )}
@@ -623,7 +801,11 @@ const WorkoutPlanScreen = () => {
                       ? t("workout_plan_modal_delete_button_loading")
                       : t("workout_plan_modal_delete_button")}
                   </Typo>
-                  <Typo size={12} color={colors.neutral400} style={{ marginTop: 2 }}>
+                  <Typo
+                    size={12}
+                    color={colors.neutral400}
+                    style={{ marginTop: 2 }}
+                  >
                     {t("workout_plan_modal_delete_caption")}
                   </Typo>
                 </View>
@@ -654,7 +836,11 @@ const WorkoutPlanScreen = () => {
             <View style={styles.infoModal}>
               <View style={styles.infoHeader}>
                 <Icons.Info size={24} color={colors.primary} weight="fill" />
-                <Typo size={18} fontWeight="700" style={{ flex: 1, marginLeft: 10 }}>
+                <Typo
+                  size={18}
+                  fontWeight="700"
+                  style={{ flex: 1, marginLeft: 10 }}
+                >
                   {t("workout_plan_modal_info_title")}
                 </Typo>
                 <TouchableOpacity onPress={() => setShowInfoModal(false)}>
@@ -663,7 +849,11 @@ const WorkoutPlanScreen = () => {
               </View>
 
               <View style={styles.infoContent}>
-                <Typo size={15} color={colors.neutral200} style={{ lineHeight: 22 }}>
+                <Typo
+                  size={15}
+                  color={colors.neutral200}
+                  style={{ lineHeight: 22 }}
+                >
                   {t("workout_plan_modal_info_desc")}
                 </Typo>
 
@@ -705,7 +895,11 @@ const WorkoutPlanScreen = () => {
                   </View>
                 </View>
 
-                <Typo size={13} color={colors.neutral500} style={{ marginTop: 15, fontStyle: 'italic' }}>
+                <Typo
+                  size={13}
+                  color={colors.neutral500}
+                  style={{ marginTop: 15, fontStyle: "italic" }}
+                >
                   {t("workout_plan_modal_info_footer")}
                 </Typo>
               </View>
@@ -755,7 +949,10 @@ const WorkoutPlanScreen = () => {
                     {t("common_cancel")}
                   </Typo>
                 </TouchableOpacity>
-                <Button onPress={applyCustomSplitDays} style={styles.customSplitApplyButton}>
+                <Button
+                  onPress={applyCustomSplitDays}
+                  style={styles.customSplitApplyButton}
+                >
                   <Typo size={15} fontWeight="700" color={colors.black}>
                     {t("workout_plan_modal_custom_split_apply")}
                   </Typo>
@@ -811,17 +1008,17 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._25,
   },
   splitHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: spacingY._10,
   },
   infoButton: {
     padding: 4,
   },
   splitOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacingX._10,
   },
   splitOption: {
@@ -830,7 +1027,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._12,
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 2,
     borderColor: colors.neutral700,
   },
@@ -852,8 +1049,8 @@ const styles = StyleSheet.create({
     borderColor: colors.neutral700,
   },
   statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: spacingX._10,
     marginBottom: spacingY._25,
   },
@@ -862,7 +1059,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
     padding: spacingX._15,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 2,
     borderColor: colors.neutral700,
     gap: verticalScale(4),
@@ -881,8 +1078,8 @@ const styles = StyleSheet.create({
     borderColor: colors.neutral600,
   },
   dayCardRest: {
-    backgroundColor: 'rgba(38, 38, 38, 0.5)',
-    borderStyle: 'dashed',
+    backgroundColor: "rgba(38, 38, 38, 0.5)",
+    borderStyle: "dashed",
   },
   cardHeader: {
     flexDirection: "row",
@@ -895,8 +1092,8 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
   },
   restBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     backgroundColor: colors.neutral700,
     paddingHorizontal: 8,
@@ -917,8 +1114,8 @@ const styles = StyleSheet.create({
     gap: verticalScale(4),
   },
   exerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacingX._7,
   },
   dot: {
@@ -931,12 +1128,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._12,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
     borderRadius: radius._17,
     padding: spacingX._20,
     marginTop: spacingY._15,
     borderWidth: 2,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: "rgba(239, 68, 68, 0.3)",
   },
   footerSticky: {
     position: "absolute",
@@ -946,22 +1143,22 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: spacingX._20,
   },
   infoModal: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._20,
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
     borderWidth: 2,
     borderColor: colors.neutral700,
   },
   infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: spacingX._20,
     borderBottomWidth: 1,
     borderBottomColor: colors.neutral700,
@@ -1018,4 +1215,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

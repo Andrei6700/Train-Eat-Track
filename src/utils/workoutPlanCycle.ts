@@ -100,17 +100,46 @@ export const findLastSuccessfulWorkoutForCycleDay = (
 };
 
 /**
+ * Pre-computes which cycle day indices have recorded workouts.
+ * Call once per useMemo instead of for every calendar day.
+ *
+ * Complexity: O(m) where m = workoutHistory length
+ */
+export const getCycleDayIndicesWithWorkouts = (
+  workoutHistory: WorkoutHistory[],
+  workoutPlan: WorkoutPlan | null | undefined,
+): Set<number> => {
+  const indices = new Set<number>();
+  if (!workoutPlan) return indices;
+
+  for (const workout of workoutHistory) {
+    if (workout.isRestDay) continue;
+    if (!workout.exercises || workout.exercises.length === 0) continue;
+    const workoutDate = toValidDate(workout.date);
+    if (!workoutDate) continue;
+
+    const cycleDayIndex = getCycleDayIndex(workoutDate, workoutPlan);
+    indices.add(cycleDayIndex);
+  }
+
+  return indices;
+};
+
+/**
  * Case 2: Determines if an empty plan day should be auto-converted to a rest day.
  *
  * Returns true when:
  * - Plan day has no exercises and is not explicitly marked as rest
  * - The date is past the first cycle
  * - No workout with exercises was ever logged for this cycle day position
+ *
+ * Optimized version: accepts pre-computed Set of cycle days with workouts.
+ * Complexity: O(1) lookup instead of O(m) iteration
  */
 export const shouldAutoConvertToRestDay = (
   date: Date,
   workoutPlan: WorkoutPlan,
-  workoutHistory: WorkoutHistory[],
+  cycleDayIndicesWithWorkouts: Set<number>,
 ): boolean => {
   if (!workoutPlan?.days?.length) return false;
 
@@ -123,18 +152,8 @@ export const shouldAutoConvertToRestDay = (
   // First cycle: don't auto-rest, show warning instead
   if (isFirstCycle(date, workoutPlan)) return false;
 
-  // Check if any workout was ever logged for this cycle day position
-  for (const workout of workoutHistory) {
-    if (workout.isRestDay) continue;
-    if (!workout.exercises || workout.exercises.length === 0) continue;
-    const workoutDate = toValidDate(workout.date);
-    if (!workoutDate) continue;
-    if (getCycleDayIndex(workoutDate, workoutPlan) === cycleDayIndex) {
-      return false;
-    }
-  }
-
-  return true;
+  // Check if this cycle day index has any recorded workouts (O(1) lookup)
+  return !cycleDayIndicesWithWorkouts.has(cycleDayIndex);
 };
 
 /**
