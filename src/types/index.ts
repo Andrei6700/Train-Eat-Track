@@ -1,17 +1,20 @@
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-  TextInput,
-  TextInputProps,
-  TextProps,
-  TextStyle,
-  TouchableOpacityProps,
-  ViewStyle
+    PressableProps,
+    StatusBarStyle,
+    TextInput,
+    TextInputProps,
+    TextProps,
+    TextStyle,
+    ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
   style?: ViewStyle;
   children: React.ReactNode;
+  statusBarStyle?: StatusBarStyle;
+  statusBarBackgroundColor?: string;
 };
 export type ModalWrapperProps = {
   style?: ViewStyle;
@@ -26,13 +29,16 @@ export type accountOptionType = {
   routeName?: any;
 };
 
-export type TypoProps = {
+export type TypoProps = TextProps & {
   size?: number;
   color?: string;
   fontWeight?: TextStyle["fontWeight"];
   children: any | null;
   style?: TextStyle;
   textProps?: TextProps;
+  variant?: "body" | "heading" | "metric" | "mono" | "label";
+  family?: "body" | "heading" | "mono";
+  uppercase?: boolean;
 };
 
 export type IconComponent = React.ComponentType<{
@@ -60,6 +66,7 @@ export type HeaderProps = {
 
 export type BackButtonProps = {
   style?: ViewStyle;
+  buttonStyle?: ViewStyle;
   iconSize?: number;
   onPress?: () => void;
 };
@@ -79,10 +86,12 @@ export interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
   inputRef?: React.RefObject<TextInput>;
+  hasError?: boolean;
 }
 
-export interface CustomButtonProps extends TouchableOpacityProps {
+export interface CustomButtonProps extends PressableProps {
   style?: ViewStyle;
+  buttonStyle?: ViewStyle;
   onPress?: () => void;
   loading?: boolean;
   children: React.ReactNode;
@@ -120,6 +129,9 @@ export type AuthContextType = {
     email: string,
     password: string,
     name: string
+  ) => Promise<{ success: boolean; msg?: string }>;
+  forgotPassword: (
+    email: string
   ) => Promise<{ success: boolean; msg?: string }>;
   updateUserData: (userId: string) => Promise<void>;
 };
@@ -175,6 +187,15 @@ export type DayWorkout = {
   isRestDay: boolean;
   exercises: WorkoutExercise[];
   notes?: string;
+};
+
+export type WorkoutTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  daysPerWeek: number;
+  splitDays: string[];
+  days: DayWorkout[];
 };
 
 export type WorkoutPlan = {

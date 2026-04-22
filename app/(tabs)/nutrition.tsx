@@ -18,6 +18,7 @@ import NutritionCalendar, {
   NutritionCalendarDayData,
 } from "@/src/components/ui/NutritionCalendar";
 import Typo from "@/src/components/ui/Typo";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
@@ -56,7 +57,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  View,
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -296,6 +296,7 @@ const Nutrition = () => {
   const router = useRouter();
   const { user } = useAuth();
   const { language, t } = useLanguage();
+  const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
   const {
     todayNutrition,
@@ -714,7 +715,9 @@ const Nutrition = () => {
           logCalendarWeekLoaded(normalizedDate, "empty");
         }
       } catch (error) {
-        console.error("[Nutrition] Error loading calendar day summary:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error loading calendar day summary:", error);
+        }
       } finally {
         pendingDayKeysRef.current.delete(dateKey);
       }
@@ -891,7 +894,9 @@ const Nutrition = () => {
           loadedDayKeysRef.current.add(toDateKey(date));
         }
       } catch (error) {
-        console.error("[Nutrition] Error in batch calendar load:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error in batch calendar load:", error);
+        }
       } finally {
         for (const date of datesToLoad) {
           pendingDayKeysRef.current.delete(toDateKey(date));
@@ -951,7 +956,9 @@ const Nutrition = () => {
       try {
         await refreshNutrition(date, options);
       } catch (error) {
-        console.error("[Nutrition] Error refreshing selected date:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error refreshing selected date:", error);
+        }
       }
     },
     [refreshNutrition, user?.uid],
@@ -1061,7 +1068,9 @@ const Nutrition = () => {
           setCalendarEarliestDate(null);
         }
       } catch (error) {
-        console.error("[Nutrition] Error loading calendar seed:", error);
+        if (__DEV__) {
+          console.error("[Nutrition] Error loading calendar seed:", error);
+        }
         if (requestId !== calendarRequestIdRef.current) return;
 
         if (!cachedSummary) {
@@ -1188,6 +1197,8 @@ const Nutrition = () => {
   useEffect(() => {
     return () => {
       calendarRequestIdRef.current += 1;
+      // Clear accumulated week keys to prevent memory leak
+      loggedWeekKeysRef.current.clear();
     };
   }, []);
 
@@ -1253,6 +1264,10 @@ const Nutrition = () => {
 
   const handleOpenSettings = useCallback(() => {
     router.push("/(modals)/nutritionSettings");
+  }, [router]);
+
+  const handleOpenMaintenance = useCallback(() => {
+    router.push("/(modals)/maintenanceTracker");
   }, [router]);
 
   const handleOpenCalendarLog = useCallback(() => {
@@ -1477,9 +1492,10 @@ const Nutrition = () => {
             dateLabel={dateHeaderLabel}
             onOpenCalendarLog={handleOpenCalendarLog}
             onOpenSettings={handleOpenSettings}
+            onOpenMaintenance={handleOpenMaintenance}
           />
 
-          <Typo size={24} fontWeight="700" style={styles.calendarMonthTitle}>
+          <Typo size={32} variant="heading" style={styles.calendarMonthTitle}>
             {calendarMonthLabel}
           </Typo>
 
@@ -1500,7 +1516,7 @@ const Nutrition = () => {
           <NutritionObjectiveCard stats={nutritionStats} />
 
           <Animated.View
-            entering={FadeInDown.duration(400).delay(300)}
+            entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(300)}
             style={styles.mealsSection}
           >
             {mealSummaries.map((summary) => (

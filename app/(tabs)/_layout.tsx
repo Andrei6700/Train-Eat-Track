@@ -36,7 +36,7 @@ const TabsLayout = () => {
         freezeOnBlur: true, // Preserve state when switching tabs
       }}
       sceneContainerStyle={{
-        backgroundColor: colors.neutral900,
+        backgroundColor: colors.background,
       }}
     >
       <Tabs.Screen name='index' />

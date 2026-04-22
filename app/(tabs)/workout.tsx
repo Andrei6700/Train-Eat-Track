@@ -8,6 +8,7 @@ import WorkoutContentState from "@/src/components/workout/WorkoutContentState";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { MONTH_NAMES } from "@/src/i18n/translations";
 import {
     clearWorkoutHistoryMemoryCache,
@@ -23,6 +24,7 @@ import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { verticalScale } from "@/src/utils/styling";
 import {
     getCycleDayIndex,
+    getCycleDayIndicesWithWorkouts,
     getCycleDayNameFromDate,
     isFirstCycle,
     isFirstCycleEmptyDay,
@@ -115,6 +117,7 @@ const Workout = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const { workoutPlan } = useWorkoutPlan();
+  const reduceMotion = useReduceMotion();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -214,7 +217,15 @@ const Workout = () => {
 
   const isAutoRestDay = useMemo(() => {
     if (!workoutPlan) return false;
-    return shouldAutoConvertToRestDay(selectedDay, workoutPlan, workoutsHistory);
+    const cycleDayIndicesWithWorkouts = getCycleDayIndicesWithWorkouts(
+      workoutsHistory,
+      workoutPlan,
+    );
+    return shouldAutoConvertToRestDay(
+      selectedDay,
+      workoutPlan,
+      cycleDayIndicesWithWorkouts,
+    );
   }, [selectedDay, workoutPlan, workoutsHistory]);
 
   const isSelectedFirstCycleEmpty = useMemo(() => {
@@ -223,7 +234,9 @@ const Workout = () => {
   }, [selectedDay, workoutPlan]);
 
   const isSelectedDayRestDay =
-    hasLoggedRestDay || Boolean(selectedPlanDay?.isRestDay) || isAutoRestDay;
+    hasLoggedRestDay ||
+    (workoutPlan && Boolean(selectedPlanDay?.isRestDay)) ||
+    isAutoRestDay;
 
   const restDayDateSet = useMemo(() => {
     const set = new Set<string>(loggedRestDayDateSet);
@@ -260,7 +273,13 @@ const Workout = () => {
     }
 
     return set;
-  }, [calendarDays, loggedRestDayDateSet, workoutPlan, workoutPlanByDayName, workoutsHistory]);
+  }, [
+    calendarDays,
+    loggedRestDayDateSet,
+    workoutPlan,
+    workoutPlanByDayName,
+    workoutsHistory,
+  ]);
 
   const shouldShowLogButton = useMemo(() => {
     if (isSelectedDayToday) return false;
@@ -442,8 +461,13 @@ const Workout = () => {
   }, [hasWorkoutToday, isSelectedDayToday, router]);
 
   const handleEditPlan = useCallback(() => {
-    router.push("/(modals)/workoutPlan");
-  }, [router]);
+    // Open editor when a saved plan or local draft exists; otherwise open creation flow
+    if (workoutPlan) {
+      router.push("/(modals)/workoutPlan");
+    } else {
+      router.push("/(modals)/workoutPlanSelection");
+    }
+  }, [router, workoutPlan]);
 
   const onRefresh = useCallback(() => {
     const nextSelectedDay = startOfDay(new Date());
@@ -459,10 +483,10 @@ const Workout = () => {
         <ScreenWrapper>
           <View style={styles.container}>
             <Animated.View
-              entering={FadeIn.duration(400)}
+              entering={reduceMotion ? undefined : FadeIn.duration(400)}
               style={styles.header}
             >
-              <Typo size={28} fontWeight="700">
+              <Typo size={32} variant="heading">
                 {t("tab_workout")}
               </Typo>
               {workoutPlan && (
@@ -492,8 +516,11 @@ const Workout = () => {
     <SwipeableScreen>
       <ScreenWrapper>
         <View style={styles.container}>
-          <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
-            <Typo size={28} fontWeight="700">
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(400)}
+            style={styles.header}
+          >
+            <Typo size={32} variant="heading">
               {t("tab_workout")}
             </Typo>
             {workoutPlan && (
@@ -514,10 +541,12 @@ const Workout = () => {
           </Animated.View>
 
           <Animated.View
-            entering={FadeInDown.duration(400).delay(100)}
+            entering={
+              reduceMotion ? undefined : FadeInDown.duration(400).delay(100)
+            }
             style={styles.monthHeader}
           >
-            <Typo size={20} fontWeight="600" color={colors.white}>
+            <Typo size={24} variant="heading" color={colors.textPrimary}>
               {MONTH_NAMES[language][currentMonth.getMonth()]}{" "}
               {currentMonth.getFullYear()}
             </Typo>
@@ -533,7 +562,9 @@ const Workout = () => {
 
           {calendarDays.length > 0 && (
             <Animated.View
-              entering={FadeInDown.duration(400).delay(200)}
+              entering={
+                reduceMotion ? undefined : FadeInDown.duration(400).delay(200)
+              }
               style={styles.calendarSection}
             >
               <WorkoutCalendarStrip

@@ -8,11 +8,23 @@ import { NutritionProvider } from "@/src/contexts/nutritionContext";
 import { WorkoutPlanProvider } from "@/src/contexts/workoutPlanContext";
 import { buildSyncHandlers } from "@/src/services/syncEngineService";
 import {
-  processSyncQueueV2,
-  subscribeToSyncQueue,
-  SyncQueueSummary,
+    processSyncQueueV2,
+    subscribeToSyncQueue,
+    SyncQueueSummary,
 } from "@/src/services/syncQueueService";
+import { BebasNeue_400Regular } from "@expo-google-fonts/bebas-neue";
+import {
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+} from "@expo-google-fonts/inter";
+import {
+    JetBrainsMono_400Regular,
+    JetBrainsMono_600SemiBold,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef } from "react";
 import { Alert, StatusBar, View } from "react-native";
 import "react-native-reanimated";
@@ -39,6 +51,8 @@ const EMPTY_SUMMARY: SyncQueueSummary = {
   conflicts: 0,
   nextRetryAt: null,
 };
+
+void SplashScreen.preventAutoHideAsync().catch(() => null);
 
 const SyncManager = () => {
   const { isConnected } = useNetwork();
@@ -79,7 +93,9 @@ const SyncManager = () => {
           );
         }
       } catch (error) {
-        console.error("[SyncManager] Sync run failed:", error);
+        if (__DEV__) {
+          console.error("[SyncManager] Sync run failed:", error);
+        }
       } finally {
         isSyncingRef.current = false;
       }
@@ -91,7 +107,11 @@ const SyncManager = () => {
     (summary: SyncQueueSummary) => {
       clearRetryTimer();
 
-      if (!isConnected || summary.retryScheduled === 0 || !summary.nextRetryAt) {
+      if (
+        !isConnected ||
+        summary.retryScheduled === 0 ||
+        !summary.nextRetryAt
+      ) {
         return;
       }
 
@@ -159,8 +179,8 @@ const SyncManager = () => {
 
 const StackLayout = () => {
   return (
-    <View style={{ flex: 1, backgroundColor: colors.neutral900 }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.neutral900} />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       <OfflineBanner />
       <SyncManager />
       <Stack
@@ -168,7 +188,7 @@ const StackLayout = () => {
           headerShown: false,
           animation: "none",
           contentStyle: {
-            backgroundColor: colors.neutral900,
+            backgroundColor: colors.background,
           },
         }}
       >
@@ -181,6 +201,10 @@ const StackLayout = () => {
         />
         <Stack.Screen
           name="(modals)/addWorkout"
+          options={{ presentation: "modal" }}
+        />
+        <Stack.Screen
+          name="(modals)/workoutPlanSelection"
           options={{ presentation: "modal" }}
         />
         <Stack.Screen
@@ -222,12 +246,34 @@ const StackLayout = () => {
           name="(modals)/privacyPolicy"
           options={{ presentation: "modal", animation: "slide_from_right" }}
         />
+        <Stack.Screen
+          name="(modals)/maintenanceTracker"
+          options={{ presentation: "modal", animation: "slide_from_bottom" }}
+        />
       </Stack>
     </View>
   );
 };
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    BebasNeue_400Regular,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_600SemiBold,
+  });
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    void SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <NetworkProvider>
       <LanguageProvider>

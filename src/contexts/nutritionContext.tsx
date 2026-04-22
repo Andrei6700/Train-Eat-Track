@@ -565,7 +565,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
         markNutritionWeekPreloaded(userId);
       })()
         .catch((error) => {
-          console.error("[NutritionContext] Error preloading week data:", error);
+          if (__DEV__) {
+            console.error("[NutritionContext] Error preloading week data:", error);
+          }
         })
         .finally(() => {
           const current = inFlightWeekPreloadRef.current.get(userId);
@@ -725,16 +727,20 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
           if (requestId !== loadRequestIdRef.current) return;
 
           if (remoteResult.nutritionError) {
-            console.error(
-              "[NutritionContext] Nutrition fetch failed; using cache/default fallback:",
-              remoteResult.nutritionError,
-            );
+            if (__DEV__) {
+              console.error(
+                "[NutritionContext] Nutrition fetch failed; using cache/default fallback:",
+                remoteResult.nutritionError,
+              );
+            }
           }
           if (remoteResult.waterError) {
-            console.error(
-              "[NutritionContext] Water fetch failed; using cache/default fallback:",
-              remoteResult.waterError,
-            );
+            if (__DEV__) {
+              console.error(
+                "[NutritionContext] Water fetch failed; using cache/default fallback:",
+                remoteResult.waterError,
+              );
+            }
           }
 
           const nextNutrition = remoteResult.nutrition || fallbackNutrition;
@@ -766,7 +772,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (!forceRemote && hasCacheForDay && hasFreshDayCache) {
           void runRemoteFetch().catch((error) => {
-            console.error("[NutritionContext] Background revalidation failed:", error);
+            if (__DEV__) {
+              console.error("[NutritionContext] Background revalidation failed:", error);
+            }
           });
         } else {
           await runRemoteFetch();
@@ -781,12 +789,16 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
             await preloadTask;
           } else {
             void preloadTask.catch((error) => {
-              console.error("[NutritionContext] Deferred week preload failed:", error);
+              if (__DEV__) {
+                console.error("[NutritionContext] Deferred week preload failed:", error);
+              }
             });
           }
         }
       } catch (error) {
-        console.error("[NutritionContext] Error loading daily data:", error);
+        if (__DEV__) {
+          console.error("[NutritionContext] Error loading daily data:", error);
+        }
         if (requestId !== loadRequestIdRef.current) return;
 
         setTodayNutrition((prev) => prev || buildDefaultNutrition(userId, normalizedDate));
@@ -886,7 +898,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
       } catch (error) {
-        console.error("[NutritionContext] Error saving nutrition snapshot:", error);
+        if (__DEV__) {
+          console.error("[NutritionContext] Error saving nutrition snapshot:", error);
+        }
       }
 
       await enqueueNutritionSync(nutrition, baseUpdatedAt);
@@ -922,7 +936,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
       } catch (error) {
-        console.error("[NutritionContext] Error saving water snapshot:", error);
+        if (__DEV__) {
+          console.error("[NutritionContext] Error saving water snapshot:", error);
+        }
       }
 
       await enqueueWaterSync(water, baseUpdatedAt);
@@ -1193,7 +1209,9 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
       } catch (error) {
-        console.error("[NutritionContext] Error updating goals:", error);
+        if (__DEV__) {
+          console.error("[NutritionContext] Error updating goals:", error);
+        }
       }
 
       const date = new Date(updatedNutrition.date);

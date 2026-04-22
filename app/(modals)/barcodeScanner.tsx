@@ -5,13 +5,16 @@ import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel } from "@/src/i18n/translations";
+import { saveCustomProduct } from "@/src/services/customProductService";
 import {
   getFoodByBarcode,
   SimplifiedFood,
 } from "@/src/services/foodApiService";
 import { verticalScale } from "@/src/utils/styling";
+import { auth } from "@/src/config/firebase";
 import { Camera, CameraView } from "expo-camera";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
@@ -48,6 +51,18 @@ const BarcodeScanner = () => {
   const [quantity, setQuantity] = useState("100");
   const [addingFood, setAddingFood] = useState(false);
 
+  // Custom product state
+  const [showSaveProductModal, setShowSaveProductModal] = useState(false);
+  const [currentBarcode, setCurrentBarcode] = useState("");
+  const [customProductName, setCustomProductName] = useState("");
+  const [customProductCalories, setCustomProductCalories] = useState("");
+  const [customProductProtein, setCustomProductProtein] = useState("");
+  const [customProductCarbs, setCustomProductCarbs] = useState("");
+  const [customProductFat, setCustomProductFat] = useState("");
+  const [customProductServing, setCustomProductServing] = useState("100");
+  const [customProductImage, setCustomProductImage] = useState<string | null>(null);
+  const [savingCustomProduct, setSavingCustomProduct] = useState(false);
+
   useEffect(() => {
     requestCameraPermission();
   }, []);
@@ -69,7 +84,9 @@ const BarcodeScanner = () => {
     setScanned(true);
     setLoading(true);
 
-    console.log(`Scanned barcode: ${data}`);
+    if (__DEV__) {
+      console.log(`Scanned barcode: ${data}`);
+    }
 
     const result = await getFoodByBarcode(data);
 
@@ -80,14 +97,15 @@ const BarcodeScanner = () => {
       setQuantity("100");
       setShowQuantityModal(true);
     } else {
-      Alert.alert(
-        t("barcode_scanner_modal_not_found_title"),
-        t("barcode_scanner_modal_not_found_message"),
-        [
-          { text: t("common_cancel"), onPress: () => router.back() },
-          { text: t("barcode_scanner_modal_try_again"), onPress: () => setScanned(false) },
-        ],
-      );
+      // Product not found - offer to save it
+      setCurrentBarcode(data);
+      setCustomProductName("");
+      setCustomProductCalories("");
+      setCustomProductProtein("");
+      setCustomProductCarbs("");
+      setCustomProductFat("");
+      setCustomProductServing("100");
+      setShowSaveProductModal(true);
     }
   };
 
@@ -134,7 +152,10 @@ const BarcodeScanner = () => {
       );
     } catch (error: any) {
       setAddingFood(false);
-      Alert.alert(t("common_error"), error?.message || t("barcode_scanner_modal_error_add"));
+      Alert.alert(
+        t("common_error"),
+        error?.message || t("barcode_scanner_modal_error_add"),
+      );
     }
   };
 
@@ -142,6 +163,109 @@ const BarcodeScanner = () => {
     setScanned(false);
     setScannedFood(null);
     setShowQuantityModal(false);
+  };
+
+  const handleSaveCustomProduct = async () => {
+    // Validate fields
+    if (
+      !customProductName.trim() ||
+      !customProductCalories ||
+      !customProductProtein ||
+      !customProductCarbs ||
+      !customProductFat
+    ) {
+      Alert.alert(t("common_error"), "Please fill in all nutritional fields");
+      return;
+    }
+
+    setSavingCustomProduct(true);
+
+    try {
+      // Get current user ID from Firebase auth
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert(t("common_error"), "You must be logged in to save products");
+        setSavingCustomProduct(false);
+        return;
+      }
+      const user_id = currentUser.uid;
+
+      const saved = await saveCustomProduct(
+        currentBarcode,
+        {
+          name: customProductName,
+          calories: Math.round(parseFloat(customProductCalories)),
+          protein: parseFloat(customProductProtein),
+          carbs: parseFloat(customProductCarbs),
+          fat: parseFloat(customProductFat),
+          serving_size: `${customProductServing}g`,
+          image_url: customProductImage || undefined,
+        },
+        user_id,
+      );
+
+      setSavingCustomProduct(false);
+
+      if (saved) {
+        Alert.alert(
+          t("common_success"),
+          "Product saved! You can now add it to your meal.",
+          [
+            {
+              text: t("common_ok"),
+              onPress: () => {
+                // Close save modal, show product with quantity
+                setShowSaveProductModal(false);
+                setScannedFood({
+                  code: `custom-${saved.id}`,
+                  product_name: saved.name,
+                  name: saved.name,
+                  calories: saved.calories,
+                  protein: saved.protein,
+                  carbs: saved.carbs,
+                  fat: saved.fat,
+                  servingSize: saved.serving_size,
+                  brands: saved.brands,
+                  image: saved.image_url,
+                });
+                setQuantity(customProductServing);
+                setShowQuantityModal(true);
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert(
+          t("common_error"),
+          "Failed to save product. Please try again.",
+        );
+      }
+    } catch (error: any) {
+      setSavingCustomProduct(false);
+      Alert.alert(t("common_error"), error?.message || "Error saving product");
+    }
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setCustomProductImage(result.assets[0].uri);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setCustomProductImage(null);
+  };
+
+  const handleCloseSaveModal = () => {
+    setShowSaveProductModal(false);
+    setScanned(false);
   };
 
   if (hasPermission === null) {
@@ -210,6 +334,7 @@ const BarcodeScanner = () => {
       <CameraView
         style={styles.camera}
         facing="back"
+        enableTorch={flashEnabled}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: [
@@ -420,7 +545,9 @@ const BarcodeScanner = () => {
                       fontWeight="600"
                       style={{ marginBottom: spacingY._12 }}
                     >
-                      {t("nutrition_calculated_values_for", { value: quantity || "0" })}
+                      {t("nutrition_calculated_values_for", {
+                        value: quantity || "0",
+                      })}
                     </Typo>
 
                     <View style={styles.nutritionGrid}>
@@ -429,7 +556,7 @@ const BarcodeScanner = () => {
                           {Math.round(
                             (scannedFood.calories *
                               (parseFloat(quantity) || 0)) /
-                              100
+                              100,
                           )}
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
@@ -443,7 +570,7 @@ const BarcodeScanner = () => {
                             ((scannedFood.protein *
                               (parseFloat(quantity) || 0)) /
                               100) *
-                              10
+                              10,
                           ) / 10}
                           g
                         </Typo>
@@ -457,7 +584,7 @@ const BarcodeScanner = () => {
                           {Math.round(
                             ((scannedFood.carbs * (parseFloat(quantity) || 0)) /
                               100) *
-                              10
+                              10,
                           ) / 10}
                           g
                         </Typo>
@@ -471,7 +598,7 @@ const BarcodeScanner = () => {
                           {Math.round(
                             ((scannedFood.fat * (parseFloat(quantity) || 0)) /
                               100) *
-                              10
+                              10,
                           ) / 10}
                           g
                         </Typo>
@@ -489,11 +616,242 @@ const BarcodeScanner = () => {
                     style={{ marginTop: spacingY._20 }}
                   >
                     <Typo size={18} fontWeight="700" color={colors.black}>
-                      {t("barcode_scanner_modal_add_to_meal", { meal: mealLabel || t("barcode_scanner_modal_meal_fallback") })}
+                      {t("barcode_scanner_modal_add_to_meal", {
+                        meal:
+                          mealLabel || t("barcode_scanner_modal_meal_fallback"),
+                      })}
                     </Typo>
                   </Button>
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Save Custom Product Modal */}
+      <Modal
+        visible={showSaveProductModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseSaveModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={handleCloseSaveModal}
+          />
+
+          <View
+            style={[
+              styles.quantityModal,
+              { paddingBottom: insets.bottom + 20 },
+            ]}
+          >
+            {/* Handle Bar */}
+            <View style={styles.handleBar} />
+
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Typo size={20} fontWeight="700">
+                Add Product to Database
+              </Typo>
+              <TouchableOpacity onPress={handleCloseSaveModal}>
+                <Icons.XIcon size={24} color={colors.white} weight="bold" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.quantityScrollContent}
+            >
+              <View style={styles.modalContent}>
+                <Typo
+                  size={14}
+                  color={colors.neutral400}
+                  style={{ marginBottom: spacingY._12 }}
+                >
+                  Barcode: {currentBarcode}
+                </Typo>
+
+                {/* Product Image */}
+                <View style={{ marginBottom: spacingY._20 }}>
+                  <Typo
+                    size={14}
+                    fontWeight="600"
+                    style={{ marginBottom: spacingY._7 }}
+                  >
+                    Product Image (Optional)
+                  </Typo>
+                  {customProductImage ? (
+                    <View style={styles.imagePreview}>
+                      <Image
+                        source={{ uri: customProductImage }}
+                        style={styles.previewImage}
+                        contentFit="cover"
+                      />
+                      <TouchableOpacity
+                        onPress={handleRemoveImage}
+                        style={styles.removeImageButton}
+                      >
+                        <Icons.XIcon size={20} color={colors.white} weight="fill" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Button onPress={handlePickImage} style={{ marginBottom: spacingY._12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacingX._8 }}>
+                        <Icons.ImageIcon size={18} color={colors.black} weight="fill" />
+                        <Typo size={14} fontWeight="600" color={colors.black}>
+                          Pick Image
+                        </Typo>
+                      </View>
+                    </Button>
+                  )}
+                </View>
+
+                {/* Product Name */}
+                <View style={{ marginBottom: spacingY._20 }}>
+                  <Typo
+                    size={14}
+                    fontWeight="600"
+                    style={{ marginBottom: spacingY._7 }}
+                  >
+                    Product Name *
+                  </Typo>
+                  <Input
+                    placeholder="e.g., Coca Cola 500ml"
+                    value={customProductName}
+                    onChangeText={setCustomProductName}
+                    containerStyle={styles.quantityInput}
+                  />
+                </View>
+
+                {/* Nutritional Values Grid */}
+                <Typo
+                  size={15}
+                  fontWeight="600"
+                  style={{ marginBottom: spacingY._12 }}
+                >
+                  Nutritional Values (per 100g) *
+                </Typo>
+
+                <View style={{ gap: spacingY._12, marginBottom: spacingY._20 }}>
+                  <View style={{ flexDirection: "row", gap: spacingX._10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Typo
+                        size={12}
+                        color={colors.neutral400}
+                        style={{ marginBottom: spacingY._5 }}
+                      >
+                        Calories
+                      </Typo>
+                      <Input
+                        placeholder="0"
+                        value={customProductCalories}
+                        onChangeText={setCustomProductCalories}
+                        keyboardType="numeric"
+                        containerStyle={styles.quantityInput}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Typo
+                        size={12}
+                        color={colors.neutral400}
+                        style={{ marginBottom: spacingY._5 }}
+                      >
+                        Protein (g)
+                      </Typo>
+                      <Input
+                        placeholder="0"
+                        value={customProductProtein}
+                        onChangeText={setCustomProductProtein}
+                        keyboardType="decimal-pad"
+                        containerStyle={styles.quantityInput}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: spacingX._10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Typo
+                        size={12}
+                        color={colors.neutral400}
+                        style={{ marginBottom: spacingY._5 }}
+                      >
+                        Carbs (g)
+                      </Typo>
+                      <Input
+                        placeholder="0"
+                        value={customProductCarbs}
+                        onChangeText={setCustomProductCarbs}
+                        keyboardType="decimal-pad"
+                        containerStyle={styles.quantityInput}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Typo
+                        size={12}
+                        color={colors.neutral400}
+                        style={{ marginBottom: spacingY._5 }}
+                      >
+                        Fat (g)
+                      </Typo>
+                      <Input
+                        placeholder="0"
+                        value={customProductFat}
+                        onChangeText={setCustomProductFat}
+                        keyboardType="decimal-pad"
+                        containerStyle={styles.quantityInput}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Typo
+                      size={12}
+                      color={colors.neutral400}
+                      style={{ marginBottom: spacingY._5 }}
+                    >
+                      Serving Size (g)
+                    </Typo>
+                    <Input
+                      placeholder="100"
+                      value={customProductServing}
+                      onChangeText={setCustomProductServing}
+                      keyboardType="numeric"
+                      containerStyle={styles.quantityInput}
+                    />
+                  </View>
+                </View>
+
+                {/* Buttons */}
+                <View style={{ gap: spacingX._12 }}>
+                  <Button
+                    onPress={handleSaveCustomProduct}
+                    loading={savingCustomProduct}
+                  >
+                    <Typo size={16} fontWeight="700" color={colors.black}>
+                      Save Product
+                    </Typo>
+                  </Button>
+                  <TouchableOpacity
+                    onPress={handleCloseSaveModal}
+                    style={{
+                      paddingVertical: spacingY._12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Typo size={15} color={colors.primary}>
+                      Skip & Cancel
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -667,7 +1025,7 @@ const styles = StyleSheet.create({
     height: verticalScale(100),
     borderRadius: radius._15,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   quantitySection: {
@@ -680,7 +1038,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionGrid: {
@@ -696,5 +1054,27 @@ const styles = StyleSheet.create({
     padding: spacingX._15,
     borderRadius: radius._12,
   },
+  imagePreview: {
+    position: "relative",
+    width: "100%",
+    height: verticalScale(120),
+    borderRadius: radius._15,
+    backgroundColor: colors.neutral800,
+    overflow: "hidden",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  removeImageButton: {
+    position: "absolute",
+    top: spacingY._10,
+    right: spacingX._10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
-

@@ -51,7 +51,7 @@ const getPeriodStartDate = (period: PeriodType): Date => {
   return periodStart;
 };
 
-const Statistics = () => {
+const Statistics = React.memo(() => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
@@ -140,7 +140,9 @@ const Statistics = () => {
         setWorkoutsHistory([]);
       }
     } catch (error) {
-      console.error("Error fetching workouts:", error);
+      if (__DEV__) {
+        console.error("Error fetching workouts:", error);
+      }
       if (!hydratedFromCache && requestId === requestIdRef.current) {
         setWorkoutsHistory([]);
       }
@@ -152,6 +154,9 @@ const Statistics = () => {
 
   useEffect(() => {
     void fetchWorkoutsHistory();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchWorkoutsHistory]);
 
   const getFilteredWorkouts = (period: PeriodType): WorkoutHistory[] => {
@@ -328,7 +333,7 @@ const Statistics = () => {
     <ScreenWrapper>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Typo size={28} fontWeight="700">
+          <Typo size={32} variant="heading">
             {t("tab_statistics")}
           </Typo>
         </View>
@@ -340,140 +345,147 @@ const Statistics = () => {
         ) : null}
 
         <View style={styles.segmentedContainer}>
-          <SegmentedControl
-            values={[
-              t("statistics_period_weekly"),
-              t("statistics_period_monthly"),
-              t("statistics_period_yearly"),
-            ]}
-            selectedIndex={
-              selectedPeriod === "Weekly"
-                ? 0
-                : selectedPeriod === "Monthly"
-                ? 1
-                : 2
-            }
-            onChange={(event) =>
-              handleSegmentChange(event.nativeEvent.selectedSegmentIndex)
-            }
-            style={styles.segmentedControl}
-            backgroundColor={colors.neutral800}
-            tintColor={colors.primary}
-            fontStyle={{
-              color: colors.neutral400,
-              fontSize: verticalScale(14),
-              fontWeight: "600",
-            }}
-            activeFontStyle={{
-              color: colors.black,
-              fontSize: verticalScale(14),
-              fontWeight: "700",
-            }}
-          />
+          <View style={styles.stackedOuter}>
+            <View style={styles.shadowRounded17} />
+            <View style={styles.segmentedCard}>
+              <SegmentedControl
+                values={[
+                  t("statistics_period_weekly"),
+                  t("statistics_period_monthly"),
+                  t("statistics_period_yearly"),
+                ]}
+                selectedIndex={
+                  selectedPeriod === "Weekly"
+                    ? 0
+                    : selectedPeriod === "Monthly"
+                    ? 1
+                    : 2
+                }
+                onChange={(event) =>
+                  handleSegmentChange(event.nativeEvent.selectedSegmentIndex)
+                }
+                style={styles.segmentedControl}
+                backgroundColor={colors.neutral800}
+                tintColor={colors.primary}
+                fontStyle={{
+                  color: colors.neutral400,
+                  fontSize: verticalScale(14),
+                  fontWeight: "600",
+                }}
+                activeFontStyle={{
+                  color: colors.black,
+                  fontSize: verticalScale(14),
+                  fontWeight: "700",
+                }}
+              />
+            </View>
+          </View>
         </View>
 
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
-            <Typo
-              size={28}
-              fontWeight="700"
-              color={colors.white}
-              style={{ marginTop: spacingY._7 }}
-            >
-              {getTotalWorkouts()}
-            </Typo>
-            <Typo size={13} color={colors.neutral400}>
-              {t("statistics_workouts")}
-            </Typo>
+          <View style={styles.stackedOuterFlex}>
+            <View style={styles.shadowRounded17} />
+            <View style={styles.statCard}>
+              <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
+              <Typo size={40} variant="metric" color={colors.primary} style={{ marginTop: spacingY._7 }}>
+                {getTotalWorkouts()}
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                {t("statistics_workouts")}
+              </Typo>
+            </View>
           </View>
 
-          <View style={styles.statCard}>
-            <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
-            <Typo
-              size={28}
-              fontWeight="700"
-              color={colors.white}
-              style={{ marginTop: spacingY._7 }}
-            >
-              {getTotalTime()}
-            </Typo>
-            <Typo size={13} color={colors.neutral400}>
-              {t("statistics_minutes")}
-            </Typo>
+          <View style={styles.stackedOuterFlex}>
+            <View style={styles.shadowRounded17} />
+            <View style={styles.statCard}>
+              <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
+              <Typo size={40} variant="metric" color={colors.chartSuccess} style={{ marginTop: spacingY._7 }}>
+                {getTotalTime()}
+              </Typo>
+              <Typo size={13} color={colors.neutral400}>
+                {t("statistics_minutes")}
+              </Typo>
+            </View>
           </View>
         </View>
 
         {availableExercises.length > 0 && (
           <View style={styles.exerciseSelectorContainer}>
-            <TouchableOpacity
-              style={styles.exerciseSelectorButton}
-              onPress={() => setShowExerciseSelector(!showExerciseSelector)}
-            >
-              <View style={styles.exerciseSelectorLeft}>
-                <Icons.ChartLineIcon
+            <View style={styles.stackedOuter}>
+              <View style={styles.shadowRounded15} />
+              <TouchableOpacity
+                style={styles.exerciseSelectorButton}
+                onPress={() => setShowExerciseSelector(!showExerciseSelector)}
+              >
+                <View style={styles.exerciseSelectorLeft}>
+                  <Icons.ChartLineIcon
+                    size={20}
+                    color={colors.primary}
+                    weight="fill"
+                  />
+                  <Typo size={16} fontWeight="600" color={colors.white}>
+                    {selectedExercise || t("statistics_select_exercise")}
+                  </Typo>
+                </View>
+                <Icons.CaretDownIcon
                   size={20}
-                  color={colors.primary}
-                  weight="fill"
+                  color={colors.neutral400}
+                  style={{
+                    transform: [
+                      { rotate: showExerciseSelector ? "180deg" : "0deg" },
+                    ],
+                  }}
                 />
-                <Typo size={16} fontWeight="600" color={colors.white}>
-                  {selectedExercise || t("statistics_select_exercise")}
-                </Typo>
-              </View>
-              <Icons.CaretDownIcon
-                size={20}
-                color={colors.neutral400}
-                style={{
-                  transform: [
-                    { rotate: showExerciseSelector ? "180deg" : "0deg" },
-                  ],
-                }}
-              />
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
 
             {showExerciseSelector && (
-              <View style={styles.exerciseDropdown}>
-                <ScrollView
-                  style={styles.exerciseList}
-                  showsVerticalScrollIndicator={true}
-                  nestedScrollEnabled={true}
-                >
-                  {availableExercises.map((exercise, index) => (
-                    <TouchableOpacity
-                      key={`${exercise}-${index}`}
-                      style={[
-                        styles.exerciseItem,
-                        selectedExercise === exercise &&
-                          styles.exerciseItemSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedExercise(exercise);
-                        setShowExerciseSelector(false);
-                      }}
-                    >
-                      <Typo
-                        size={15}
-                        fontWeight={
-                          selectedExercise === exercise ? "600" : "400"
-                        }
-                        color={
-                          selectedExercise === exercise
-                            ? colors.primary
-                            : colors.white
-                        }
+              <View style={styles.stackedOuterDropdown}>
+                <View style={styles.shadowRounded15} />
+                <View style={styles.exerciseDropdown}>
+                  <ScrollView
+                    style={styles.exerciseList}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
+                  >
+                    {availableExercises.map((exercise, index) => (
+                      <TouchableOpacity
+                        key={`${exercise}-${index}`}
+                        style={[
+                          styles.exerciseItem,
+                          selectedExercise === exercise &&
+                            styles.exerciseItemSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedExercise(exercise);
+                          setShowExerciseSelector(false);
+                        }}
                       >
-                        {exercise}
-                      </Typo>
-                      {selectedExercise === exercise && (
-                        <Icons.CheckIcon
-                          size={18}
-                          color={colors.primary}
-                          weight="bold"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                        <Typo
+                          size={15}
+                          fontWeight={
+                            selectedExercise === exercise ? "600" : "400"
+                          }
+                          color={
+                            selectedExercise === exercise
+                              ? colors.primary
+                              : colors.white
+                          }
+                        >
+                          {exercise}
+                        </Typo>
+                        {selectedExercise === exercise && (
+                          <Icons.CheckIcon
+                            size={18}
+                            color={colors.primary}
+                            weight="bold"
+                          />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
               </View>
             )}
           </View>
@@ -482,153 +494,153 @@ const Statistics = () => {
         {exerciseStats && exerciseStats.workoutCount > 0 && (
           <>
             <View style={styles.exerciseStatsContainer}>
-              <View style={styles.exerciseStatCard}>
-                <Icons.TrendUpIcon
-                  size={24}
-                  color={colors.primary}
-                  weight="fill"
-                />
-                <Typo
-                  size={24}
-                  fontWeight="700"
-                  color={colors.white}
-                  style={{ marginTop: spacingY._7 }}
-                >
-                  {exerciseStats.maxWeight} kg
-                </Typo>
-                <Typo size={13} color={colors.neutral400}>
-                  {t("statistics_max_weight")}
-                </Typo>
+              <View style={styles.stackedOuterFlex}>
+                <View style={styles.shadowRounded15} />
+                <View style={styles.exerciseStatCard}>
+                  <Icons.TrendUpIcon
+                    size={24}
+                    color={colors.primary}
+                    weight="fill"
+                  />
+                  <Typo size={32} variant="metric" color={colors.primary} style={{ marginTop: spacingY._7 }}>
+                    {exerciseStats.maxWeight} kg
+                  </Typo>
+                  <Typo size={13} color={colors.neutral400}>
+                    {t("statistics_max_weight")}
+                  </Typo>
+                </View>
               </View>
 
-              <View style={styles.exerciseStatCard}>
-                <Icons.HashIcon size={24} color={colors.green} weight="fill" />
-                <Typo
-                  size={24}
-                  fontWeight="700"
-                  color={colors.white}
-                  style={{ marginTop: spacingY._7 }}
-                >
-                  {exerciseStats.totalReps}
-                </Typo>
-                <Typo size={13} color={colors.neutral400}>
-                  {t("statistics_total_reps")}
-                </Typo>
+              <View style={styles.stackedOuterFlex}>
+                <View style={styles.shadowRounded15} />
+                <View style={styles.exerciseStatCard}>
+                  <Icons.HashIcon size={24} color={colors.green} weight="fill" />
+                  <Typo size={32} variant="metric" color={colors.chartSuccess} style={{ marginTop: spacingY._7 }}>
+                    {exerciseStats.totalReps}
+                  </Typo>
+                  <Typo size={13} color={colors.neutral400}>
+                    {t("statistics_total_reps")}
+                  </Typo>
+                </View>
               </View>
 
-              <View style={styles.exerciseStatCard}>
-                <Icons.ScalesIcon size={24} color={"#B413BF"} weight="fill" />
-                <Typo
-                  size={24}
-                  fontWeight="700"
-                  color={colors.white}
-                  style={{ marginTop: spacingY._7 }}
-                >
-                  {exerciseStats.totalWeight}
-                </Typo>
-                <Typo size={13} color={colors.neutral400}>
-                  {t("statistics_total_kg")}
-                </Typo>
+              <View style={styles.stackedOuterFlex}>
+                <View style={styles.shadowRounded15} />
+                <View style={styles.exerciseStatCard}>
+                  <Icons.ScalesIcon size={24} color={colors.accent} weight="fill" />
+                  <Typo size={32} variant="metric" color={colors.accent} style={{ marginTop: spacingY._7 }}>
+                    {exerciseStats.totalWeight}
+                  </Typo>
+                  <Typo size={13} color={colors.neutral400}>
+                    {t("statistics_total_kg")}
+                  </Typo>
+                </View>
               </View>
             </View>
 
             {weightChartData.length > 0 && (
-              <View style={styles.chartContainer}>
-                <View style={styles.chartHeader}>
-                  <Typo size={18} fontWeight="600">
-                    {t("statistics_weight_progress")}
-                  </Typo>
-                  <View style={styles.chartBadge}>
-                    <Typo size={13} color={colors.white}>
-                      {t("statistics_sessions_count", {
-                        count: exerciseStats.workoutCount,
-                      })}
+              <View style={styles.stackedOuterWithGap}>
+                <View style={styles.shadowRounded17} />
+                <View style={styles.chartContainer}>
+                  <View style={styles.chartHeader}>
+                    <Typo size={18} fontWeight="600">
+                      {t("statistics_weight_progress")}
                     </Typo>
+                    <View style={styles.chartBadge}>
+                      <Typo size={13} color={colors.white}>
+                        {t("statistics_sessions_count", {
+                          count: exerciseStats.workoutCount,
+                        })}
+                      </Typo>
+                    </View>
                   </View>
-                </View>
 
-                <LineChart
-                  data={weightChartData}
-                  width={scale(320)}
-                  height={verticalScale(200)}
-                  spacing={scale(50)}
-                  thickness={3}
-                  color={colors.primary}
-                  startFillColor={colors.primary}
-                  endFillColor={colors.primary}
-                  startOpacity={0.3}
-                  endOpacity={0.1}
-                  initialSpacing={20}
-                  noOfSections={4}
-                  yAxisTextStyle={{
-                    color: colors.neutral400,
-                    fontSize: verticalScale(12),
-                  }}
-                  xAxisLabelTextStyle={{
-                    color: colors.neutral400,
-                    fontSize: verticalScale(11),
-                  }}
-                  hideRules
-                  curved
-                  areaChart
-                  hideDataPoints={false}
-                  dataPointsColor={colors.primary}
-                  dataPointsRadius={4}
-                  textShiftY={-8}
-                  textShiftX={-5}
-                  textFontSize={11}
-                  textColor={colors.white}
-                />
+                  <LineChart
+                    data={weightChartData}
+                    width={scale(320)}
+                    height={verticalScale(200)}
+                    spacing={scale(50)}
+                    thickness={3}
+                    color={colors.primary}
+                    startFillColor={colors.primary}
+                    endFillColor={colors.primary}
+                    startOpacity={0.3}
+                    endOpacity={0.1}
+                    initialSpacing={20}
+                    noOfSections={4}
+                    yAxisTextStyle={{
+                      color: colors.neutral400,
+                      fontSize: verticalScale(12),
+                    }}
+                    xAxisLabelTextStyle={{
+                      color: colors.neutral400,
+                      fontSize: verticalScale(11),
+                    }}
+                    hideRules
+                    curved
+                    areaChart
+                    hideDataPoints={false}
+                    dataPointsColor={colors.primary}
+                    dataPointsRadius={4}
+                    textShiftY={-8}
+                    textShiftX={-5}
+                    textFontSize={11}
+                    textColor={colors.white}
+                  />
+                </View>
               </View>
             )}
 
             {repsChartData.length > 0 && (
-              <View style={styles.chartContainer}>
-                <View style={styles.chartHeader}>
-                  <Typo size={18} fontWeight="600">
-                    {t("statistics_reps_progress")}
-                  </Typo>
-                  <View style={styles.chartBadge}>
-                    <Typo size={13} color={colors.white}>
-                      {t("statistics_avg_max_kg_reps", {
-                        count: exerciseStats.averageTopSetReps,
-                      })}
+              <View style={styles.stackedOuterWithGap}>
+                <View style={styles.shadowRounded17} />
+                <View style={styles.chartContainer}>
+                  <View style={styles.chartHeader}>
+                    <Typo size={18} fontWeight="600">
+                      {t("statistics_reps_progress")}
                     </Typo>
+                    <View style={styles.chartBadge}>
+                      <Typo size={13} color={colors.white}>
+                        {t("statistics_avg_max_kg_reps", {
+                          count: exerciseStats.averageTopSetReps,
+                        })}
+                      </Typo>
+                    </View>
                   </View>
-                </View>
 
-                <LineChart
-                  data={repsChartData}
-                  width={scale(320)}
-                  height={verticalScale(200)}
-                  spacing={scale(50)}
-                  thickness={3}
-                  color={colors.green}
-                  startFillColor={colors.green}
-                  endFillColor={colors.green}
-                  startOpacity={0.3}
-                  endOpacity={0.1}
-                  initialSpacing={20}
-                  noOfSections={4}
-                  yAxisTextStyle={{
-                    color: colors.neutral400,
-                    fontSize: verticalScale(12),
-                  }}
-                  xAxisLabelTextStyle={{
-                    color: colors.neutral400,
-                    fontSize: verticalScale(11),
-                  }}
-                  hideRules
-                  curved
-                  areaChart
-                  hideDataPoints={false}
-                  dataPointsColor={colors.green}
-                  dataPointsRadius={4}
-                  textShiftY={-8}
-                  textShiftX={-5}
-                  textFontSize={11}
-                  textColor={colors.white}
-                />
+                  <LineChart
+                    data={repsChartData}
+                    width={scale(320)}
+                    height={verticalScale(200)}
+                    spacing={scale(50)}
+                    thickness={3}
+                    color={colors.green}
+                    startFillColor={colors.green}
+                    endFillColor={colors.green}
+                    startOpacity={0.3}
+                    endOpacity={0.1}
+                    initialSpacing={20}
+                    noOfSections={4}
+                    yAxisTextStyle={{
+                      color: colors.neutral400,
+                      fontSize: verticalScale(12),
+                    }}
+                    xAxisLabelTextStyle={{
+                      color: colors.neutral400,
+                      fontSize: verticalScale(11),
+                    }}
+                    hideRules
+                    curved
+                    areaChart
+                    hideDataPoints={false}
+                    dataPointsColor={colors.green}
+                    dataPointsRadius={4}
+                    textShiftY={-8}
+                    textShiftX={-5}
+                    textFontSize={11}
+                    textColor={colors.white}
+                  />
+                </View>
               </View>
             )}
           </>
@@ -691,7 +703,9 @@ const Statistics = () => {
     </ScreenWrapper>
     </SwipeableScreen>
   );
-};
+});
+
+Statistics.displayName = "Statistics";
 
 export default Statistics;
 
@@ -713,6 +727,50 @@ const styles = StyleSheet.create({
   segmentedContainer: {
     marginBottom: spacingY._20,
   },
+  stackedOuter: {
+    position: "relative",
+    marginRight: 6,
+  },
+  stackedOuterWithGap: {
+    position: "relative",
+    marginRight: 6,
+    marginBottom: spacingY._20,
+  },
+  stackedOuterDropdown: {
+    position: "relative",
+    marginTop: spacingY._10,
+    marginRight: 6,
+  },
+  stackedOuterFlex: {
+    position: "relative",
+    flex: 1,
+    marginBottom: 6,
+  },
+  shadowRounded17: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.cardShadow,
+    borderRadius: radius._17,
+  },
+  shadowRounded15: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.cardShadow,
+    borderRadius: radius._15,
+  },
+  segmentedCard: {
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._17,
+    borderWidth: 2,
+    borderColor: colors.neutral700,
+    padding: spacingX._7,
+  },
   segmentedControl: {
     height: verticalScale(45),
   },
@@ -728,7 +786,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._15,
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   exerciseSelectorContainer: {
@@ -741,7 +799,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   exerciseSelectorLeft: {
@@ -750,10 +808,9 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
   },
   exerciseDropdown: {
-    marginTop: spacingY._10,
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     maxHeight: verticalScale(300),
     overflow: "hidden",
@@ -785,15 +842,14 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     padding: spacingX._12,
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   chartContainer: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._20,
-    marginBottom: spacingY._20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   chartHeader: {
@@ -813,3 +869,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._50,
   },
 });
+

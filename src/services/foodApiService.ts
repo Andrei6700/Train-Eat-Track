@@ -1,4 +1,9 @@
 import { addFoodsToCache } from "@/src/services/cacheService";
+import {
+  getCustomProductByBarcode,
+  searchCustomProducts,
+  toSimplifiedFromCustom,
+} from "@/src/services/customProductService";
 import { Food, ResponseType } from "@/src/types/index";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -28,9 +33,19 @@ type RemoteQueryCacheEntry = {
 };
 
 const remoteQueryCache = new Map<string, RemoteQueryCacheEntry>();
+const REMOTE_QUERY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// Evict oldest entries when cache exceeds max size
+// Evict oldest entries when cache exceeds max size, and remove expired entries
 const evictRemoteQueryCache = () => {
+  const now = Date.now();
+  // First, remove expired entries
+  for (const [key, entry] of remoteQueryCache.entries()) {
+    if (now - entry.createdAt >= REMOTE_QUERY_CACHE_TTL_MS) {
+      remoteQueryCache.delete(key);
+    }
+  }
+
+  // Then, if still over size limit, evict oldest entries
   if (remoteQueryCache.size <= REMOTE_QUERY_CACHE_MAX_SIZE) return;
   const entries = [...remoteQueryCache.entries()].sort(
     (a, b) => a[1].createdAt - b[1].createdAt,
@@ -71,15 +86,18 @@ const readBarcodeDiskCache = async (
 };
 
 const writeBarcodeDiskCache = (barcode: string, result: ResponseType): void => {
-  void (async () => {
+  (async () => {
     try {
       const entry: BarcodeCacheEntry = { result, cachedAt: Date.now() };
       await AsyncStorage.setItem(
         getBarcodeDiskCacheKey(barcode),
         JSON.stringify(entry),
       );
-    } catch {
-      // fire-and-forget
+    } catch (error) {
+      // Log cache write failures in dev mode but don't crash
+      if (__DEV__) {
+        console.warn("[FoodAPI] Failed to write barcode cache:", error);
+      }
     }
   })();
 };
@@ -293,12 +311,14 @@ const toFoodCachePayload = (food: SimplifiedFood): Food => ({
 const cacheRemoteFoods = (foods: SimplifiedFood[]) => {
   if (foods.length === 0) return;
 
-  void (async () => {
+  (async () => {
     try {
       const batch = foods.slice(0, 8).map(toFoodCachePayload);
       await addFoodsToCache(batch);
     } catch (error) {
-      console.error("[FoodAPI] Error caching remote foods:", error);
+      if (__DEV__) {
+        console.warn("[FoodAPI] Error caching remote foods:", error);
+      }
     }
   })();
 };
@@ -342,7 +362,9 @@ async function fetchWithRetry(
       }
 
       const waitMs = Math.min(1000 * Math.pow(2, attempt), 5000);
-      console.log(`[FoodAPI] Retry ${attempt + 1}/${retries} after ${waitMs}ms`);
+      if (__DEV__) {
+        console.log(`[FoodAPI] Retry ${attempt + 1}/${retries} after ${waitMs}ms`);
+      }
       await sleep(waitMs);
     } finally {
       clearTimeout(timeoutId);
@@ -382,7 +404,9 @@ export const searchFood = async (
     });
 
     const url = `${OPEN_FOOD_FACTS_API}?${params.toString()}`;
-    console.log("[FoodAPI] Searching:", url);
+    if (__DEV__) {
+      console.log("[FoodAPI] Searching:", url);
+    }
 
     const response = await fetchWithRetry(
       url,
@@ -401,7 +425,9 @@ export const searchFood = async (
     );
 
     if (!response.ok) {
-      console.error("[FoodAPI] Error response:", response.status, response.statusText);
+      if (__DEV__) {
+        console.error("[FoodAPI] Error response:", response.status, response.statusText);
+      }
       return [];
     }
 
@@ -452,7 +478,9 @@ export const searchFood = async (
         };
       });
 
-    console.log(`[FoodAPI] Found ${simplifiedFoods.length} products`);
+    if (__DEV__) {
+      console.log(`[FoodAPI] Found ${simplifiedFoods.length} products`);
+    }
     return simplifiedFoods;
   } catch (error: any) {
     if (isAbortError(error) && options.signal?.aborted) {
@@ -460,9 +488,13 @@ export const searchFood = async (
     }
 
     if (isAbortError(error)) {
-      console.error("[FoodAPI] Request timeout");
+      if (__DEV__) {
+        console.error("[FoodAPI] Request timeout");
+      }
     } else {
-      console.error("[FoodAPI] Search error:", error?.message || error);
+      if (__DEV__) {
+        console.error("[FoodAPI] Search error:", error?.message || error);
+      }
     }
 
     return [];
@@ -488,18 +520,31 @@ export const searchFoodHybrid = async (
     };
   }
 
+  // Get local matches from Firebase
   const localResults = getLocalMatches(
     normalizedQuery,
     context.localFoods || [],
     maxResults,
   );
 
+  // Get custom products from Supabase
+  const customProducts = await searchCustomProducts(normalizedQuery);
+  const customResults = customProducts
+    .slice(0, maxResults)
+    .map(toSimplifiedFromCustom);
+
   if (!includeRemote) {
+    const merged = mergeUniqueFoods(localResults, customResults, maxResults);
     return {
-      foods: localResults,
-      source: "local",
+      foods: merged,
+      source:
+        localResults.length > 0 && customResults.length > 0
+          ? "mixed"
+          : customResults.length > 0
+            ? "remote"
+            : "local",
       localCount: localResults.length,
-      remoteCount: 0,
+      remoteCount: customResults.length,
       fromQueryCache: false,
     };
   }
@@ -510,13 +555,13 @@ export const searchFoodHybrid = async (
     Date.now() - (cachedRemote?.createdAt || 0) < queryCacheTtlMs;
 
   if (hasFreshRemoteCache && cachedRemote) {
-    const mergedCached = mergeUniqueFoods(
+    const merged = mergeUniqueFoods(
       localResults,
-      cachedRemote.results,
+      mergeUniqueFoods(customResults, cachedRemote.results, maxResults),
       maxResults,
     );
     return {
-      foods: mergedCached,
+      foods: merged,
       source:
         localResults.length > 0 && cachedRemote.results.length > 0
           ? "mixed"
@@ -524,7 +569,7 @@ export const searchFoodHybrid = async (
             ? "remote"
             : "local",
       localCount: localResults.length,
-      remoteCount: cachedRemote.results.length,
+      remoteCount: cachedRemote.results.length + customResults.length,
       fromQueryCache: true,
     };
   }
@@ -547,7 +592,11 @@ export const searchFoodHybrid = async (
 
   cacheRemoteFoods(remoteResults);
 
-  const merged = mergeUniqueFoods(localResults, remoteResults, maxResults);
+  const merged = mergeUniqueFoods(
+    localResults,
+    mergeUniqueFoods(customResults, remoteResults, maxResults),
+    maxResults,
+  );
   return {
     foods: merged,
     source:
@@ -557,13 +606,13 @@ export const searchFoodHybrid = async (
           ? "remote"
           : "local",
     localCount: localResults.length,
-    remoteCount: remoteResults.length,
+    remoteCount: remoteResults.length + customResults.length,
     fromQueryCache: false,
   };
 };
 
 /**
- * Get food details by barcode (with in-memory + disk cache)
+ * Get food details by barcode (with in-memory + disk cache + Supabase custom products)
  */
 export const getFoodByBarcode = async (
   barcode: string,
@@ -584,9 +633,27 @@ export const getFoodByBarcode = async (
     return diskResult;
   }
 
+  // Check Supabase custom products
+  const customProduct = await getCustomProductByBarcode(barcode);
+  if (customProduct) {
+    const simplifiedFood = toSimplifiedFromCustom(customProduct);
+    const successResult: ResponseType = { success: true, data: simplifiedFood };
+    barcodeMemoryCache.set(barcode, {
+      result: successResult,
+      cachedAt: Date.now(),
+    });
+    writeBarcodeDiskCache(barcode, successResult);
+    if (__DEV__) {
+      console.log("[FoodAPI] Found product in custom database");
+    }
+    return successResult;
+  }
+
   try {
     const url = `${PRODUCT_API}/${encodeURIComponent(barcode)}`;
-    console.log("[FoodAPI] Fetching barcode:", url);
+    if (__DEV__) {
+      console.log("[FoodAPI] Fetching barcode:", url);
+    }
 
     const response = await fetchWithRetry(url, {
       method: "GET",
@@ -597,7 +664,9 @@ export const getFoodByBarcode = async (
     });
 
     if (!response.ok) {
-      console.error("[FoodAPI] Error response:", response.status);
+      if (__DEV__) {
+        console.error("[FoodAPI] Error response:", response.status);
+      }
       return { success: false, msg: "Product not found" };
     }
 
@@ -635,10 +704,14 @@ export const getFoodByBarcode = async (
     return successResult;
   } catch (error: any) {
     if (isAbortError(error)) {
-      console.error("[FoodAPI] Barcode request timeout");
+      if (__DEV__) {
+        console.error("[FoodAPI] Barcode request timeout");
+      }
       return { success: false, msg: "Request timeout - please try again" };
     }
-    console.error("[FoodAPI] Barcode search error:", error?.message || error);
+    if (__DEV__) {
+      console.error("[FoodAPI] Barcode search error:", error?.message || error);
+    }
     return { success: false, msg: error?.message || "Error fetching product" };
   }
 };

@@ -9,16 +9,29 @@ import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
+const AUTH_COLORS = {
+  background: "#FBFBF9",
+  text: "#1C293C",
+  muted: "#475569",
+  accent: "#FDC800",
+};
+
 const Welcome = () => {
   const router = useRouter();
   const t = (key: string) => translateText("en", key);
   return (
-    <ScreenWrapper>
+    <ScreenWrapper
+      style={{ backgroundColor: AUTH_COLORS.background }}
+      statusBarStyle="dark-content"
+      statusBarBackgroundColor={AUTH_COLORS.background}
+    >
       <View style={styles.container}>
         <View>
           <TouchableOpacity onPress={()=>router.push('/(auth)/login')}
           style={styles.loginButton}>
-            <Typo fontWeight={"500"}>{t("auth_welcome_sign_in")}</Typo>
+            <Typo fontWeight={"600"} color={AUTH_COLORS.text}>
+              {t("auth_welcome_sign_in")}
+            </Typo>
           </TouchableOpacity>
 
           <Animated.Image
@@ -35,10 +48,10 @@ const Welcome = () => {
             entering={FadeInDown.duration(1000).springify().damping(12)}
             style={{ alignItems: "center" }}
           >
-            <Typo size={30} fontWeight={"800"}>
+            <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
               {t("auth_welcome_title_line1")}
             </Typo>
-            <Typo size={30} fontWeight={"800"}>
+            <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
               {t("auth_welcome_title_line2")}
             </Typo>
           </Animated.View>
@@ -46,10 +59,10 @@ const Welcome = () => {
           <Animated.View
             entering={FadeInDown.duration(1000).delay(100).springify().damping(12)}
             style={{ alignItems: "center",gap: 2 }}>
-            <Typo size={17} color={colors.textLight}>
+            <Typo size={17} color={AUTH_COLORS.muted}>
               {t("auth_welcome_subtitle_line1")}
             </Typo>
-            <Typo size={17} color={colors.textLight}>
+            <Typo size={17} color={AUTH_COLORS.muted}>
               {t("auth_welcome_subtitle_line2")}
             </Typo>
           </Animated.View>
@@ -57,8 +70,11 @@ const Welcome = () => {
           <Animated.View
             entering={FadeInDown.duration(1000).delay(200).springify().damping(12)}
             style={styles.buttonContainer}>
-            <Button onPress={()=>router.push('/(auth)/register')}>
-              <Typo size={22} color={colors.neutral900} fontWeight={"600"}>
+            <Button
+              onPress={()=>router.push('/(auth)/register')}
+              buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
+            >
+              <Typo size={22} color={colors.black} fontWeight={"800"}>
                 {t("auth_welcome_get_started")}
               </Typo>
             </Button>
@@ -88,7 +104,7 @@ const styles = StyleSheet.create({
     marginRight: spacingX._20,
   },
   footer: {
-    backgroundColor: colors.neutral900,
+    backgroundColor: AUTH_COLORS.background,
     alignItems: "center",
     paddingTop: verticalScale(30),
     paddingBottom: verticalScale(45),

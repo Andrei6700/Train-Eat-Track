@@ -133,11 +133,11 @@ export default SyncStatusBanner;
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.warning,
     paddingVertical: spacingY._10,
     paddingHorizontal: spacingX._15,
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral600,
+    borderTopWidth: 2,
+    borderTopColor: colors.black,
     gap: spacingY._10,
   },
   messageRow: {
@@ -155,9 +155,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._7,
     paddingHorizontal: spacingX._15,
     borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.black,
+    minHeight: 44,
+    justifyContent: "center",
   },
   serverButton: {
-    backgroundColor: colors.rose,
+    backgroundColor: colors.danger,
   },
   localButton: {
     backgroundColor: colors.primary,

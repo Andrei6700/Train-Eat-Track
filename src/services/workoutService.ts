@@ -131,7 +131,9 @@ export const getWorkoutByUserAndDate = async (
       data: parseWorkoutDoc(firstDoc.id, firstDoc.data()),
     };
   } catch (error: any) {
-    console.error("[workoutService] Error getting workout by date:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error getting workout by date:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -224,7 +226,9 @@ export const addWorkoutRemote = async (
       data: { id: docRef.id },
     };
   } catch (error: any) {
-    console.error("[workoutService] addWorkoutRemote error:", error);
+    if (__DEV__) {
+      console.error("[workoutService] addWorkoutRemote error:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -282,7 +286,9 @@ export const getUserWorkouts = async (userID: string): Promise<ResponseType> => 
 
     return { success: true, data: mergedWorkouts };
   } catch (error: any) {
-    console.error("[workoutService] Error fetching workouts:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error fetching workouts:", error);
+    }
 
     const fallbackFromCache = mergeQueuedAndRemoteWorkouts(
       queuedWorkouts,
@@ -350,7 +356,9 @@ export const checkWorkoutExistsToday = async (
 
     return { success: true, data: { exists: false } };
   } catch (error: any) {
-    console.error("[workoutService] Error checking workout for today:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error checking workout for today:", error);
+    }
     return { success: true, data: { exists: false } };
   }
 };
@@ -400,7 +408,9 @@ export const getLastWeekWorkout = async (
 
     return { success: true, data: null };
   } catch (error: any) {
-    console.error("[workoutService] Error getting last week workout:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error getting last week workout:", error);
+    }
     const cachedWorkout = await getCachedLastWorkout();
     if (cachedWorkout) {
       return { success: true, data: cachedWorkout };
@@ -496,7 +506,9 @@ export const addWorkout = async (
       msg: "Workout saved locally due to a temporary sync issue.",
     };
   } catch (error: any) {
-    console.error("[workoutService] Error adding workout:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error adding workout:", error);
+    }
 
     const queuedAction = await enqueueOrMergeAction({
       type: "ADD_WORKOUT",
@@ -537,7 +549,9 @@ export const getWorkout = async (workoutId: string): Promise<ResponseType> => {
       data: parseWorkoutDoc(docSnap.id, docSnap.data()),
     };
   } catch (error: any) {
-    console.error("[workoutService] Error getting workout:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error getting workout:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -571,7 +585,9 @@ export const deleteWorkout = async (
     }
     return { success: true, msg: "Workout deleted successfully" };
   } catch (error: any) {
-    console.error("[workoutService] Error deleting workout:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Error deleting workout:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -582,6 +598,8 @@ export const prefetchWorkoutHistorySnapshot = async (
   try {
     await getUserWorkouts(userID);
   } catch (error) {
-    console.error("[workoutService] Prefetch workout history failed:", error);
+    if (__DEV__) {
+      console.error("[workoutService] Prefetch workout history failed:", error);
+    }
   }
 };

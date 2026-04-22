@@ -59,10 +59,7 @@ const WorkoutDayCard = ({
       </Typo>
 
       <View
-        style={[
-          styles.dayNumber,
-          isTodayCard && !isSelected && styles.dayNumberToday,
-        ]}
+        style={styles.dayNumber}
       >
         <Typo
           size={18}
@@ -84,6 +81,9 @@ const WorkoutDayCard = ({
       <View style={styles.indicators}>
         {hasWorkoutOnDay && (
           <View style={[styles.workoutDot, isSelected && styles.workoutDotSelected]} />
+        )}
+        {!hasWorkoutOnDay && !isRestDay && !isFuture && (
+          <View style={styles.missedWorkoutDot} />
         )}
         {isRestDay && !hasWorkoutOnDay && (
           <Icons.Coffee
@@ -117,10 +117,6 @@ const styles = StyleSheet.create({
   dayNumber: {
     marginVertical: spacingY._5,
   },
-  dayNumberToday: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
   indicators: {
     height: verticalScale(16),
     justifyContent: "center",
@@ -134,5 +130,11 @@ const styles = StyleSheet.create({
   },
   workoutDotSelected: {
     backgroundColor: colors.neutral900,
+  },
+  missedWorkoutDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
   },
 });

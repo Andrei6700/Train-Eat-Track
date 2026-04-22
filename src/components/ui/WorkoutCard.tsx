@@ -7,7 +7,7 @@ import { formatDuration } from "@/src/utils/utils";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Typo from "./Typo";
 
 type WorkoutCardProps = {
@@ -52,87 +52,108 @@ const WorkoutCard = ({ workout }: WorkoutCardProps) => {
   };
 
   return (
-    <TouchableOpacity
-      style={styles.container}
-      activeOpacity={0.7}
-      onPress={handlePress}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Typo size={18} fontWeight="600" color={colors.white}>
-            {formatDate(workout.date)}
-          </Typo>
-          <View style={styles.durationRow}>
-            <Icons.TimerIcon size={16} color={colors.neutral400} />
-            <Typo size={14} color={colors.neutral400}>
-              {formatDuration(workout.duration)}
+    <View style={styles.cardOuter}>
+      <View style={styles.cardShadow} />
+      <Pressable
+        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+        onPress={handlePress}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Typo size={18} fontWeight="700" color={colors.white}>
+              {formatDate(workout.date)}
+            </Typo>
+            <View style={styles.durationRow}>
+              <Icons.TimerIcon size={16} color={colors.white} />
+              <Typo size={14} variant="mono" color={colors.white}>
+                {formatDuration(workout.duration)}
+              </Typo>
+            </View>
+          </View>
+
+        <View style={styles.iconContainer}>
+            <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statBadge}>
+            <Typo size={13} fontWeight="700" color={colors.white}>
+              {workout.exercises?.length || 0} {t("common_exercises")}
+            </Typo>
+          </View>
+          <View style={styles.statBadge}>
+            <Typo size={13} fontWeight="700" color={colors.white}>
+              {totalSets} {t("common_sets")}
             </Typo>
           </View>
         </View>
 
-        <View style={styles.iconContainer}>
-          <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
-        </View>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statBadge}>
-          <Typo size={13} fontWeight="500" color={colors.white}>
-            {workout.exercises?.length || 0} {t("common_exercises")}
-          </Typo>
-        </View>
-        <View style={styles.statBadge}>
-          <Typo size={13} fontWeight="500" color={colors.white}>
-            {totalSets} {t("common_sets")}
-          </Typo>
-        </View>
-      </View>
-
-      {/* Exercise List */}
-      {exerciseNames.length > 0 && (
-        <View style={styles.exercisesSection}>
-          <Typo size={14} fontWeight="600" color={colors.neutral200}>
-            {t("history_exercises_title")}
-          </Typo>
-          <View style={styles.exercisesList}>
-            {exerciseNames
-              .slice(0, 3)
-              .map((name, index) => (
-                <View key={index} style={styles.exerciseBadge}>
-                  <Typo size={12} fontWeight="500" color={colors.white}>
-                    {name}
+        {/* Exercise List */}
+        {exerciseNames.length > 0 && (
+          <View style={styles.exercisesSection}>
+            <Typo size={14} fontWeight="700" color={colors.white}>
+              {t("history_exercises_title")}
+            </Typo>
+            <View style={styles.exercisesList}>
+              {exerciseNames
+                .slice(0, 3)
+                .map((name, index) => (
+                  <View key={index} style={styles.exerciseBadge}>
+                    <Typo size={12} fontWeight="700" color={colors.white}>
+                      {name}
+                    </Typo>
+                  </View>
+                ))}
+              {exerciseNames.length > 3 && (
+                <View style={styles.exerciseBadge}>
+                  <Typo size={12} fontWeight="700" color={colors.white}>
+                    {t("common_more_count", { count: exerciseNames.length - 3 })}
                   </Typo>
                 </View>
-              ))}
-            {exerciseNames.length > 3 && (
-              <View style={styles.exerciseBadge}>
-                <Typo size={12} fontWeight="500" color={colors.neutral400}>
-                  {t("common_more_count", { count: exerciseNames.length - 3 })}
-                </Typo>
-              </View>
-            )}
+              )}
+            </View>
           </View>
-        </View>
-      )}
-    </TouchableOpacity>
+        )}
+      </Pressable>
+    </View>
   );
 };
 
 export default WorkoutCard;
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.neutral800,
+  cardOuter: {
+    position: "relative",
+    marginBottom: verticalScale(15) + 6,
+    marginRight: 6,
+  },
+  cardShadow: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.black,
+    opacity: 0.25,
     borderRadius: radius._17,
-    borderCurve: "continuous",
+  },
+  container: {
+    backgroundColor: colors.surface,
+    borderRadius: radius._17,
     padding: scale(20),
-    marginBottom: verticalScale(15),
     borderWidth: 1,
-    borderColor: colors.neutral700,
+    borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
     width: "100%",
     minHeight: verticalScale(120),
+  },
+  pressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.85,
   },
   header: {
     flexDirection: "row",
@@ -150,10 +171,12 @@ const styles = StyleSheet.create({
     marginTop: spacingY._5,
   },
   iconContainer: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
     width: verticalScale(48),
     height: verticalScale(48),
-    borderRadius: 100,
+    borderRadius: radius._10,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -164,7 +187,9 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._15,
   },
   statBadge: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius._10,
     paddingHorizontal: spacingX._12,
     paddingVertical: verticalScale(6),
@@ -178,9 +203,12 @@ const styles = StyleSheet.create({
     gap: spacingX._7,
   },
   exerciseBadge: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius._10,
     paddingHorizontal: spacingX._12,
     paddingVertical: verticalScale(4),
   },
 });
+

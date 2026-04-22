@@ -83,7 +83,9 @@ const AddWorkout = () => {
    */
   const getTodayDayIndex = (): number => {
     if (!workoutPlan || !workoutPlan.splitDays) {
-      console.log("[addWorkout] No workout plan or splitDays");
+      if (__DEV__) {
+        console.log("[addWorkout] No workout plan or splitDays");
+      }
       return 0;
     }
 
@@ -109,14 +111,16 @@ const AddWorkout = () => {
         (1000 * 60 * 60 * 24),
     );
 
-    console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
-    console.log("[addWorkout] Target workout date:", workoutDate.toISOString());
-    console.log("[addWorkout] Days difference:", daysDifference);
-    console.log("[addWorkout] Split days:", workoutPlan.splitDays);
-    console.log(
-      "[addWorkout] Day index:",
-      daysDifference % workoutPlan.splitDays,
-    );
+    if (__DEV__) {
+      console.log("[addWorkout] Plan created:", planCreatedDate.toISOString());
+      console.log("[addWorkout] Target workout date:", workoutDate.toISOString());
+      console.log("[addWorkout] Days difference:", daysDifference);
+      console.log("[addWorkout] Split days:", workoutPlan.splitDays);
+      console.log(
+        "[addWorkout] Day index:",
+        daysDifference % workoutPlan.splitDays,
+      );
+    }
 
     return daysDifference % workoutPlan.splitDays;
   };
@@ -197,23 +201,29 @@ const AddWorkout = () => {
     const currentDayIndex = daysDifference % workoutPlan.splitDays;
     const dayName = `Day ${currentDayIndex + 1}`;
 
-    console.log("[addWorkout] Days since plan created:", daysDifference);
-    console.log("[addWorkout] Current cycle day:", dayName);
+    if (__DEV__) {
+      console.log("[addWorkout] Days since plan created:", daysDifference);
+      console.log("[addWorkout] Current cycle day:", dayName);
+    }
 
     // Find the workout plan for the target date
     const planDay = workoutPlan.days?.find((d) => d.day === dayName);
 
     if (!planDay) {
-      console.log("[addWorkout] No plan found for", dayName);
+      if (__DEV__) {
+        console.log("[addWorkout] No plan found for", dayName);
+      }
       return;
     }
 
-    console.log(
-      "[addWorkout] Plan day found:",
-      planDay.day,
-      "Exercises:",
-      planDay.exercises?.length || 0,
-    );
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] Plan day found:",
+        planDay.day,
+        "Exercises:",
+        planDay.exercises?.length || 0,
+      );
+    }
 
     // Load workout history for prefilling
     let workoutHistory: WorkoutHistory[] = [];
@@ -221,14 +231,18 @@ const AddWorkout = () => {
       const historyResult = await getUserWorkouts(user.uid);
       if (historyResult.success && historyResult.data) {
         workoutHistory = historyResult.data;
-        console.log(
-          "[addWorkout] Loaded workout history:",
-          workoutHistory.length,
-          "workouts",
-        );
+        if (__DEV__) {
+          console.log(
+            "[addWorkout] Loaded workout history:",
+            workoutHistory.length,
+            "workouts",
+          );
+        }
       }
     } catch (error) {
-      console.error("[addWorkout] Error loading workout history:", error);
+      if (__DEV__) {
+        console.error("[addWorkout] Error loading workout history:", error);
+      }
     }
 
     // Look for the most recent successful workout for this cycle day (searches all previous cycles)
@@ -240,13 +254,15 @@ const AddWorkout = () => {
     );
 
     if (previousCycleWorkout) {
-      console.log(
-        "[addWorkout] Found previous workout for cycle day",
-        currentDayIndex,
-        "with",
-        previousCycleWorkout.exercises?.length,
-        "exercises",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] Found previous workout for cycle day",
+          currentDayIndex,
+          "with",
+          previousCycleWorkout.exercises?.length,
+          "exercises",
+        );
+      }
     }
 
     // CASE 1: Plan has exercises - use them as template for FIRST CYCLE ONLY
@@ -255,9 +271,11 @@ const AddWorkout = () => {
       planDay.exercises.length > 0 &&
       daysDifference < workoutPlan.splitDays
     ) {
-      console.log(
-        "[addWorkout] First cycle - using plan exercises as template",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] First cycle - using plan exercises as template",
+        );
+      }
 
       let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
@@ -310,9 +328,11 @@ const AddWorkout = () => {
       previousCycleWorkout.exercises &&
       previousCycleWorkout.exercises.length > 0
     ) {
-      console.log(
-        "[addWorkout] After first cycle - copying from previous cycle",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] After first cycle - copying from previous cycle",
+        );
+      }
 
       let newHistoryExercises: Record<string, WorkoutExercise> = {};
 
@@ -329,20 +349,24 @@ const AddWorkout = () => {
         };
       });
 
-      console.log(
-        "[addWorkout] Loaded",
-        loadedExercises.length,
-        "exercises from previous cycle",
-      );
+      if (__DEV__) {
+        console.log(
+          "[addWorkout] Loaded",
+          loadedExercises.length,
+          "exercises from previous cycle",
+        );
+      }
       setHistoryExercises(newHistoryExercises);
       setExercises(loadedExercises as WorkoutExercise[]);
       return;
     }
 
     // CASE 3: No previous workout found, start with empty form
-    console.log(
-      "[addWorkout] No previous cycle workout found, starting with empty form",
-    );
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] No previous cycle workout found, starting with empty form",
+      );
+    }
     setExercises([
       {
         exerciseName: "",
@@ -547,11 +571,13 @@ const AddWorkout = () => {
     const workoutDateToSave = new Date(targetDate);
     workoutDateToSave.setHours(12, 0, 0, 0);
 
-    console.log(
-      "[addWorkout] Saving workout for date:",
-      workoutDateToSave.toISOString(),
-    );
-    console.log("[addWorkout] Is historical:", isHistoricalWorkout);
+    if (__DEV__) {
+      console.log(
+        "[addWorkout] Saving workout for date:",
+        workoutDateToSave.toISOString(),
+      );
+      console.log("[addWorkout] Is historical:", isHistoricalWorkout);
+    }
 
     const workoutData = {
       userID: user.uid,
@@ -923,6 +949,7 @@ const AddWorkout = () => {
                                     )
                                   }
                                   containerStyle={styles.smallInput}
+                                  inputStyle={styles.smallInputText}
                                 />
                               </View>
 
@@ -947,6 +974,7 @@ const AddWorkout = () => {
                                     )
                                   }
                                   containerStyle={styles.smallInput}
+                                  inputStyle={styles.smallInputText}
                                 />
                                 <Typo
                                   size={12}
@@ -1052,14 +1080,14 @@ const styles = StyleSheet.create({
     borderRadius: radius._12,
     padding: spacingX._15,
     marginBottom: spacingY._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
   },
   pageSwitch: {
     flexDirection: "row",
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     padding: spacingX._5,
     marginBottom: spacingY._12,
@@ -1093,7 +1121,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     padding: spacingX._20,
     marginBottom: spacingY._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 8 },
@@ -1114,7 +1142,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.neutral700,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral600,
     paddingHorizontal: spacingX._10,
     paddingVertical: spacingY._10,
@@ -1142,7 +1170,7 @@ const styles = StyleSheet.create({
     gap: spacingX._10,
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     paddingHorizontal: spacingX._12,
     paddingVertical: spacingY._10,
@@ -1171,7 +1199,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._5,
     backgroundColor: "rgba(163, 230, 53, 0.08)",
     borderRadius: radius._10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "rgba(163, 230, 53, 0.25)",
   },
   scrollView: {
@@ -1185,7 +1213,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._17,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   exerciseHeader: {
@@ -1236,7 +1264,16 @@ const styles = StyleSheet.create({
   smallInput: {
     flex: 1,
     backgroundColor: colors.neutral700,
-    height: verticalScale(40),
+    borderWidth: 1,
+    borderColor: colors.border,
+    height: verticalScale(44),
+    minHeight: verticalScale(44),
+    paddingHorizontal: spacingX._10,
+    paddingVertical: 0,
+  },
+  smallInputText: {
+    color: colors.textLight,
+    textAlign: "center",
   },
   unitLabel: {
     width: 24,
@@ -1257,7 +1294,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._10,
     marginTop: spacingY._10,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.primary,
     borderStyle: "dashed",
   },
@@ -1278,3 +1315,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
   },
 });
+

@@ -166,7 +166,9 @@ export const getDailyNutrition = async (
       data: null,
     };
   } catch (error: any) {
-    console.error("[NutritionService] Error fetching daily nutrition:", error);
+    if (__DEV__) {
+      console.error("[NutritionService] Error fetching daily nutrition:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -240,7 +242,9 @@ export const saveDailyNutrition = async (
 
     return { success: true, data: { id: docRef.id } };
   } catch (error: any) {
-    console.error("[NutritionService] Error saving daily nutrition:", error);
+    if (__DEV__) {
+      console.error("[NutritionService] Error saving daily nutrition:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -296,7 +300,9 @@ export const getUserNutritionHistory = async (
 
     return { success: true, data: nutritionHistory };
   } catch (error: any) {
-    console.error("[NutritionService] Error fetching nutrition history:", error);
+    if (__DEV__) {
+      console.error("[NutritionService] Error fetching nutrition history:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -368,7 +374,9 @@ export const getUserNutritionEarliestDate = async (
       String(error?.message || "").includes("requires an index");
 
     if (!isMissingIndex) {
-      console.error("[NutritionService] Error fetching earliest nutrition date:", error);
+      if (__DEV__) {
+        console.error("[NutritionService] Error fetching earliest nutrition date:", error);
+      }
       return null;
     }
 
@@ -381,10 +389,12 @@ export const getUserNutritionEarliestDate = async (
       }
       return fallbackEarliestDate;
     } catch (fallbackError) {
-      console.error(
-        "[NutritionService] Error fetching earliest nutrition date via fallback:",
-        fallbackError,
-      );
+      if (__DEV__) {
+        console.error(
+          "[NutritionService] Error fetching earliest nutrition date via fallback:",
+          fallbackError,
+        );
+      }
       return null;
     }
   }
@@ -426,7 +436,9 @@ export const updateNutritionGoals = async (
 
     return { success: true, msg: "Goals updated successfully" };
   } catch (error: any) {
-    console.error("[NutritionService] Error updating goals:", error);
+    if (__DEV__) {
+      console.error("[NutritionService] Error updating goals:", error);
+    }
     return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
   }
 };
@@ -468,7 +480,9 @@ export const prefetchNutritionCalendarSummary = (
         days: existingDays,
       });
     } catch (error) {
-      console.error("[NutritionService] Error prefetching calendar summary:", error);
+      if (__DEV__) {
+        console.error("[NutritionService] Error prefetching calendar summary:", error);
+      }
     } finally {
       activePrefetchPromise = null;
     }

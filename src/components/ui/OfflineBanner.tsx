@@ -1,6 +1,7 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNetwork } from "@/src/contexts/networkContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { CloudSlash } from "phosphor-react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
@@ -10,13 +11,14 @@ import Typo from "./Typo";
 const OfflineBanner = () => {
   const { isConnected } = useNetwork();
   const { t } = useLanguage();
+  const reduceMotion = useReduceMotion();
 
   if (isConnected) return null;
 
   return (
     <Animated.View
-      entering={FadeInUp.duration(300)}
-      exiting={FadeOutUp.duration(300)}
+      entering={reduceMotion ? undefined : FadeInUp.duration(300)}
+      exiting={reduceMotion ? undefined : FadeOutUp.duration(300)}
       style={styles.container}
     >
       <CloudSlash size={18} color={colors.white} weight="fill" />
@@ -35,7 +37,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacingX._7,
-    backgroundColor: colors.neutral700,
+    backgroundColor: colors.danger,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.black,
     paddingVertical: spacingY._10,
     paddingHorizontal: spacingX._15,
   },

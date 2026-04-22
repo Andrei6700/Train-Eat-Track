@@ -12,6 +12,14 @@ import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
+const AUTH_COLORS = {
+  background: "#FBFBF9",
+  text: "#1C293C",
+  muted: "#475569",
+  icon: "#334155",
+  accent: "#FDC800",
+};
+
 const Register = () => {
   const emailRef = useRef("");
   const passwordRef = useRef("");
@@ -34,7 +42,9 @@ const Register = () => {
       nameRef.current
     );
     setIsLoading(false);
-    console.log('register result', res);
+    if (__DEV__) {
+      console.log('register result', res);
+    }
     if (!res.success) {
       Alert.alert(t("auth_register_alert_title"), res.msg);
     }
@@ -45,30 +55,39 @@ const Register = () => {
   };
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper
+      style={{ backgroundColor: AUTH_COLORS.background }}
+      statusBarStyle="dark-content"
+      statusBarBackgroundColor={AUTH_COLORS.background}
+    >
       <View style={styles.container}>
-        <BackButton iconSize={28} />
+        <BackButton
+          iconSize={28}
+          buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
+        />
 
         <View style={{ gap: 5, marginTop: spacingY._20 }}>
-          <Typo size={30} fontWeight={"800"}>
+          <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
             {t("auth_register_heading_line1")}
           </Typo>
-          <Typo size={30} fontWeight={"800"}>
+          <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
             {t("auth_register_heading_line2")}
           </Typo>
         </View>
 
         <View style={styles.form}>
-          <Typo size={16} color={colors.textLighter}>
+          <Typo size={16} color={AUTH_COLORS.muted}>
             {t("auth_register_subtitle")}
           </Typo>
           <Input
             placeholder={t("auth_placeholder_name")}
             onChangeText={(value) => (nameRef.current = value)}
+            containerStyle={styles.authInput}
+            inputStyle={styles.authInputText}
             icon={
               <Icons.User
                 size={verticalScale(26)}
-                color={colors.neutral300}
+                color={AUTH_COLORS.icon}
                 weight="fill"
               />
             }
@@ -76,10 +95,12 @@ const Register = () => {
           <Input
             placeholder={t("auth_placeholder_email")}
             onChangeText={(value) => (emailRef.current = value)}
+            containerStyle={styles.authInput}
+            inputStyle={styles.authInputText}
             icon={
               <Icons.At
                 size={verticalScale(26)}
-                color={colors.neutral300}
+                color={AUTH_COLORS.icon}
                 weight="fill"
               />
             }
@@ -89,10 +110,12 @@ const Register = () => {
               placeholder={t("auth_placeholder_password")}
               onChangeText={(value) => (passwordRef.current = value)}
               secureTextEntry={!isPasswordVisible}
+              containerStyle={styles.authInput}
+              inputStyle={styles.authInputText}
               icon={
                 <Icons.Lock
                   size={verticalScale(26)}
-                  color={colors.neutral300}
+                  color={AUTH_COLORS.icon}
                   weight="fill"
                 />
               }
@@ -104,29 +127,33 @@ const Register = () => {
               {isPasswordVisible ? (
                 <Icons.Eye
                   size={verticalScale(24)}
-                  color={colors.neutral300}
+                  color={AUTH_COLORS.icon}
                   weight="fill"
                 />
               ) : (
                 <Icons.EyeSlash
                   size={verticalScale(24)}
-                  color={colors.neutral300}
+                  color={AUTH_COLORS.icon}
                   weight="fill"
                 />
               )}
             </Pressable>
           </View>
 
-          <Button loading={isLoading} onPress={handleSubmit}>
+          <Button
+            loading={isLoading}
+            onPress={handleSubmit}
+            buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
+          >
             <Typo fontWeight={"700"} color={colors.black} size={21}>
               {t("auth_register_button")}
             </Typo>
           </Button>
         </View>
         <View style={styles.footer}>
-          <Typo size={15}>{t("auth_register_have_account")}</Typo>
+          <Typo size={15} color={AUTH_COLORS.text}>{t("auth_register_have_account")}</Typo>
           <Pressable onPress={() => router.push("/(auth)/login")}>
-            <Typo size={15} fontWeight={"700"} color={colors.primary}>
+            <Typo size={15} fontWeight={"700"} color={AUTH_COLORS.accent}>
               {t("auth_register_login")}
             </Typo>
           </Pressable>
@@ -151,6 +178,15 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacingY._20,
+  },
+  authInput: {
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.black,
+    borderRadius: 8,
+  },
+  authInputText: {
+    color: AUTH_COLORS.text,
   },
   forgotPassword: {
     textAlign: "right",

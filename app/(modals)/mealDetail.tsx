@@ -174,7 +174,9 @@ const MealDetail = () => {
           setCachedFoods(localCachedFoods);
         }
       } catch (error) {
-        console.error("[MealDetail] Error loading cached foods:", error);
+        if (__DEV__) {
+          console.error("[MealDetail] Error loading cached foods:", error);
+        }
       }
     })();
 
@@ -203,9 +205,11 @@ const MealDetail = () => {
 
     if (result.success && result.data) {
       setRecentFoods(result.data);
-      console.log(
-        ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`,
-      );
+      if (__DEV__) {
+        console.log(
+          ` Loaded ${result.data.length} recent foods for ${currentMeal.name}`,
+        );
+      }
     } else {
       setRecentFoods([]);
     }
@@ -334,7 +338,9 @@ const MealDetail = () => {
             if (searchToken !== latestSearchTokenRef.current) return;
 
             if (!cancelled) {
-              console.error("[MealDetail] Food search failed:", error);
+              if (__DEV__) {
+                console.error("[MealDetail] Food search failed:", error);
+              }
             }
 
             setIsSearching(false);
@@ -1249,7 +1255,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     paddingVertical: spacingY._5,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     shadowColor: "#000",
     shadowOffset: {
@@ -1306,7 +1312,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     padding: spacingX._12,
@@ -1337,7 +1343,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     paddingVertical: spacingY._12,
@@ -1382,7 +1388,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
     borderRadius: radius._12,
     marginBottom: spacingY._10,
@@ -1457,7 +1463,7 @@ const styles = StyleSheet.create({
     height: verticalScale(120),
     borderRadius: radius._15,
     backgroundColor: colors.neutral800,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionPreview: {
@@ -1466,7 +1472,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderRadius: radius._12,
     padding: spacingX._15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   nutritionItem: {
@@ -1483,7 +1489,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.green,
     shadowColor: "#000",
     shadowOffset: {
@@ -1495,3 +1501,4 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 });
+

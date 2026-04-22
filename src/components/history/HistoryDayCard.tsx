@@ -61,10 +61,7 @@ const HistoryDayCard = ({
       </Typo>
 
       <View
-        style={[
-          styles.dayNumber,
-          isToday && !isSelected && styles.dayNumberToday,
-        ]}
+        style={styles.dayNumber}
       >
         <Typo
           size={18}
@@ -86,6 +83,9 @@ const HistoryDayCard = ({
       <View style={styles.indicators}>
         {hasWorkout && (
           <View style={[styles.workoutDot, isSelected && styles.workoutDotSelected]} />
+        )}
+        {!hasWorkout && !isRestDay && !isFuture && (
+          <View style={styles.missedWorkoutDot} />
         )}
 
         {isRestDay && !hasWorkout && (
@@ -120,10 +120,6 @@ const styles = StyleSheet.create({
   dayNumber: {
     marginVertical: spacingY._5,
   },
-  dayNumberToday: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
   indicators: {
     height: verticalScale(16),
     justifyContent: "center",
@@ -137,5 +133,11 @@ const styles = StyleSheet.create({
   },
   workoutDotSelected: {
     backgroundColor: colors.neutral900,
+  },
+  missedWorkoutDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
   },
 });

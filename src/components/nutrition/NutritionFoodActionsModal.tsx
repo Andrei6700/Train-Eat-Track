@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     padding: spacingX._15,
     borderRadius: radius._12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.neutral700,
   },
   deleteAction: {
@@ -181,3 +181,4 @@ const styles = StyleSheet.create({
     marginTop: spacingY._10,
   },
 });
+

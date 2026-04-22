@@ -1,20 +1,45 @@
-import { colors, radius, spacingX } from '@/constants/theme';
+import { colors, fontFamilies, radius } from '@/constants/theme';
 import { InputProps } from '@/src/types/index';
 import { verticalScale, scale } from '@/src/utils/styling';
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 
 const Input = (props: InputProps) => {
+  const {
+    icon,
+    containerStyle,
+    inputStyle,
+    inputRef,
+    hasError,
+    onFocus,
+    onBlur,
+    ...textInputProps
+  } = props;
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
-    <View style={[styles.container, props.containerStyle && props.containerStyle]}>
-        {
-            props.icon && props.icon
-        }
+    <View
+      style={[
+        styles.container,
+        isFocused && styles.containerFocused,
+        hasError && styles.containerError,
+        containerStyle && containerStyle,
+      ]}
+    >
+      {icon && icon}
       <TextInput 
-        style={[styles.input, props.inputStyle]}
-        placeholderTextColor={colors.neutral400}
-        ref={props.inputRef && props.inputRef}
-        {...props}
+        style={[styles.input, inputStyle]}
+        placeholderTextColor={colors.textMuted}
+        ref={inputRef && inputRef}
+        {...textInputProps}
+        onFocus={(event) => {
+          setIsFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setIsFocused(false);
+          onBlur?.(event);
+        }}
       />
     </View>
   )
@@ -25,22 +50,31 @@ export default Input
 const styles = StyleSheet.create({
     container:{
         flexDirection: 'row',
-        height: verticalScale(54),
-        minHeight: verticalScale(48),
+        minHeight: verticalScale(52),
         alignItems: 'center',
         justifyContent: "center",
         borderWidth: 1,
-        borderColor: colors.neutral300,
-        borderRadius: radius._17,
-        borderCurve: 'continuous',
-        paddingHorizontal: scale(15),
-        gap: scale(10),
+        borderColor: colors.border,
+        borderRadius: radius._12,
+        backgroundColor: colors.surfaceRaised,
+        paddingHorizontal: scale(16),
+        paddingVertical: verticalScale(12),
+        gap: scale(8),
         width: '100%',
+    },
+    containerFocused: {
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+    },
+    containerError: {
+      borderWidth: 1.5,
+      borderColor: colors.secondary,
     },
     input:{
         flex: 1,
-        height: '100%',
-        color: colors.white,
-        fontSize: verticalScale(14),
+        color: colors.textPrimary,
+        fontSize: verticalScale(16),
+        fontFamily: fontFamilies.bodyRegular,
+        minHeight: verticalScale(24),
     }
 })

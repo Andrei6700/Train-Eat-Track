@@ -171,7 +171,7 @@ const Home = React.memo(() => {
                 <Typo size={16} color={colors.neutral400}>
                   {t("home_welcome_back")}
                 </Typo>
-                <Typo size={24} fontWeight="700">
+                <Typo size={32} variant="heading">
                   {user?.name || t("home_user_fallback")}
                 </Typo>
               </View>

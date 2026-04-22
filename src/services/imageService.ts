@@ -34,7 +34,9 @@ export const uploadFileToCloudinary = async (
         }
         return { success: true };
     } catch (error: any) {
-        console.log("Error uploading file to Cloudinary:", error);
+        if (__DEV__) {
+            console.log("Error uploading file to Cloudinary:", error);
+        }
         return { success: false, msg: error?.message || "Could not upload image." };
     }
 };

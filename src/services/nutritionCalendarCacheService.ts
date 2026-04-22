@@ -92,7 +92,9 @@ const readPayload = async (userID: string): Promise<NutritionCalendarSummary | n
           : 0,
     };
   } catch (error) {
-    console.error("[NutritionCalendarCache] Error reading cache:", error);
+    if (__DEV__) {
+      console.error("[NutritionCalendarCache] Error reading cache:", error);
+    }
     return null;
   }
 };
@@ -215,7 +217,9 @@ export const setCachedNutritionCalendarSummary = async (
       days: summary.days,
     });
   } catch (error) {
-    console.error("[NutritionCalendarCache] Error writing cache:", error);
+    if (__DEV__) {
+      console.error("[NutritionCalendarCache] Error writing cache:", error);
+    }
     return null;
   }
 };
@@ -258,7 +262,9 @@ export const upsertNutritionCalendarSummaryDay = async (
       days: updatedDays,
     });
   } catch (error) {
-    console.error("[NutritionCalendarCache] Error upserting day:", error);
+    if (__DEV__) {
+      console.error("[NutritionCalendarCache] Error upserting day:", error);
+    }
     return null;
   }
 };
@@ -280,6 +286,8 @@ export const clearNutritionCalendarSummaryCache = async (
       await AsyncStorage.multiRemove(keys);
     }
   } catch (error) {
-    console.error("[NutritionCalendarCache] Error clearing cache:", error);
+    if (__DEV__) {
+      console.error("[NutritionCalendarCache] Error clearing cache:", error);
+    }
   }
 };

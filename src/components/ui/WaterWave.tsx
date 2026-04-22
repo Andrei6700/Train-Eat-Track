@@ -1,21 +1,24 @@
 import React, { useEffect } from "react";
-import { StyleSheet, View, Text } from "react-native";
+import { colors } from "@/constants/theme";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
+import { StyleSheet, View } from "react-native";
 import Animated, {
-  Easing,
-  useAnimatedProps,
-  useSharedValue,
-  withRepeat,
-  withTiming,
+    Easing,
+    useAnimatedProps,
+    useSharedValue,
+    withRepeat,
+    withTiming,
 } from "react-native-reanimated";
 import Svg, {
-  Circle,
-  ClipPath,
-  Defs,
-  G,
-  LinearGradient,
-  Path,
-  Stop,
+    Circle,
+    ClipPath,
+    Defs,
+    G,
+    LinearGradient,
+    Path,
+    Stop,
 } from "react-native-svg";
+import Typo from "./Typo";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -23,24 +26,32 @@ type WaterWaveProps = {
   percentage: number;
   total: number;
   goal: number;
+  size?: number;
 };
 
-const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
+const WaterWave = ({ percentage, total, goal, size = 150 }: WaterWaveProps) => {
+  const reduceMotion = useReduceMotion();
   const wave1 = useSharedValue(0);
   const wave2 = useSharedValue(0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      wave1.value = 0;
+      wave2.value = 0;
+      return;
+    }
+
     wave1.value = withRepeat(
       withTiming(20, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
       -1,
-      true
+      true,
     );
     wave2.value = withRepeat(
       withTiming(-20, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
       -1,
-      true
+      true,
     );
-  }, []);
+  }, [reduceMotion, wave1, wave2]);
 
   const animatedProps1 = useAnimatedProps(() => {
     const y = 200 - percentage * 2;
@@ -75,20 +86,20 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Svg width={200} height={200} viewBox="0 0 200 200">
+    <View style={[styles.container, { width: size, height: size }]}>
+      <Svg width={size} height={size} viewBox="0 0 200 200">
         <Defs>
           <ClipPath id="circle-clip">
             <Circle cx="100" cy="100" r="90" />
           </ClipPath>
           <LinearGradient id="water-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor="#60a5fa" stopOpacity="0.8" />
-            <Stop offset="100%" stopColor="#3b82f6" stopOpacity="1" />
+            <Stop offset="0%" stopColor={colors.waterStart} stopOpacity="0.75" />
+            <Stop offset="100%" stopColor={colors.waterEnd} stopOpacity="1" />
           </LinearGradient>
         </Defs>
 
         {/* Background circle */}
-        <Circle cx="100" cy="100" r="90" fill="#374151" />
+        <Circle cx="100" cy="100" r="90" fill={colors.surfaceRaised} />
 
         {/* Water with wave effect */}
         <G clipPath="url(#circle-clip)">
@@ -98,7 +109,7 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
           />
           <AnimatedPath
             animatedProps={animatedProps2}
-            fill="#60a5fa"
+            fill={colors.waterAccent}
             opacity="0.5"
           />
         </G>
@@ -109,15 +120,19 @@ const WaterWave = ({ percentage, total, goal }: WaterWaveProps) => {
           cy="100"
           r="90"
           fill="none"
-          stroke="#60a5fa"
+          stroke={colors.border}
           strokeWidth="4"
         />
       </Svg>
 
       {/* Text overlay  */}
       <View style={styles.textOverlay}>
-        <Text style={styles.percentageText}>{Math.round(percentage)}%</Text>
-        <Text style={styles.waterText}>{formatWaterText()}</Text>
+        <Typo size={48} variant="metric" color={colors.white} style={styles.percentageText}>
+          {Math.round(percentage)}%
+        </Typo>
+        <Typo size={14} variant="mono" color={colors.neutral100} style={styles.waterText}>
+          {formatWaterText()}
+        </Typo>
       </View>
     </View>
   );
@@ -127,8 +142,6 @@ export default WaterWave;
 
 const styles = StyleSheet.create({
   container: {
-    width: 200,
-    height: 200,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -142,16 +155,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   percentageText: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "white",
     textAlign: "center",
+    textShadowColor: colors.black,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   waterText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#9ca3af",
     textAlign: "center",
     marginTop: 4,
+    textShadowColor: colors.black,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });
