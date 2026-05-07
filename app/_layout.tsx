@@ -239,6 +239,10 @@ const StackLayout = () => {
           }}
         />
         <Stack.Screen
+          name="(modals)/manualProductEntry"
+          options={{ presentation: "modal", animation: "slide_from_bottom" }}
+        />
+        <Stack.Screen
           name="(modals)/createFood"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />

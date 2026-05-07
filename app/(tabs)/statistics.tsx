@@ -13,7 +13,14 @@ import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  LayoutChangeEvent,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
@@ -67,8 +74,35 @@ const Statistics = React.memo(() => {
 
   const [weightChartData, setWeightChartData] = useState<ChartDataPoint[]>([]);
   const [repsChartData, setRepsChartData] = useState<ChartDataPoint[]>([]);
+  const [chartWidth, setChartWidth] = useState(scale(320));
   const requestIdRef = useRef(0);
   const previousUserIdRef = useRef<string | null>(null);
+
+  const calculateChartSpacing = useCallback(
+    (pointCount: number) => {
+      if (pointCount <= 1) return scale(50);
+
+      const usableWidth = Math.max(chartWidth - scale(60), scale(180));
+      const dynamicSpacing = usableWidth / (pointCount - 1);
+
+      return Math.max(scale(26), Math.min(scale(50), dynamicSpacing));
+    },
+    [chartWidth]
+  );
+
+  const handleChartLayout = useCallback((event: LayoutChangeEvent) => {
+    const containerWidth = event.nativeEvent.layout.width;
+    const nextChartWidth = Math.max(
+      scale(220),
+      containerWidth - spacingX._20 * 2
+    );
+
+    setChartWidth((previousWidth) =>
+      Math.abs(previousWidth - nextChartWidth) > 1
+        ? nextChartWidth
+        : previousWidth
+    );
+  }, []);
 
   useEffect(() => {
     extractExercises();
@@ -541,13 +575,20 @@ const Statistics = React.memo(() => {
             {weightChartData.length > 0 && (
               <View style={styles.stackedOuterWithGap}>
                 <View style={styles.shadowRounded17} />
-                <View style={styles.chartContainer}>
+                <View style={styles.chartContainer} onLayout={handleChartLayout}>
                   <View style={styles.chartHeader}>
-                    <Typo size={18} fontWeight="600">
+                    <Typo size={18} fontWeight="600" style={styles.chartTitle}>
                       {t("statistics_weight_progress")}
                     </Typo>
                     <View style={styles.chartBadge}>
-                      <Typo size={13} color={colors.white}>
+                      <Typo
+                        size={13}
+                        color={colors.white}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        style={styles.chartBadgeText}
+                      >
                         {t("statistics_sessions_count", {
                           count: exerciseStats.workoutCount,
                         })}
@@ -557,16 +598,18 @@ const Statistics = React.memo(() => {
 
                   <LineChart
                     data={weightChartData}
-                    width={scale(320)}
+                    width={chartWidth}
                     height={verticalScale(200)}
-                    spacing={scale(50)}
+                    spacing={calculateChartSpacing(weightChartData.length)}
                     thickness={3}
                     color={colors.primary}
                     startFillColor={colors.primary}
                     endFillColor={colors.primary}
                     startOpacity={0.3}
                     endOpacity={0.1}
-                    initialSpacing={20}
+                    adjustToWidth
+                    initialSpacing={scale(14)}
+                    endSpacing={scale(14)}
                     noOfSections={4}
                     yAxisTextStyle={{
                       color: colors.neutral400,
@@ -594,13 +637,20 @@ const Statistics = React.memo(() => {
             {repsChartData.length > 0 && (
               <View style={styles.stackedOuterWithGap}>
                 <View style={styles.shadowRounded17} />
-                <View style={styles.chartContainer}>
+                <View style={styles.chartContainer} onLayout={handleChartLayout}>
                   <View style={styles.chartHeader}>
-                    <Typo size={18} fontWeight="600">
+                    <Typo size={18} fontWeight="600" style={styles.chartTitle}>
                       {t("statistics_reps_progress")}
                     </Typo>
                     <View style={styles.chartBadge}>
-                      <Typo size={13} color={colors.white}>
+                      <Typo
+                        size={13}
+                        color={colors.white}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        style={styles.chartBadgeText}
+                      >
                         {t("statistics_avg_max_kg_reps", {
                           count: exerciseStats.averageTopSetReps,
                         })}
@@ -610,16 +660,18 @@ const Statistics = React.memo(() => {
 
                   <LineChart
                     data={repsChartData}
-                    width={scale(320)}
+                    width={chartWidth}
                     height={verticalScale(200)}
-                    spacing={scale(50)}
+                    spacing={calculateChartSpacing(repsChartData.length)}
                     thickness={3}
                     color={colors.green}
                     startFillColor={colors.green}
                     endFillColor={colors.green}
                     startOpacity={0.3}
                     endOpacity={0.1}
-                    initialSpacing={20}
+                    adjustToWidth
+                    initialSpacing={scale(14)}
+                    endSpacing={scale(14)}
                     noOfSections={4}
                     yAxisTextStyle={{
                       color: colors.neutral400,
@@ -851,18 +903,30 @@ const styles = StyleSheet.create({
     padding: spacingX._20,
     borderWidth: 2,
     borderColor: colors.neutral700,
+    overflow: "hidden",
   },
   chartHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    rowGap: spacingY._7,
+    columnGap: spacingX._10,
     marginBottom: spacingY._15,
+  },
+  chartTitle: {
+    flexShrink: 1,
   },
   chartBadge: {
     backgroundColor: colors.neutral700,
     paddingHorizontal: spacingX._12,
     paddingVertical: verticalScale(4),
     borderRadius: radius._10,
+    flexShrink: 1,
+    maxWidth: "70%",
+  },
+  chartBadgeText: {
+    flexShrink: 1,
   },
   emptyState: {
     alignItems: "center",

@@ -5,16 +5,10 @@ import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
 import { getMealLabel } from "@/src/i18n/translations";
-import { saveCustomProduct } from "@/src/services/customProductService";
-import {
-  getFoodByBarcode,
-  SimplifiedFood,
-} from "@/src/services/foodApiService";
+import { SimplifiedFood, getFoodByBarcode } from "@/src/services/foodApiService";
 import { verticalScale } from "@/src/utils/styling";
-import { auth } from "@/src/config/firebase";
 import { Camera, CameraView } from "expo-camera";
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
@@ -39,7 +33,8 @@ const BarcodeScanner = () => {
   const insets = useSafeAreaInsets();
   const { addFoodToMeal } = useNutrition();
   const { language, t } = useLanguage();
-  const mealLabel = getMealLabel(language, mealName as string);
+  const mealNameValue = Array.isArray(mealName) ? mealName[0] : (mealName as string);
+  const mealLabel = getMealLabel(language, mealNameValue);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
@@ -51,20 +46,8 @@ const BarcodeScanner = () => {
   const [quantity, setQuantity] = useState("100");
   const [addingFood, setAddingFood] = useState(false);
 
-  // Custom product state
-  const [showSaveProductModal, setShowSaveProductModal] = useState(false);
-  const [currentBarcode, setCurrentBarcode] = useState("");
-  const [customProductName, setCustomProductName] = useState("");
-  const [customProductCalories, setCustomProductCalories] = useState("");
-  const [customProductProtein, setCustomProductProtein] = useState("");
-  const [customProductCarbs, setCustomProductCarbs] = useState("");
-  const [customProductFat, setCustomProductFat] = useState("");
-  const [customProductServing, setCustomProductServing] = useState("100");
-  const [customProductImage, setCustomProductImage] = useState<string | null>(null);
-  const [savingCustomProduct, setSavingCustomProduct] = useState(false);
-
   useEffect(() => {
-    requestCameraPermission();
+    void requestCameraPermission();
   }, []);
 
   const requestCameraPermission = async () => {
@@ -72,41 +55,65 @@ const BarcodeScanner = () => {
     setHasPermission(status === "granted");
   };
 
-  const handleBarCodeScanned = async ({
-    type,
-    data,
-  }: {
-    type: string;
-    data: string;
-  }) => {
+  const openManualEntry = (barcode: string) => {
+    setScanned(false);
+    setLoading(false);
+    router.push({
+      pathname: "/(modals)/manualProductEntry",
+      params: {
+        mealName: mealNameValue || "",
+        barcode,
+      },
+    });
+  };
+
+  const handleScanAgain = () => {
+    setScanned(false);
+    setScannedFood(null);
+    setShowQuantityModal(false);
+    setQuantity("100");
+  };
+
+  const handleCloseQuantityModal = () => {
+    setShowQuantityModal(false);
+    setScannedFood(null);
+    setScanned(false);
+  };
+
+  const handleBarCodeScanned = async ({ data }: { type: string; data: string }) => {
     if (scanned) return;
 
     setScanned(true);
     setLoading(true);
 
     if (__DEV__) {
-      console.log(`Scanned barcode: ${data}`);
+      console.log(`[BarcodeScanner] Scanned barcode: ${data}`);
     }
 
     const result = await getFoodByBarcode(data);
-
     setLoading(false);
 
     if (result.success && result.data) {
-      setScannedFood(result.data);
+      setScannedFood(result.data as SimplifiedFood);
       setQuantity("100");
       setShowQuantityModal(true);
-    } else {
-      // Product not found - offer to save it
-      setCurrentBarcode(data);
-      setCustomProductName("");
-      setCustomProductCalories("");
-      setCustomProductProtein("");
-      setCustomProductCarbs("");
-      setCustomProductFat("");
-      setCustomProductServing("100");
-      setShowSaveProductModal(true);
+      return;
     }
+
+    Alert.alert(
+      t("barcode_scanner_modal_not_found_title"),
+      result.msg || t("barcode_scanner_modal_not_found_message"),
+      [
+        {
+          text: "Add manually",
+          onPress: () => openManualEntry(data),
+        },
+        {
+          text: t("barcode_scanner_modal_try_again"),
+          onPress: handleScanAgain,
+        },
+      ],
+    );
   };
 
   const handleAddWithQuantity = async () => {
@@ -130,9 +137,7 @@ const BarcodeScanner = () => {
     };
 
     try {
-      // saved in firebase by context
-      await addFoodToMeal(mealName as string, adjustedFood);
-
+      await addFoodToMeal(mealNameValue, adjustedFood);
       setAddingFood(false);
       setShowQuantityModal(false);
       setScannedFood(null);
@@ -143,12 +148,7 @@ const BarcodeScanner = () => {
           name: adjustedFood.name,
           meal: mealLabel,
         }),
-        [
-          {
-            text: t("common_ok"),
-            onPress: () => router.back(),
-          },
-        ],
+        [{ text: t("common_ok"), onPress: () => router.back() }],
       );
     } catch (error: any) {
       setAddingFood(false);
@@ -159,125 +159,12 @@ const BarcodeScanner = () => {
     }
   };
 
-  const handleScanAgain = () => {
-    setScanned(false);
-    setScannedFood(null);
-    setShowQuantityModal(false);
-  };
-
-  const handleSaveCustomProduct = async () => {
-    // Validate fields
-    if (
-      !customProductName.trim() ||
-      !customProductCalories ||
-      !customProductProtein ||
-      !customProductCarbs ||
-      !customProductFat
-    ) {
-      Alert.alert(t("common_error"), "Please fill in all nutritional fields");
-      return;
-    }
-
-    setSavingCustomProduct(true);
-
-    try {
-      // Get current user ID from Firebase auth
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        Alert.alert(t("common_error"), "You must be logged in to save products");
-        setSavingCustomProduct(false);
-        return;
-      }
-      const user_id = currentUser.uid;
-
-      const saved = await saveCustomProduct(
-        currentBarcode,
-        {
-          name: customProductName,
-          calories: Math.round(parseFloat(customProductCalories)),
-          protein: parseFloat(customProductProtein),
-          carbs: parseFloat(customProductCarbs),
-          fat: parseFloat(customProductFat),
-          serving_size: `${customProductServing}g`,
-          image_url: customProductImage || undefined,
-        },
-        user_id,
-      );
-
-      setSavingCustomProduct(false);
-
-      if (saved) {
-        Alert.alert(
-          t("common_success"),
-          "Product saved! You can now add it to your meal.",
-          [
-            {
-              text: t("common_ok"),
-              onPress: () => {
-                // Close save modal, show product with quantity
-                setShowSaveProductModal(false);
-                setScannedFood({
-                  code: `custom-${saved.id}`,
-                  product_name: saved.name,
-                  name: saved.name,
-                  calories: saved.calories,
-                  protein: saved.protein,
-                  carbs: saved.carbs,
-                  fat: saved.fat,
-                  servingSize: saved.serving_size,
-                  brands: saved.brands,
-                  image: saved.image_url,
-                });
-                setQuantity(customProductServing);
-                setShowQuantityModal(true);
-              },
-            },
-          ],
-        );
-      } else {
-        Alert.alert(
-          t("common_error"),
-          "Failed to save product. Please try again.",
-        );
-      }
-    } catch (error: any) {
-      setSavingCustomProduct(false);
-      Alert.alert(t("common_error"), error?.message || "Error saving product");
-    }
-  };
-
-  const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setCustomProductImage(result.assets[0].uri);
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setCustomProductImage(null);
-  };
-
-  const handleCloseSaveModal = () => {
-    setShowSaveProductModal(false);
-    setScanned(false);
-  };
-
   if (hasPermission === null) {
     return (
       <View style={styles.container}>
         <View style={styles.permissionContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Typo
-            size={16}
-            color={colors.neutral400}
-            style={{ marginTop: spacingY._15 }}
-          >
+          <Typo size={16} color={colors.neutral400} style={{ marginTop: spacingY._15 }}>
             {t("barcode_scanner_modal_checking_permissions")}
           </Typo>
         </View>
@@ -288,10 +175,7 @@ const BarcodeScanner = () => {
   if (hasPermission === false) {
     return (
       <View style={styles.container}>
-        <Animated.View
-          entering={FadeIn.duration(400)}
-          style={styles.permissionContainer}
-        >
+        <Animated.View entering={FadeIn.duration(400)} style={styles.permissionContainer}>
           <Icons.CameraSlashIcon size={64} color={colors.rose} weight="fill" />
           <Typo
             size={20}
@@ -307,18 +191,12 @@ const BarcodeScanner = () => {
           >
             {t("barcode_scanner_modal_camera_access_denied_message")}
           </Typo>
-          <Button
-            onPress={() => Linking.openSettings()}
-            style={{ marginTop: spacingY._30, width: "80%" }}
-          >
+          <Button onPress={() => Linking.openSettings()} style={styles.permissionButton}>
             <Typo size={16} fontWeight="700" color={colors.black}>
               {t("barcode_scanner_modal_open_settings")}
             </Typo>
           </Button>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ marginTop: spacingY._15 }}
-          >
+          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacingY._15 }}>
             <Typo size={15} color={colors.primary}>
               {t("barcode_scanner_modal_back")}
             </Typo>
@@ -330,34 +208,21 @@ const BarcodeScanner = () => {
 
   return (
     <View style={styles.container}>
-      {/* Camera View */}
       <CameraView
         style={styles.camera}
         facing="back"
         enableTorch={flashEnabled}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
-          barcodeTypes: [
-            "ean13",
-            "ean8",
-            "upc_a",
-            "upc_e",
-            "code128",
-            "code39",
-            "qr",
-          ],
+          barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
         }}
       />
 
-      {/* Header */}
       <Animated.View
         entering={FadeInDown.delay(100).duration(400)}
         style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.headerButton}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
           <Icons.XIcon size={24} color={colors.white} weight="bold" />
         </TouchableOpacity>
 
@@ -366,40 +231,25 @@ const BarcodeScanner = () => {
         </Typo>
 
         <TouchableOpacity
-          onPress={() => setFlashEnabled(!flashEnabled)}
+          onPress={() => setFlashEnabled((prev) => !prev)}
           style={styles.headerButton}
         >
           {flashEnabled ? (
-            <Icons.FlashlightIcon
-              size={24}
-              color={colors.primary}
-              weight="fill"
-            />
+            <Icons.FlashlightIcon size={24} color={colors.primary} weight="fill" />
           ) : (
-            <Icons.FlashlightIcon
-              size={24}
-              color={colors.white}
-              weight="regular"
-            />
+            <Icons.FlashlightIcon size={24} color={colors.white} weight="regular" />
           )}
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Scanner Frame */}
       {!scanned && (
-        <Animated.View
-          entering={FadeIn.delay(300).duration(600)}
-          style={styles.scannerFrame}
-          pointerEvents="none"
-        >
+        <Animated.View entering={FadeIn.delay(300).duration(600)} style={styles.scannerFrame}>
           <View style={styles.scannerBox}>
-            {/* Corners */}
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
           </View>
-
           <Typo
             size={16}
             fontWeight="600"
@@ -411,7 +261,21 @@ const BarcodeScanner = () => {
         </Animated.View>
       )}
 
-      {/* Loading Overlay */}
+      {!scanned && !loading && (
+        <View style={[styles.manualButtonContainer, { bottom: insets.bottom + 20 }]}>
+          <TouchableOpacity
+            style={styles.manualButton}
+            onPress={() => openManualEntry("")}
+            activeOpacity={0.85}
+          >
+            <Icons.PencilSimpleLineIcon size={18} color={colors.black} weight="bold" />
+            <Typo size={14} fontWeight="700" color={colors.black}>
+              Add Product Manually
+            </Typo>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {loading && (
         <Animated.View
           entering={FadeIn.duration(300)}
@@ -421,23 +285,18 @@ const BarcodeScanner = () => {
         >
           <View style={styles.loadingCard}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Typo
-              size={16}
-              fontWeight="600"
-              style={{ marginTop: spacingY._15 }}
-            >
+            <Typo size={16} fontWeight="600" style={{ marginTop: spacingY._15 }}>
               {t("barcode_scanner_modal_searching_food")}
             </Typo>
           </View>
         </Animated.View>
       )}
 
-      {/* Quantity Modal */}
       <Modal
         visible={showQuantityModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowQuantityModal(false)}
+        onRequestClose={handleCloseQuantityModal}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -446,31 +305,19 @@ const BarcodeScanner = () => {
           <TouchableOpacity
             style={styles.modalBackdrop}
             activeOpacity={1}
-            onPress={() => setShowQuantityModal(false)}
+            onPress={handleCloseQuantityModal}
           />
 
-          <View
-            style={[
-              styles.quantityModal,
-              { paddingBottom: insets.bottom + 20 },
-            ]}
-          >
-            {/* Handle Bar */}
+          <View style={[styles.quantityModal, { paddingBottom: insets.bottom + 20 }]}>
             <View style={styles.handleBar} />
-
-            {/* Header */}
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={handleScanAgain}>
-                <Icons.ArrowCounterClockwiseIcon
-                  size={24}
-                  color={colors.primary}
-                  weight="bold"
-                />
+                <Icons.ArrowCounterClockwiseIcon size={24} color={colors.primary} weight="bold" />
               </TouchableOpacity>
               <Typo size={20} fontWeight="700">
                 {t("barcode_scanner_modal_add_food_title")}
               </Typo>
-              <TouchableOpacity onPress={() => setShowQuantityModal(false)}>
+              <TouchableOpacity onPress={handleCloseQuantityModal}>
                 <Icons.XIcon size={24} color={colors.white} weight="bold" />
               </TouchableOpacity>
             </View>
@@ -480,16 +327,11 @@ const BarcodeScanner = () => {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.quantityScrollContent}
             >
-              {/* Food Info */}
               {scannedFood && (
                 <View style={styles.modalContent}>
                   <View style={styles.foodInfoModal}>
                     {scannedFood.image ? (
-                      <Image
-                        source={{ uri: scannedFood.image }}
-                        style={styles.foodImageLarge}
-                        contentFit="cover"
-                      />
+                      <Image source={{ uri: scannedFood.image }} style={styles.foodImageLarge} />
                     ) : (
                       <View style={styles.foodImagePlaceholder} />
                     )}
@@ -501,7 +343,7 @@ const BarcodeScanner = () => {
                     >
                       {scannedFood.name}
                     </Typo>
-                    {scannedFood.brands && (
+                    {scannedFood.brands ? (
                       <Typo
                         size={14}
                         color={colors.neutral400}
@@ -510,16 +352,11 @@ const BarcodeScanner = () => {
                       >
                         {scannedFood.brands}
                       </Typo>
-                    )}
+                    ) : null}
                   </View>
 
-                  {/* Quantity Input */}
                   <View style={styles.quantitySection}>
-                    <Typo
-                      size={16}
-                      fontWeight="600"
-                      style={{ marginBottom: spacingY._12 }}
-                    >
+                    <Typo size={16} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
                       {t("nutrition_quantity_grams")}
                     </Typo>
                     <Input
@@ -529,35 +366,20 @@ const BarcodeScanner = () => {
                       keyboardType="numeric"
                       containerStyle={styles.quantityInput}
                     />
-                    <Typo
-                      size={13}
-                      color={colors.neutral400}
-                      style={{ marginTop: spacingY._7 }}
-                    >
+                    <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._7 }}>
                       {t("barcode_scanner_modal_values_per_100g")}
                     </Typo>
                   </View>
 
-                  {/* Adjusted Nutritional Values */}
                   <View style={styles.adjustedNutrition}>
-                    <Typo
-                      size={15}
-                      fontWeight="600"
-                      style={{ marginBottom: spacingY._12 }}
-                    >
-                      {t("nutrition_calculated_values_for", {
-                        value: quantity || "0",
-                      })}
+                    <Typo size={15} fontWeight="600" style={{ marginBottom: spacingY._12 }}>
+                      {t("nutrition_calculated_values_for", { value: quantity || "0" })}
                     </Typo>
 
                     <View style={styles.nutritionGrid}>
                       <View style={styles.nutritionItem}>
                         <Typo size={24} fontWeight="700" color={colors.primary}>
-                          {Math.round(
-                            (scannedFood.calories *
-                              (parseFloat(quantity) || 0)) /
-                              100,
-                          )}
+                          {Math.round((scannedFood.calories * (parseFloat(quantity) || 0)) / 100)}
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
                           kcal
@@ -566,12 +388,8 @@ const BarcodeScanner = () => {
 
                       <View style={styles.nutritionItem}>
                         <Typo size={20} fontWeight="600">
-                          {Math.round(
-                            ((scannedFood.protein *
-                              (parseFloat(quantity) || 0)) /
-                              100) *
-                              10,
-                          ) / 10}
+                          {Math.round(((scannedFood.protein * (parseFloat(quantity) || 0)) / 100) * 10) /
+                            10}
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
@@ -581,11 +399,8 @@ const BarcodeScanner = () => {
 
                       <View style={styles.nutritionItem}>
                         <Typo size={20} fontWeight="600">
-                          {Math.round(
-                            ((scannedFood.carbs * (parseFloat(quantity) || 0)) /
-                              100) *
-                              10,
-                          ) / 10}
+                          {Math.round(((scannedFood.carbs * (parseFloat(quantity) || 0)) / 100) * 10) /
+                            10}
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
@@ -595,11 +410,8 @@ const BarcodeScanner = () => {
 
                       <View style={styles.nutritionItem}>
                         <Typo size={20} fontWeight="600">
-                          {Math.round(
-                            ((scannedFood.fat * (parseFloat(quantity) || 0)) /
-                              100) *
-                              10,
-                          ) / 10}
+                          {Math.round(((scannedFood.fat * (parseFloat(quantity) || 0)) / 100) * 10) /
+                            10}
                           g
                         </Typo>
                         <Typo size={12} color={colors.neutral400}>
@@ -609,249 +421,15 @@ const BarcodeScanner = () => {
                     </View>
                   </View>
 
-                  {/* Add Button */}
-                  <Button
-                    onPress={handleAddWithQuantity}
-                    loading={addingFood}
-                    style={{ marginTop: spacingY._20 }}
-                  >
+                  <Button onPress={handleAddWithQuantity} loading={addingFood} style={styles.addButton}>
                     <Typo size={18} fontWeight="700" color={colors.black}>
                       {t("barcode_scanner_modal_add_to_meal", {
-                        meal:
-                          mealLabel || t("barcode_scanner_modal_meal_fallback"),
+                        meal: mealLabel || t("barcode_scanner_modal_meal_fallback"),
                       })}
                     </Typo>
                   </Button>
                 </View>
               )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Save Custom Product Modal */}
-      <Modal
-        visible={showSaveProductModal}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseSaveModal}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <TouchableOpacity
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={handleCloseSaveModal}
-          />
-
-          <View
-            style={[
-              styles.quantityModal,
-              { paddingBottom: insets.bottom + 20 },
-            ]}
-          >
-            {/* Handle Bar */}
-            <View style={styles.handleBar} />
-
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Typo size={20} fontWeight="700">
-                Add Product to Database
-              </Typo>
-              <TouchableOpacity onPress={handleCloseSaveModal}>
-                <Icons.XIcon size={24} color={colors.white} weight="bold" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.quantityScrollContent}
-            >
-              <View style={styles.modalContent}>
-                <Typo
-                  size={14}
-                  color={colors.neutral400}
-                  style={{ marginBottom: spacingY._12 }}
-                >
-                  Barcode: {currentBarcode}
-                </Typo>
-
-                {/* Product Image */}
-                <View style={{ marginBottom: spacingY._20 }}>
-                  <Typo
-                    size={14}
-                    fontWeight="600"
-                    style={{ marginBottom: spacingY._7 }}
-                  >
-                    Product Image (Optional)
-                  </Typo>
-                  {customProductImage ? (
-                    <View style={styles.imagePreview}>
-                      <Image
-                        source={{ uri: customProductImage }}
-                        style={styles.previewImage}
-                        contentFit="cover"
-                      />
-                      <TouchableOpacity
-                        onPress={handleRemoveImage}
-                        style={styles.removeImageButton}
-                      >
-                        <Icons.XIcon size={20} color={colors.white} weight="fill" />
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <Button onPress={handlePickImage} style={{ marginBottom: spacingY._12 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacingX._8 }}>
-                        <Icons.ImageIcon size={18} color={colors.black} weight="fill" />
-                        <Typo size={14} fontWeight="600" color={colors.black}>
-                          Pick Image
-                        </Typo>
-                      </View>
-                    </Button>
-                  )}
-                </View>
-
-                {/* Product Name */}
-                <View style={{ marginBottom: spacingY._20 }}>
-                  <Typo
-                    size={14}
-                    fontWeight="600"
-                    style={{ marginBottom: spacingY._7 }}
-                  >
-                    Product Name *
-                  </Typo>
-                  <Input
-                    placeholder="e.g., Coca Cola 500ml"
-                    value={customProductName}
-                    onChangeText={setCustomProductName}
-                    containerStyle={styles.quantityInput}
-                  />
-                </View>
-
-                {/* Nutritional Values Grid */}
-                <Typo
-                  size={15}
-                  fontWeight="600"
-                  style={{ marginBottom: spacingY._12 }}
-                >
-                  Nutritional Values (per 100g) *
-                </Typo>
-
-                <View style={{ gap: spacingY._12, marginBottom: spacingY._20 }}>
-                  <View style={{ flexDirection: "row", gap: spacingX._10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={{ marginBottom: spacingY._5 }}
-                      >
-                        Calories
-                      </Typo>
-                      <Input
-                        placeholder="0"
-                        value={customProductCalories}
-                        onChangeText={setCustomProductCalories}
-                        keyboardType="numeric"
-                        containerStyle={styles.quantityInput}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={{ marginBottom: spacingY._5 }}
-                      >
-                        Protein (g)
-                      </Typo>
-                      <Input
-                        placeholder="0"
-                        value={customProductProtein}
-                        onChangeText={setCustomProductProtein}
-                        keyboardType="decimal-pad"
-                        containerStyle={styles.quantityInput}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={{ flexDirection: "row", gap: spacingX._10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={{ marginBottom: spacingY._5 }}
-                      >
-                        Carbs (g)
-                      </Typo>
-                      <Input
-                        placeholder="0"
-                        value={customProductCarbs}
-                        onChangeText={setCustomProductCarbs}
-                        keyboardType="decimal-pad"
-                        containerStyle={styles.quantityInput}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={{ marginBottom: spacingY._5 }}
-                      >
-                        Fat (g)
-                      </Typo>
-                      <Input
-                        placeholder="0"
-                        value={customProductFat}
-                        onChangeText={setCustomProductFat}
-                        keyboardType="decimal-pad"
-                        containerStyle={styles.quantityInput}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Typo
-                      size={12}
-                      color={colors.neutral400}
-                      style={{ marginBottom: spacingY._5 }}
-                    >
-                      Serving Size (g)
-                    </Typo>
-                    <Input
-                      placeholder="100"
-                      value={customProductServing}
-                      onChangeText={setCustomProductServing}
-                      keyboardType="numeric"
-                      containerStyle={styles.quantityInput}
-                    />
-                  </View>
-                </View>
-
-                {/* Buttons */}
-                <View style={{ gap: spacingX._12 }}>
-                  <Button
-                    onPress={handleSaveCustomProduct}
-                    loading={savingCustomProduct}
-                  >
-                    <Typo size={16} fontWeight="700" color={colors.black}>
-                      Save Product
-                    </Typo>
-                  </Button>
-                  <TouchableOpacity
-                    onPress={handleCloseSaveModal}
-                    style={{
-                      paddingVertical: spacingY._12,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Typo size={15} color={colors.primary}>
-                      Skip & Cancel
-                    </Typo>
-                  </TouchableOpacity>
-                </View>
-              </View>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -876,6 +454,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacingX._30,
     backgroundColor: colors.neutral900,
+  },
+  permissionButton: {
+    marginTop: spacingY._30,
+    width: "80%",
   },
   header: {
     position: "absolute",
@@ -903,6 +485,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
     alignItems: "center",
     justifyContent: "center",
+    pointerEvents: "none",
   },
   scannerBox: {
     width: 280,
@@ -950,6 +533,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
     paddingVertical: spacingY._10,
     borderRadius: radius._12,
+  },
+  manualButtonContainer: {
+    position: "absolute",
+    left: spacingX._20,
+    right: spacingX._20,
+    zIndex: 12,
+  },
+  manualButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radius._12,
+    paddingVertical: spacingY._12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacingX._7,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1054,27 +652,7 @@ const styles = StyleSheet.create({
     padding: spacingX._15,
     borderRadius: radius._12,
   },
-  imagePreview: {
-    position: "relative",
-    width: "100%",
-    height: verticalScale(120),
-    borderRadius: radius._15,
-    backgroundColor: colors.neutral800,
-    overflow: "hidden",
-  },
-  previewImage: {
-    width: "100%",
-    height: "100%",
-  },
-  removeImageButton: {
-    position: "absolute",
-    top: spacingY._10,
-    right: spacingX._10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    alignItems: "center",
-    justifyContent: "center",
+  addButton: {
+    marginTop: spacingY._20,
   },
 });

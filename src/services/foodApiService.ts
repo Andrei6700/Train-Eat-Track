@@ -1,14 +1,17 @@
 import { addFoodsToCache } from "@/src/services/cacheService";
 import {
-  getCustomProductByBarcode,
+  saveCustomProduct,
+  searchCustomProductByBarcode,
   searchCustomProducts,
   toSimplifiedFromCustom,
 } from "@/src/services/customProductService";
+import {
+  searchByBarcode as searchFoodByBarcodeInProvider,
+  searchFoods as searchFoodsInProvider,
+} from "@/src/services/nutritionixService";
 import { Food, ResponseType } from "@/src/types/index";
+import { auth } from "@/src/config/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-const OPEN_FOOD_FACTS_API = "https://world.openfoodfacts.org/cgi/search.pl";
-const PRODUCT_API = "https://world.openfoodfacts.org/api/v2/product";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_RETRIES = 2;
@@ -20,12 +23,6 @@ const DEFAULT_HYBRID_RETRIES = 0;
 const DEFAULT_QUERY_CACHE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_RESULTS = 20;
 const REMOTE_QUERY_CACHE_MAX_SIZE = 50;
-
-type FetchRetryConfig = {
-  retries?: number;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-};
 
 type RemoteQueryCacheEntry = {
   createdAt: number;
@@ -102,25 +99,6 @@ const writeBarcodeDiskCache = (barcode: string, result: ResponseType): void => {
   })();
 };
 
-export type OpenFoodFactsProduct = {
-  code: string;
-  product_name: string;
-  brands?: string;
-  quantity?: string;
-  serving_size?: string;
-  nutriments?: {
-    "energy-kcal_100g"?: number;
-    proteins_100g?: number;
-    carbohydrates_100g?: number;
-    fat_100g?: number;
-    "energy-kcal_serving"?: number;
-    proteins_serving?: number;
-    carbohydrates_serving?: number;
-    fat_serving?: number;
-  };
-  image_url?: string;
-};
-
 export type SimplifiedFood = {
   code: string;
   product_name: string;
@@ -161,9 +139,6 @@ export type SearchFoodHybridContext = {
   maxResults?: number;
 };
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && error.name === "AbortError";
 
@@ -173,6 +148,8 @@ const stripDiacritics = (value: string): string =>
 
 const normalizeText = (value: string): string =>
   stripDiacritics(value.trim().toLowerCase());
+const normalizeBarcode = (value: string): string =>
+  value.trim().replace(/[^\d]/g, "");
 
 const foodIdentity = (food: SimplifiedFood): string => {
   if (food.code && !food.code.startsWith("local-")) {
@@ -323,62 +300,8 @@ const cacheRemoteFoods = (foods: SimplifiedFood[]) => {
   })();
 };
 
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  config: FetchRetryConfig = {},
-): Promise<Response> {
-  const retries = config.retries ?? DEFAULT_RETRIES;
-  const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const controller = new AbortController();
-    const onCallerAbort = () => controller.abort();
-
-    if (config.signal) {
-      if (config.signal.aborted) {
-        controller.abort();
-      } else {
-        config.signal.addEventListener("abort", onCallerAbort);
-      }
-    }
-
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-      return response;
-    } catch (error) {
-      const abortedByCaller = Boolean(config.signal?.aborted);
-      if (isAbortError(error) && abortedByCaller) {
-        throw error;
-      }
-
-      if (attempt === retries) {
-        throw error;
-      }
-
-      const waitMs = Math.min(1000 * Math.pow(2, attempt), 5000);
-      if (__DEV__) {
-        console.log(`[FoodAPI] Retry ${attempt + 1}/${retries} after ${waitMs}ms`);
-      }
-      await sleep(waitMs);
-    } finally {
-      clearTimeout(timeoutId);
-      if (config.signal) {
-        config.signal.removeEventListener("abort", onCallerAbort);
-      }
-    }
-  }
-
-  throw new Error("Max retries exceeded");
-}
-
 /**
- * Search for food in Open Food Facts database.
+ * Search for foods in USDA FoodData Central.
  * Backward compatible: `searchFood(query, page, pageSize)` still works.
  */
 export const searchFood = async (
@@ -393,93 +316,28 @@ export const searchFood = async (
       return [];
     }
 
-    const params = new URLSearchParams({
-      search_terms: query.trim(),
-      search_simple: "1",
-      action: "process",
-      page: options.page.toString(),
-      page_size: options.pageSize.toString(),
-      json: "1",
-      fields: "code,product_name,brands,quantity,serving_size,nutriments,image_url",
+    const providerResults = await searchFoodsInProvider(query.trim(), {
+      page: options.page,
+      pageSize: options.pageSize,
+      timeoutMs: options.timeoutMs,
+      retries: options.retries,
+      signal: options.signal,
     });
 
-    const url = `${OPEN_FOOD_FACTS_API}?${params.toString()}`;
-    if (__DEV__) {
-      console.log("[FoodAPI] Searching:", url);
-    }
-
-    const response = await fetchWithRetry(
-      url,
-      {
-        method: "GET",
-        headers: {
-          "User-Agent": "FitnessApp/1.0 (fitness.app@example.com)",
-          Accept: "application/json",
-        },
-      },
-      {
-        retries: options.retries,
-        timeoutMs: options.timeoutMs,
-        signal: options.signal,
-      },
-    );
-
-    if (!response.ok) {
-      if (__DEV__) {
-        console.error("[FoodAPI] Error response:", response.status, response.statusText);
-      }
-      return [];
-    }
-
-    const data = await response.json();
-    if (!data.products || data.products.length === 0) {
-      return [];
-    }
-
-    const simplifiedFoods: SimplifiedFood[] = data.products
-      .filter((product: OpenFoodFactsProduct) => {
-        return (
-          product.nutriments &&
-          (product.nutriments["energy-kcal_100g"] ||
-            product.nutriments["energy-kcal_serving"])
-        );
-      })
-      .map((product: OpenFoodFactsProduct) => {
-        const nutriments = product.nutriments || {};
-        // Prefer per-100g values for consistency with quantity multiplier
-        const calories =
-          nutriments["energy-kcal_100g"] ||
-          nutriments["energy-kcal_serving"] ||
-          0;
-        const protein =
-          nutriments.proteins_100g || nutriments.proteins_serving || 0;
-        const carbs =
-          nutriments.carbohydrates_100g || nutriments.carbohydrates_serving || 0;
-        const fat = nutriments.fat_100g || nutriments.fat_serving || 0;
-
-        let servingSize = "100g";
-        if (product.serving_size) {
-          servingSize = product.serving_size;
-        } else if (product.quantity) {
-          servingSize = product.quantity;
-        }
-
-        return {
-          code: product.code,
-          product_name: product.product_name || "Unknown Product",
-          name: product.product_name || "Unknown Product",
-          calories: Math.round(calories),
-          protein: Math.round(protein * 10) / 10,
-          carbs: Math.round(carbs * 10) / 10,
-          fat: Math.round(fat * 10) / 10,
-          servingSize,
-          brands: product.brands,
-          image: product.image_url,
-        };
-      });
+    const simplifiedFoods: SimplifiedFood[] = providerResults.map((item) => ({
+      code: item.code,
+      product_name: item.product_name,
+      name: item.name,
+      calories: item.calories,
+      protein: item.protein,
+      carbs: item.carbs,
+      fat: item.fat,
+      servingSize: item.servingSize,
+      brands: item.brands,
+    }));
 
     if (__DEV__) {
-      console.log(`[FoodAPI] Found ${simplifiedFoods.length} products`);
+      console.log(`[FoodAPI] USDA search found ${simplifiedFoods.length} products`);
     }
     return simplifiedFoods;
   } catch (error: any) {
@@ -527,7 +385,7 @@ export const searchFoodHybrid = async (
     maxResults,
   );
 
-  // Get custom products from Supabase
+  // Get custom products from Firebase
   const customProducts = await searchCustomProducts(normalizedQuery);
   const customResults = customProducts
     .slice(0, maxResults)
@@ -612,94 +470,94 @@ export const searchFoodHybrid = async (
 };
 
 /**
- * Get food details by barcode (with in-memory + disk cache + Supabase custom products)
+ * Get food details by barcode using:
+ * 1. in-memory cache
+ * 2. disk cache
+ * 3. Firebase custom products
+ * 4. USDA API fallback
  */
-export const getFoodByBarcode = async (
-  barcode: string,
-): Promise<ResponseType> => {
-  // Check in-memory cache
-  const memEntry = barcodeMemoryCache.get(barcode);
+export const getFoodByBarcode = async (barcode: string): Promise<ResponseType> => {
+  const normalizedBarcode = normalizeBarcode(barcode);
+  if (!normalizedBarcode) {
+    return { success: false, msg: "Invalid barcode" };
+  }
+
+  const memEntry = barcodeMemoryCache.get(normalizedBarcode);
   if (memEntry && Date.now() - memEntry.cachedAt < BARCODE_MEMORY_TTL_MS) {
     return memEntry.result;
   }
 
-  // Check disk cache
-  const diskResult = await readBarcodeDiskCache(barcode);
+  const diskResult = await readBarcodeDiskCache(normalizedBarcode);
   if (diskResult) {
-    barcodeMemoryCache.set(barcode, {
+    barcodeMemoryCache.set(normalizedBarcode, {
       result: diskResult,
       cachedAt: Date.now(),
     });
     return diskResult;
   }
 
-  // Check Supabase custom products
-  const customProduct = await getCustomProductByBarcode(barcode);
+  const customProduct = await searchCustomProductByBarcode(normalizedBarcode);
   if (customProduct) {
     const simplifiedFood = toSimplifiedFromCustom(customProduct);
     const successResult: ResponseType = { success: true, data: simplifiedFood };
-    barcodeMemoryCache.set(barcode, {
+
+    barcodeMemoryCache.set(normalizedBarcode, {
       result: successResult,
       cachedAt: Date.now(),
     });
-    writeBarcodeDiskCache(barcode, successResult);
+    writeBarcodeDiskCache(normalizedBarcode, successResult);
+
     if (__DEV__) {
-      console.log("[FoodAPI] Found product in custom database");
+      console.log("[FoodAPI] Found product in Firebase customProducts");
     }
     return successResult;
   }
 
   try {
-    const url = `${PRODUCT_API}/${encodeURIComponent(barcode)}`;
-    if (__DEV__) {
-      console.log("[FoodAPI] Fetching barcode:", url);
-    }
-
-    const response = await fetchWithRetry(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "FitnessApp/1.0 (fitness.app@example.com)",
-        Accept: "application/json",
-      },
+    const providerFood = await searchFoodByBarcodeInProvider(normalizedBarcode, {
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      retries: DEFAULT_RETRIES,
     });
 
-    if (!response.ok) {
-      if (__DEV__) {
-        console.error("[FoodAPI] Error response:", response.status);
-      }
-      return { success: false, msg: "Product not found" };
-    }
-
-    const data = await response.json();
-
-    if (data.status === 0 || !data.product) {
+    if (!providerFood) {
       return { success: false, msg: "Product not found in database" };
     }
 
-    const product: OpenFoodFactsProduct = data.product;
-    const nutriments = product.nutriments || {};
-
     const simplifiedFood: SimplifiedFood = {
-      code: product.code,
-      product_name: product.product_name || "Unknown Product",
-      name: product.product_name || "Unknown Product",
-      calories: Math.round(nutriments["energy-kcal_100g"] || 0),
-      protein: Math.round((nutriments.proteins_100g || 0) * 10) / 10,
-      carbs: Math.round((nutriments.carbohydrates_100g || 0) * 10) / 10,
-      fat: Math.round((nutriments.fat_100g || 0) * 10) / 10,
-      servingSize: product.serving_size || product.quantity || "100g",
-      brands: product.brands,
-      image: product.image_url,
+      code: providerFood.code,
+      product_name: providerFood.product_name,
+      name: providerFood.name,
+      calories: providerFood.calories,
+      protein: providerFood.protein,
+      carbs: providerFood.carbs,
+      fat: providerFood.fat,
+      servingSize: providerFood.servingSize,
+      brands: providerFood.brands,
+      image: undefined,
     };
 
     const successResult: ResponseType = { success: true, data: simplifiedFood };
 
-    // Populate both caches
-    barcodeMemoryCache.set(barcode, {
+    barcodeMemoryCache.set(normalizedBarcode, {
       result: successResult,
       cachedAt: Date.now(),
     });
-    writeBarcodeDiskCache(barcode, successResult);
+    writeBarcodeDiskCache(normalizedBarcode, successResult);
+
+    const currentUserId = auth.currentUser?.uid;
+    if (currentUserId) {
+      void saveCustomProduct(currentUserId, {
+        barcode: normalizedBarcode,
+        name: simplifiedFood.name,
+        brand: simplifiedFood.brands,
+        calories: simplifiedFood.calories,
+        protein: simplifiedFood.protein,
+        carbs: simplifiedFood.carbs,
+        fat: simplifiedFood.fat,
+        servingSize: simplifiedFood.servingSize,
+        source: "api",
+      });
+    }
 
     return successResult;
   } catch (error: any) {
@@ -709,6 +567,7 @@ export const getFoodByBarcode = async (
       }
       return { success: false, msg: "Request timeout - please try again" };
     }
+
     if (__DEV__) {
       console.error("[FoodAPI] Barcode search error:", error?.message || error);
     }
