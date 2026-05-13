@@ -64,7 +64,7 @@ const AddWorkout = () => {
   // Timer states
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Keep history of exercises to show previous workout data
   const [historyExercises, setHistoryExercises] = useState<
@@ -198,7 +198,7 @@ const AddWorkout = () => {
     );
 
     // Calculate which day in the current cycle
-    const currentDayIndex = daysDifference % workoutPlan.splitDays;
+    const currentDayIndex = daysDifference % (workoutPlan.splitDays ?? 1);
     const dayName = `Day ${currentDayIndex + 1}`;
 
     if (__DEV__) {
@@ -269,7 +269,7 @@ const AddWorkout = () => {
     if (
       planDay.exercises &&
       planDay.exercises.length > 0 &&
-      daysDifference < workoutPlan.splitDays
+      daysDifference < (workoutPlan.splitDays ?? 1)
     ) {
       if (__DEV__) {
         console.log(

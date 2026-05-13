@@ -1,7 +1,7 @@
 import { colors } from "@/constants/theme";
 import { useSwipeNavigation } from "@/src/hooks/useSwipeNavigation";
 import React, { useCallback, useMemo, useRef } from "react";
-import { PanResponder, StyleSheet, View } from "react-native";
+import { GestureResponderEvent, PanResponder, PanResponderGestureState, StyleSheet, View } from "react-native";
 
 type SwipeableScreenProps = {
   children: React.ReactNode;
@@ -19,7 +19,7 @@ const SwipeableScreen: React.FC<SwipeableScreenProps> = React.memo(({
   const swipeStartTime = useRef(0);
 
   // Handler functions 
-  const handleMoveShouldSetPanResponder = useCallback((_, gestureState) => {
+  const handleMoveShouldSetPanResponder = useCallback((_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
     const { dx, dy } = gestureState;
     
     const isHorizontalSwipe = Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 20;
@@ -36,14 +36,14 @@ const SwipeableScreen: React.FC<SwipeableScreenProps> = React.memo(({
     swipeStartTime.current = Date.now();
   }, []);
 
-  const handlePanResponderMove = useCallback((_, gestureState) => {
+  const handlePanResponderMove = useCallback((_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
     const { dx } = gestureState;
     if (Math.abs(dx) > 30 && !isSwipingRef.current) {
       isSwipingRef.current = true;
     }
   }, []);
 
-  const handlePanResponderRelease = useCallback((_, gestureState) => {
+  const handlePanResponderRelease = useCallback((_: GestureResponderEvent, gestureState: PanResponderGestureState) => {
     const { dx, vx } = gestureState;
     const swipeDuration = Date.now() - swipeStartTime.current;
     

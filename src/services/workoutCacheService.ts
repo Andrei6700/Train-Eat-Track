@@ -36,9 +36,10 @@ export const loadAllWorkouts = async (userID: string): Promise<WorkoutHistory[]>
 
   const result = await getUserWorkouts(userID);
   if (result.success && result.data) {
-    allWorkoutsCache = result.data;
+    const data: WorkoutHistory[] = result.data;
+    allWorkoutsCache = data;
     cacheTimestamp = Date.now();
-    return allWorkoutsCache;
+    return data;
   }
 
   return [];

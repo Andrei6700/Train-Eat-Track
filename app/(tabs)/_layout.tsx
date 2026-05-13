@@ -1,5 +1,4 @@
 import CustomTabs from '@/src/components/navigation/CustomTabs';
-import { colors } from '@/constants/theme';
 import { useAuth } from '@/src/contexts/authContext';
 import { prefetchNutritionCalendarSummary } from '@/src/services/nutritionService';
 import { prefetchWorkoutHistorySnapshot } from '@/src/services/workoutService';
@@ -34,9 +33,6 @@ const TabsLayout = () => {
         lazy: true,
         animation: "none",
         freezeOnBlur: true, // Preserve state when switching tabs
-      }}
-      sceneContainerStyle={{
-        backgroundColor: colors.background,
       }}
     >
       <Tabs.Screen name='index' />

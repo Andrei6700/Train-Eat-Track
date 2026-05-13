@@ -82,7 +82,7 @@ const MealDetail = () => {
 
   const [searchResults, setSearchResults] = useState<SimplifiedFood[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSearchControllerRef = useRef<AbortController | null>(null);
   const latestSearchTokenRef = useRef(0);
 
@@ -146,7 +146,7 @@ const MealDetail = () => {
     }),
   ).current;
 
-  const mealDropdownRef = useRef<TouchableOpacity>(null);
+  const mealDropdownRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
 
   const currentMeal =
     MEALS.find((meal) => meal.name === selectedMeal) ||
@@ -218,7 +218,7 @@ const MealDetail = () => {
 
   const measureDropdown = () => {
     if (mealDropdownRef.current) {
-      mealDropdownRef.current.measure((x, y, width, height, pageX, pageY) => {
+      mealDropdownRef.current.measure((_x: number, _y: number, width: number, height: number, pageX: number, pageY: number) => {
         setDropdownPosition({
           x: pageX,
           y: pageY + height,
@@ -771,7 +771,6 @@ const MealDetail = () => {
               data={searchResults}
               renderItem={renderSearchResultItem}
               keyExtractor={(item) => `search-${item.code || item.name}`}
-              estimatedItemSize={80}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.flashListContent}
               ListEmptyComponent={
@@ -851,7 +850,6 @@ const MealDetail = () => {
                     data={recentFoods}
                     renderItem={renderRecentFoodItem}
                     keyExtractor={(item) => `recent-${item.name}`}
-                    estimatedItemSize={80}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={RecentFoodsEmptyState}
                   />

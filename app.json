@@ -11,14 +11,13 @@
       "supportsTablet": true
     },
     "android": {
+      "ndk": "26.1.10909125",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE"
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.CAMERA"
-      ],
+      "permissions": ["android.permission.CAMERA"],
       "package": "com.andreibalanoiu.TrainEatTrack"
     },
     "androidStatusBar": {

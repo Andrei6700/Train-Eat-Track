@@ -109,10 +109,17 @@ const DayWorkout = () => {
     exerciseIndex: number,
     setIndex: number,
     field: keyof WorkoutSet,
-    value: any
+    value: string | number
   ) => {
     const newExercises = [...exercises];
-    newExercises[exerciseIndex].sets[setIndex][field] = value;
+    const target = newExercises[exerciseIndex].sets[setIndex];
+    if (field === "reps") {
+      target.reps = typeof value === "number" ? value : parseInt(value) || 0;
+    } else if (field === "weight") {
+      target.weight = typeof value === "number" ? value : parseFloat(value) || 0;
+    } else if (field === "weightUnit") {
+      target.weightUnit = value === "lbs" ? "lbs" : "kg";
+    }
     setExercises(newExercises);
   };
 

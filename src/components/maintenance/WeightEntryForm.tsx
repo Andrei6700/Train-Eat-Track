@@ -4,21 +4,19 @@ import {
   Pressable,
   StyleSheet,
   View,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from "react-native";
-import { Calendar, CalendarIcon, FloppyDisk, Fire } from "phosphor-react-native";
+import { CalendarIcon, FloppyDisk, Fire } from "phosphor-react-native";
 import { Calendar as RNCalendar, DateData } from "react-native-calendars";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
-import { WeightEntry } from "@/src/types/maintenance";
+import { WeightEntry, WEEK_DAYS_RO } from "@/src/types/maintenance";
 import { formatDateKey } from "@/src/services/maintenanceService";
-import { WEEK_DAYS_RO } from "@/src/types/maintenance";
 
 type WeightEntryFormProps = {
   onSave: (entry: WeightEntry) => Promise<void>;

@@ -116,8 +116,10 @@ const MaintenanceTrackerScreen = () => {
 
   const handleOnboardingDismiss = useCallback(async () => {
     setShowOnboarding(false);
-    await setOnboardingSeen(user.uid);
-  }, [user.uid]);
+    if (user?.uid) {
+      await setOnboardingSeen(user.uid);
+    }
+  }, [user?.uid]);
 
   const handleSaveEntry = useCallback(
     async (entry: WeightEntry) => {

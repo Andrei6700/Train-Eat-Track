@@ -630,7 +630,7 @@ const NutritionCalendar = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.calendarContainer}
           style={styles.calendar}
-          estimatedItemSize={safePageWidth}
+
           getItemType={() => "week"}
           overrideItemLayout={overrideItemLayout}
           initialScrollIndex={safeInitialWeekIndex}
