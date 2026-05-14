@@ -24,8 +24,8 @@ const Button = ({
                 accessibilityRole={touchableProps.accessibilityRole || "button"}
                 style={({ pressed }) => [
                     styles.button,
-                    buttonStyle,
                     isDisabled && styles.buttonDisabled,
+                    buttonStyle,
                     pressed && styles.pressed,
                 ]}
             >
@@ -58,8 +58,7 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     buttonDisabled: {
-        backgroundColor: colors.primary,
-        borderColor: colors.primaryDark,
+        opacity: 0.85,
     },
     pressed: {
         opacity: 0.8,
