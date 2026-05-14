@@ -75,6 +75,7 @@
     "baseline-browser-mapping": "^2.9.11",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "firebase-admin": "^13.9.0",
     "typescript": "~5.9.2"
   },
   "private": true

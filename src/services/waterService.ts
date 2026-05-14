@@ -78,6 +78,14 @@ const parseWaterDoc = (docId: string, payload: any, fallbackDate: Date): DailyWa
   } as DailyWater;
 };
 
+/** Returns the user-scoped waterTracking subcollection reference */
+const userWaterCol = (userID: string) =>
+  collection(firestore, "users", userID, COLLECTION_NAME);
+
+/** Returns a document reference within the user-scoped waterTracking subcollection */
+const userWaterDoc = (userID: string, docId: string) =>
+  doc(firestore, "users", userID, COLLECTION_NAME, docId);
+
 export const getDailyWater = async (
   userID: string,
   date: Date,
@@ -86,8 +94,7 @@ export const getDailyWater = async (
     const dateKey = getWaterDateKey(date);
 
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userWaterCol(userID),
       where("dateKey", "==", dateKey),
     );
 
@@ -120,6 +127,11 @@ export const saveDailyWater = async (
   water: DailyWater,
 ): Promise<ResponseType> => {
   try {
+    const userID = water.userID;
+    if (!userID) {
+      return { success: false, msg: "Missing userID", code: "UNKNOWN_ERROR" };
+    }
+
     const date = new Date(water.date);
     const dateKey = getWaterDateKey(date);
 
@@ -129,8 +141,8 @@ export const saveDailyWater = async (
     }));
 
     if (water.id) {
-      const docRef = doc(firestore, COLLECTION_NAME, water.id);
-      const { id, localUpdatedAt, ...updateData } = water as DailyWater & {
+      const docRef = userWaterDoc(userID, water.id);
+      const { id, userID: _uid, localUpdatedAt, ...updateData } = water as DailyWater & {
         localUpdatedAt?: number;
       };
 
@@ -148,9 +160,12 @@ export const saveDailyWater = async (
       return { success: true, data: { id: water.id } };
     }
 
+    // Strip userID before writing to Firestore
+    const { userID: _uid, ...waterWithoutUser } = water;
+
     const docRef = await withTimeout(
-      addDoc(collection(firestore, COLLECTION_NAME), {
-        ...water,
+      addDoc(userWaterCol(userID), {
+        ...waterWithoutUser,
         dateKey,
         date: Timestamp.fromDate(date),
         intakes: intakesForFirestore,

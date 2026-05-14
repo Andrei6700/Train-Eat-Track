@@ -72,3 +72,6 @@ constants/config.ts
 Development/
 
 .idea/
+
+# Firebase Admin credentials
+scripts/

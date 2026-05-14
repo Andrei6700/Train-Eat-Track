@@ -7,6 +7,7 @@ import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { deleteWorkout, getWorkout } from "@/src/services/workoutService";
+import { useAuth } from "@/src/contexts/authContext";
 import { WorkoutHistory } from "@/src/types/index";
 import { verticalScale } from "@/src/utils/styling";
 import { formatDuration } from "@/src/utils/utils";
@@ -27,6 +28,7 @@ const WorkoutDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { language, t } = useLanguage();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchWorkoutDetails();
@@ -35,7 +37,7 @@ const WorkoutDetail = () => {
   const fetchWorkoutDetails = async () => {
     if (!workoutId) return;
 
-    const result = await getWorkout(workoutId as string);
+    const result = await getWorkout(workoutId as string, user?.uid);
     if (result.success) {
       setWorkout(result.data);
     } else {
@@ -69,7 +71,7 @@ const WorkoutDetail = () => {
     if (!workoutId) return;
     
     setIsLoading(true);
-    const result = await deleteWorkout(workoutId as string);
+    const result = await deleteWorkout(workoutId as string, user?.uid);
     setIsLoading(false);
     
     if (result.success) {

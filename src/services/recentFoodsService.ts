@@ -28,14 +28,18 @@ const isOnline = async (): Promise<boolean> => {
   }
 };
 
+/** Returns the user-scoped recentFoods subcollection reference */
+const userRecentFoodsCol = (userID: string) =>
+  collection(firestore, "users", userID, COLLECTION_NAME);
+
 export const addRecentFoodRemote = async (
   userID: string,
   mealName: string,
   food: Food,
 ): Promise<ResponseType> => {
   try {
-    await addDoc(collection(firestore, COLLECTION_NAME), {
-      userID,
+    // No userID in the document — path encodes ownership
+    await addDoc(userRecentFoodsCol(userID), {
       mealName,
       food,
       timestamp: serverTimestamp(),
@@ -123,8 +127,7 @@ export const getRecentFoodsByMeal = async (
     }
 
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userRecentFoodsCol(userID),
       where("mealName", "==", mealName),
       orderBy("timestamp", "desc"),
       limit(limitCount),

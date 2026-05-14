@@ -45,6 +45,14 @@ const withTimeout = async <T>(
   }
 };
 
+/** User-scoped weight_entries subcollection */
+const userWeightCol = (userID: string) =>
+  collection(firestore, "users", userID, COLLECTION_NAME);
+
+/** Doc ref in user-scoped weight_entries subcollection */
+const userWeightDoc = (userID: string, docId: string) =>
+  doc(firestore, "users", userID, COLLECTION_NAME, docId);
+
 // AsyncStorage: Onboarding (per-user)
 const getOnboardingSeenKey = (userID: string): string =>
   `${MAINTENANCE_STORAGE_KEYS.ONBOARDING_SEEN}:${userID}`;
@@ -113,10 +121,7 @@ export const setCachedWeightEntries = async (
 // Firebase: Weight entries
 export const getWeightEntries = async (userID: string): Promise<ResponseType> => {
   try {
-    const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID)
-    );
+    const q = query(userWeightCol(userID));
 
     const querySnapshot = await withTimeout(
       getDocs(q),
@@ -160,8 +165,7 @@ export const saveWeightEntry = async (
   try {
     // Check if entry for this date already exists
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userWeightCol(userID),
       where("date", "==", entry.date)
     );
 
@@ -172,7 +176,7 @@ export const saveWeightEntry = async (
 
     if (!querySnapshot.empty) {
       // Update existing entry
-      const docRef = doc(firestore, COLLECTION_NAME, querySnapshot.docs[0].id);
+      const docRef = userWeightDoc(userID, querySnapshot.docs[0].id);
       await withTimeout(
         updateDoc(docRef, {
           weight: entry.weight,
@@ -182,10 +186,9 @@ export const saveWeightEntry = async (
         "saveWeightEntry.updateDoc"
       );
     } else {
-      // Create new entry
+      // Create new entry — no userID in the document
       await withTimeout(
-        addDoc(collection(firestore, COLLECTION_NAME), {
-          userID,
+        addDoc(userWeightCol(userID), {
           date: entry.date,
           weight: entry.weight,
           calories: entry.calories ?? null,
@@ -222,8 +225,7 @@ export const deleteWeightEntry = async (
 ): Promise<ResponseType> => {
   try {
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userWeightCol(userID),
       where("date", "==", date)
     );
 
@@ -234,7 +236,7 @@ export const deleteWeightEntry = async (
 
     if (!querySnapshot.empty) {
       await withTimeout(
-        deleteDoc(doc(firestore, COLLECTION_NAME, querySnapshot.docs[0].id)),
+        deleteDoc(userWeightDoc(userID, querySnapshot.docs[0].id)),
         "deleteWeightEntry.deleteDoc"
       );
     }

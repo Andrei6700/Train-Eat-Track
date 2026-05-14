@@ -33,6 +33,8 @@ export type CustomProduct = {
   servingSize: string;
   image?: string;
   source: CustomProductSource;
+  addedBy?: string;
+  verified?: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -235,6 +237,8 @@ export const saveCustomProduct = async (
     const docRef = await withTimeout(
       addDoc(collection(firestore, COLLECTION_NAME), {
         ...payload,
+        addedBy: userId,
+        verified: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }),
