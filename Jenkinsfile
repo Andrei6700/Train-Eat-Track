@@ -6,7 +6,7 @@ pipeline {
         stage('Install dependencies') {
             agent{
                 docker{
-                    image 'node:18-alpine'
+                    image 'node:20-alpine'
                     reuseNode true
                 }
             }
@@ -24,7 +24,7 @@ pipeline {
         stage('ESLint'){
             agent{
                 docker{
-                    image 'node:18-alpine'
+                    image 'node:20-alpine'
                     reuseNode true
                 }
             }
@@ -38,7 +38,7 @@ pipeline {
         stage('Unit tests'){
             agent{
                 docker{
-                    image 'node:18-alpine'
+                    image 'node:20-alpine'
                     reuseNode true
                 }
             }
