@@ -11,7 +11,14 @@ pipeline {
                 }
             }
             steps {
-                echo "Build stage"
+                steps{
+                    sh '''
+                    echo "Build stage"
+                    node --version
+                    npm --version
+                    npm ci
+                    '''
+                }
             }
         }
     }
