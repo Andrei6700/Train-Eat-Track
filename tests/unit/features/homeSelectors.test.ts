@@ -1,8 +1,8 @@
 import { getHomeDerivedData } from "@/src/features/home/homeSelectors";
 import { WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 
-// Pin "today" so week calculations are deterministic.
-// June 18, 2025 = Wednesday → Monday = June 16
+// Pin "today" so week calculations are deterministic
+// June 18, 2025 = Wednesday -> Monday = June 16
 beforeAll(() => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date(2025, 5, 18, 12, 0, 0));
@@ -145,7 +145,7 @@ describe("getHomeDerivedData", () => {
     });
 
     it("should count consecutive days from today/yesterday", () => {
-      // Today = June 18. Workouts on Jun 17, Jun 18 → streak of 2.
+      // Today = June 18. Workouts on Jun 17, Jun 18 -> streak of 2.
       const workouts = [
         makeWorkout("2025-06-17", 3600),
         makeWorkout("2025-06-18", 3600),
@@ -155,14 +155,14 @@ describe("getHomeDerivedData", () => {
     });
 
     it("should start from yesterday if no workout today", () => {
-      // Today = June 18, workout on Jun 17 only → streak of 1
+      // Today = June 18, workout on Jun 17 only -> streak of 1
       const workouts = [makeWorkout("2025-06-17", 3600)];
       const result = getHomeDerivedData(workouts);
       expect(result.quickStats.currentStreak).toBe(1);
     });
 
     it("should break on gaps", () => {
-      // Today = June 18. Workout on Jun 18 and Jun 16 (gap on Jun 17) → streak 1
+      // Today = June 18. Workout on Jun 18 and Jun 16 (gap on Jun 17) -> streak 1
       const workouts = [
         makeWorkout("2025-06-16", 3600),
         makeWorkout("2025-06-18", 3600),
@@ -191,10 +191,10 @@ describe("getHomeDerivedData", () => {
 
     it("should skip planned rest days in streak calculation", () => {
       // Today = Jun 18 (Wed) = Day 4 of cycle 2 (split starts Jun 1).
-      // Cycle day index for Jun 18: (18-1) % 7 = 3 → Day 4 → rest day in plan.
-      // Jun 17 = cycle day 2 (training day) → workout exists → counts.
-      // Jun 16 = cycle day 1 (training day) → workout exists → counts.
-      // Jun 15 = cycle day 0 (training day) → workout exists → counts.
+      // Cycle day index for Jun 18: (18-1) % 7 = 3 -> Day 4 -> rest day in plan.
+      // Jun 17 = cycle day 2 (training day) -> workout exists -> counts.
+      // Jun 16 = cycle day 1 (training day) -> workout exists -> counts.
+      // Jun 15 = cycle day 0 (training day) -> workout exists -> counts.
       const workouts = [
         makeWorkout("2025-06-15", 3600),
         makeWorkout("2025-06-16", 3600),

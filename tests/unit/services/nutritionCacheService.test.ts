@@ -1,35 +1,21 @@
-// Mock the transitive Firebase dependency chain:
-// nutritionCacheService → nutritionService → firebase config
-jest.mock("@/src/config/firebase", () => ({
-  firestore: {},
-}), { virtual: true });
-jest.mock("firebase/firestore", () => ({
-  collection: jest.fn(),
-  doc: jest.fn(),
-  getDocs: jest.fn(),
-  addDoc: jest.fn(),
-  updateDoc: jest.fn(),
-  query: jest.fn(),
-  where: jest.fn(),
-  orderBy: jest.fn(),
-  limit: jest.fn(),
-  serverTimestamp: jest.fn(),
-  Timestamp: { fromDate: jest.fn() },
-}));
-jest.mock("@/src/services/nutritionCalendarCacheService", () => ({
-  getCachedNutritionCalendarSummary: jest.fn(),
-  setCachedNutritionCalendarSummary: jest.fn(),
+// Mock the only dependency nutritionCacheService imports from nutritionService
+jest.mock("@/src/services/nutritionService", () => ({
+  getDateKey: (date: Date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  },
 }));
 
 import {
-  getNutritionMemoryCache,
-  setNutritionMemoryCache,
-  invalidateNutritionMemoryDay,
   clearNutritionMemoryCache,
-  shouldPreloadNutritionWeek,
+  getNutritionMemoryCache,
+  invalidateNutritionMemoryDay,
   markNutritionWeekPreloaded,
   NUTRITION_MEMORY_DAY_TTL_MS,
   NUTRITION_WEEK_PRELOAD_COOLDOWN_MS,
+  setNutritionMemoryCache,
+  shouldPreloadNutritionWeek,
 } from "@/src/services/nutritionCacheService";
 import { DailyNutrition } from "@/src/types/index";
 

@@ -1,7 +1,4 @@
-// Mock Firebase and AsyncStorage before any imports
-jest.mock("@/src/config/firebase", () => ({
-  firestore: {},
-}), { virtual: true });
+// Firebase config is automatically mocked via moduleNameMapper -> tests/__mocks__/firebaseConfig.js
 jest.mock("firebase/firestore", () => ({
   collection: jest.fn(),
   doc: jest.fn(),
@@ -23,14 +20,14 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import {
+  analyzeMaintenanceStatus,
   formatDateKey,
-  parseDateKey,
+  generateWeekDays,
+  getWeekEndDate,
   getWeekNumber,
   getWeekStartDate,
-  getWeekEndDate,
   groupEntriesByWeek,
-  analyzeMaintenanceStatus,
-  generateWeekDays,
+  parseDateKey,
 } from "@/src/services/maintenanceService";
 import { WeeklyData, WeightEntry } from "@/src/types/maintenance";
 

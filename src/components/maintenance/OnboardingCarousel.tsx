@@ -76,7 +76,7 @@ const SLIDES: OnboardingSlide[] = [
       />
     ),
     title: "Cum interpretezi trendurile",
-    text: "Dacă media Săpt. 2 > media Săpt. 1 → ești peste mentenanță. Dacă e egală → ești la mentenanță. Dacă e mai mică → ești sub mentenanță.",
+    text: "Dacă media Săpt. 2 > media Săpt. 1 -> ești peste mentenanță. Dacă e egală -> ești la mentenanță. Dacă e mai mică -> ești sub mentenanță.",
   },
   {
     icon: (

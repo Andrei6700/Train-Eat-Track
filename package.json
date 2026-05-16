@@ -18,6 +18,7 @@
     "clearMocks": true,
     "setupFiles": ["./tests/setup.js"],
     "moduleNameMapper": {
+      "^@/src/config/firebase$": "<rootDir>/tests/__mocks__/firebaseConfig.js",
       "^@/(.*)$": "<rootDir>/$1"
     },
     "transformIgnorePatterns": [
