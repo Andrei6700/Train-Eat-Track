@@ -1,7 +1,7 @@
 // Mock Firebase and AsyncStorage before any imports
 jest.mock("@/src/config/firebase", () => ({
   firestore: {},
-}));
+}), { virtual: true });
 jest.mock("firebase/firestore", () => ({
   collection: jest.fn(),
   doc: jest.fn(),
