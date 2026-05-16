@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     stages {
-        // state build
-        stage('Build') {
+        // Install dependencies
+        stage('Install dependencies') {
             agent{
                 docker{
                     image 'node:18-alpine'
@@ -11,14 +11,12 @@ pipeline {
                 }
             }
             steps {
-                steps{
-                    sh '''
-                    echo "Build stage"
+                sh '''
                     node --version
                     npm --version
                     npm ci
-                    '''
-                }
+                    ls -la
+                '''
             }
         }
     }
