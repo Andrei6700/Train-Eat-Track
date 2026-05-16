@@ -15,9 +15,22 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "clearMocks": true,
+    "setupFiles": ["./tests/setup.js"],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1"
+    },
     "transformIgnorePatterns": [
       "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg))"
-    ]
+    ],
+    "coverageThreshold": {
+      "./src/utils/dateKey.ts": { "branches": 90, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/utils/utils.ts": { "branches": 90, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/utils/workoutPlanCycle.ts": { "branches": 80, "functions": 90, "lines": 90, "statements": 80 },
+      "./src/services/workoutHistoryMemoryCache.ts": { "branches": 90, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/services/nutritionCacheService.ts": { "branches": 80, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/features/home/homeSelectors.ts": { "branches": 80, "functions": 90, "lines": 90, "statements": 90 }
+    }
   },
   "dependencies": {
     "@expo-google-fonts/bebas-neue": "^0.4.1",
