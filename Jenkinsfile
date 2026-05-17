@@ -51,4 +51,17 @@ pipeline {
         }
 
     }
+    post{
+        success{
+            publishHTML([allowMissing: false, 
+                alwaysLinkToLastBuild: false, 
+                icon: '', 
+                keepAll: false, 
+                reportDir: 'coverage\\lcov-report\\', 
+                reportFiles: 'index.html', 
+                reportName: 'Unit Test Raport', 
+                reportTitles: 'Unit Test Raport', 
+                useWrapperFileDirectly: true])
+        }
+    }
 }
