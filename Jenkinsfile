@@ -10,6 +10,9 @@ pipeline {
                     reuseNode true
                 }
             }
+            tools{
+                gradle 'Gradle'
+            }
             steps {
                 sh '''
                     node --version
@@ -27,12 +30,11 @@ pipeline {
                     reuseNode true
                 }
             }
-            tools{
-                gradle 'Gradle'
-            }
             steps {
                 sh '''
                 npx expo prebuild --platform android
+                cd android
+                ./gradlew assembleRelease
                 '''
             }
         }
