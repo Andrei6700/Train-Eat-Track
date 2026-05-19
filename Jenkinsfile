@@ -8,6 +8,7 @@ pipeline {
                 docker{
                     image 'reactnativecommunity/react-native-android'
                     reuseNode true
+                    args '-v /root/.jenkins/tools:/root/.jenkins/tools'
                 }
             }
             tools {
