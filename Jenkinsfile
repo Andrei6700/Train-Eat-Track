@@ -14,12 +14,11 @@ pipeline {
             steps {
                 script{
                     def gradleHome = tool name: '9.5.1', type: 'gradle'
-                    env.PATH = "${gradleHome}/bin:${env.PATH}"
                 }
                 sh '''
                 node --version
                 npm --version
-                gradle --version
+                ${gradleHome}/bin/gradle --version
                 java --version
                 '''
             }
