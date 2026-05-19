@@ -8,13 +8,14 @@ pipeline {
                 docker{
                     image 'reactnativecommunity/react-native-android'
                     reuseNode true
-                    args '-v /root/.jenkins/tools:/root/.jenkins/tools'
+                    args '-v /opt/gradle-9.5.1:/opt/gradle-9.5.1'
                 }
             }
-            tools {
-                gradle '9.5.1'
-            }
             steps {
+                script{
+                    def gradleHome = tool name: '9.5.1', type: 'gradle'
+                    env.PATH = "${gradleHome}/bin:${env.PATH}"
+                }
                 sh '''
                 node --version
                 npm --version
