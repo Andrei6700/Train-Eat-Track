@@ -10,6 +10,9 @@ pipeline {
                     reuseNode true
                 }
             }
+            tools {
+                gradle '9.5.1'
+            }
             steps {
                 sh '''
                 node --version
