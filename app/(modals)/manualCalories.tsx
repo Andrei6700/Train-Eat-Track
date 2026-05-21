@@ -139,12 +139,13 @@ const ManualCalories = () => {
               <Typo size={20} fontWeight="700">
                 {t("manual_calories_modal_title")}
               </Typo>
-              <View style={{ width: 24 }} />
+              <View style={styles.headerSpacer} />
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
             >
               {/* Info Card */}
               <Animated.View
@@ -395,7 +396,7 @@ const ManualCalories = () => {
                 style={styles.noteCard}
               >
                 <Icons.Info size={20} color={colors.primary} weight="fill" />
-                <Typo size={13} color={colors.neutral400} style={{ flex: 1 }}>
+                <Typo size={13} color={colors.neutral400} style={styles.noteText}>
                   {t("manual_calories_modal_note")}
                 </Typo>
               </Animated.View>
@@ -579,5 +580,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.neutral700,
   },
+  headerSpacer: {
+    width: 24,
+  },
+  noteText: {
+    flex: 1,
+  },
 });
-

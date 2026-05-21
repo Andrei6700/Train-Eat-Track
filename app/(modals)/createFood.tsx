@@ -150,12 +150,13 @@ const CreateFood = () => {
               <Typo size={20} fontWeight="700">
                 {t("create_food_modal_title")}
               </Typo>
-              <View style={{ width: 24 }} />
+              <View style={styles.headerSpacer} />
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
             >
               {/* Meal Badge */}
               <Animated.View
@@ -472,7 +473,7 @@ const CreateFood = () => {
                   color={colors.primary}
                   weight="fill"
                 />
-                <Typo size={13} color={colors.neutral400} style={{ flex: 1 }}>
+                <Typo size={13} color={colors.neutral400} style={styles.noteText}>
                   {t("create_food_modal_note")}
                 </Typo>
               </Animated.View>
@@ -616,5 +617,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.neutral700,
   },
+  headerSpacer: {
+    width: 24,
+  },
+  noteText: {
+    flex: 1,
+  },
 });
-

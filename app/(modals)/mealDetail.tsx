@@ -654,7 +654,7 @@ const MealDetail = () => {
         <Typo
           size={16}
           color={colors.neutral500}
-          style={{ marginTop: spacingY._15, textAlign: "center" }}
+          style={styles.emptyStateText}
         >
           {t("meal_detail_modal_recent_empty", { meal: currentMealLabel })}
         </Typo>
@@ -685,7 +685,7 @@ const MealDetail = () => {
             />
           </TouchableOpacity>
 
-          <View style={{ width: verticalScale(28) }} />
+          <View style={styles.headerSpacer} />
         </View>
 
         {/* Meal Dropdown Modal */}
@@ -872,7 +872,7 @@ const MealDetail = () => {
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ flex: 1 }}
+            style={styles.flexOne}
           >
             <View style={styles.modalOverlay}>
               <TouchableOpacity
@@ -953,11 +953,11 @@ const MealDetail = () => {
                       </View>
 
                       {/* Quantity Input */}
-                      <View style={{ marginBottom: spacingY._25 }}>
+                      <View style={styles.quantityInputWrapper}>
                         <Typo
                           size={16}
                           fontWeight="600"
-                          style={{ marginBottom: spacingY._10 }}
+                          style={styles.quantityLabel}
                         >
                           {t("nutrition_quantity_grams")}
                         </Typo>
@@ -970,11 +970,11 @@ const MealDetail = () => {
                       </View>
 
                       {/* Nutrition Preview */}
-                      <View style={{ marginBottom: spacingY._20 }}>
+                      <View style={styles.nutritionPreviewWrapper}>
                         <Typo
                           size={16}
                           fontWeight="600"
-                          style={{ marginBottom: spacingY._15 }}
+                          style={styles.nutritionValuesLabel}
                         >
                           {t("meal_detail_modal_nutrition_values")}
                         </Typo>
@@ -1046,7 +1046,7 @@ const MealDetail = () => {
                       <Button
                         onPress={handleAddWithQuantity}
                         loading={addingFood}
-                        style={{ marginTop: spacingY._20 }}
+                        style={styles.addButtonMargin}
                       >
                         <Typo size={18} fontWeight="700" color={colors.black}>
                           {t("meal_detail_modal_add_to_meal", {
@@ -1073,7 +1073,7 @@ const MealDetail = () => {
                         <Typo
                           size={14}
                           color={colors.neutral400}
-                          style={{ marginTop: spacingY._5 }}
+                          style={styles.servingInfoText}
                         >
                           {t("meal_detail_modal_current_serving", {
                             serving: selectedRecentFood.servingSize,
@@ -1082,11 +1082,11 @@ const MealDetail = () => {
                       </View>
 
                       {/* Quantity Input */}
-                      <View style={{ marginBottom: spacingY._25 }}>
+                      <View style={styles.quantityInputWrapper}>
                         <Typo
                           size={16}
                           fontWeight="600"
-                          style={{ marginBottom: spacingY._10 }}
+                          style={styles.quantityLabel}
                         >
                           {t("nutrition_quantity_grams")}
                         </Typo>
@@ -1099,11 +1099,11 @@ const MealDetail = () => {
                       </View>
 
                       {/* Nutrition Preview */}
-                      <View style={{ marginBottom: spacingY._20 }}>
+                      <View style={styles.nutritionPreviewWrapper}>
                         <Typo
                           size={16}
                           fontWeight="600"
-                          style={{ marginBottom: spacingY._15 }}
+                          style={styles.nutritionValuesLabel}
                         >
                           {t("meal_detail_modal_nutrition_values")}
                         </Typo>
@@ -1183,7 +1183,7 @@ const MealDetail = () => {
                       <Button
                         onPress={handleAddRecentFoodWithQuantity}
                         loading={addingFood}
-                        style={{ marginTop: spacingY._20 }}
+                        style={styles.addButtonMargin}
                       >
                         <Typo size={18} fontWeight="700" color={colors.black}>
                           {t("meal_detail_modal_add_to_meal", {
@@ -1497,6 +1497,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  emptyStateText: {
+    marginTop: spacingY._15,
+    textAlign: "center",
+  },
+  headerSpacer: {
+    width: verticalScale(28),
+  },
+  flexOne: {
+    flex: 1,
+  },
+  quantityInputWrapper: {
+    marginBottom: spacingY._25,
+  },
+  quantityLabel: {
+    marginBottom: spacingY._10,
+  },
+  nutritionPreviewWrapper: {
+    marginBottom: spacingY._20,
+  },
+  nutritionValuesLabel: {
+    marginBottom: spacingY._15,
+  },
+  addButtonMargin: {
+    marginTop: spacingY._20,
+  },
+  servingInfoText: {
+    marginTop: spacingY._5,
   },
 });
 

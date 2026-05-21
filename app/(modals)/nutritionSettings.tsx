@@ -12,6 +12,9 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -60,20 +63,31 @@ const NutritionSettings = () => {
         <Header
           title={t("nutrition_settings_title")}
           leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._20 }}
+          style={styles.headerMargin}
         />
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+            onScrollBeginDrag={Keyboard.dismiss}
+            nestedScrollEnabled
+          >
           <View style={styles.section}>
-            <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
+            <Typo size={20} fontWeight="600" style={styles.sectionTitle}>
               {t("nutrition_settings_daily_goals")}
             </Typo>
 
             <View style={styles.inputGroup}>
-              <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
+              <Typo size={16} fontWeight="500" style={styles.inputLabel}>
                 {t("nutrition_settings_calorie_goal")}
               </Typo>
               <Input
@@ -85,13 +99,13 @@ const NutritionSettings = () => {
                 }
                 containerStyle={styles.input}
               />
-              <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
+              <Typo size={13} color={colors.neutral400} style={styles.inputHint}>
                 {t("nutrition_settings_recommended_calories")}
               </Typo>
             </View>
 
             <View style={styles.inputGroup}>
-              <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
+              <Typo size={16} fontWeight="500" style={styles.inputLabel}>
                 {t("nutrition_settings_protein_goal")}
               </Typo>
               <Input
@@ -103,13 +117,13 @@ const NutritionSettings = () => {
                 }
                 containerStyle={styles.input}
               />
-              <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
+              <Typo size={13} color={colors.neutral400} style={styles.inputHint}>
                 {t("nutrition_settings_recommended_protein")}
               </Typo>
             </View>
 
             <View style={styles.inputGroup}>
-              <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
+              <Typo size={16} fontWeight="500" style={styles.inputLabel}>
                 {t("nutrition_settings_carbs_goal")}
               </Typo>
               <Input
@@ -121,13 +135,13 @@ const NutritionSettings = () => {
                 }
                 containerStyle={styles.input}
               />
-              <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
+              <Typo size={13} color={colors.neutral400} style={styles.inputHint}>
                 {t("nutrition_settings_recommended_carbs")}
               </Typo>
             </View>
 
             <View style={styles.inputGroup}>
-              <Typo size={16} fontWeight="500" style={{ marginBottom: spacingY._10 }}>
+              <Typo size={16} fontWeight="500" style={styles.inputLabel}>
                 {t("nutrition_settings_fat_goal")}
               </Typo>
               <Input
@@ -139,17 +153,17 @@ const NutritionSettings = () => {
                 }
                 containerStyle={styles.input}
               />
-              <Typo size={13} color={colors.neutral400} style={{ marginTop: spacingY._5 }}>
+              <Typo size={13} color={colors.neutral400} style={styles.inputHint}>
                 {t("nutrition_settings_recommended_fat")}
               </Typo>
             </View>
           </View>
 
           <View style={styles.infoCard}>
-            <Typo size={15} fontWeight="600" style={{ marginBottom: spacingY._10 }}>
+            <Typo size={15} fontWeight="600" style={styles.tipsTitle}>
               {t("nutrition_settings_quick_tips_title")}
             </Typo>
-            <Typo size={14} color={colors.neutral400} style={{ lineHeight: 20 }}>
+            <Typo size={14} color={colors.neutral400} style={styles.tipsText}>
               {"- "}
               {t("nutrition_settings_tip_adjust_goals")}
               {"\n- "}
@@ -160,10 +174,11 @@ const NutritionSettings = () => {
               {t("nutrition_settings_tip_hydration")}
             </Typo>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
-          <Button onPress={handleSave} loading={saving} style={{ flex: 1 }}>
+          <Button onPress={handleSave} loading={saving} style={styles.flexOne}>
             <Typo color={colors.black} fontWeight="700" size={18}>
               {t("nutrition_settings_save_goals")}
             </Typo>
@@ -206,5 +221,25 @@ const styles = StyleSheet.create({
     right: spacingX._20,
     zIndex: 30,
   },
+  flexOne: {
+    flex: 1,
+  },
+  headerMargin: {
+    marginBottom: spacingY._20,
+  },
+  sectionTitle: {
+    marginBottom: spacingY._15,
+  },
+  inputLabel: {
+    marginBottom: spacingY._10,
+  },
+  inputHint: {
+    marginTop: spacingY._5,
+  },
+  tipsTitle: {
+    marginBottom: spacingY._10,
+  },
+  tipsText: {
+    lineHeight: 20,
+  },
 });
-
