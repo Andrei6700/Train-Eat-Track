@@ -51,7 +51,7 @@ const SettingItem: React.FC<SettingItemProps> = ({
             {title}
           </Typo>
           {subtitle && (
-            <Typo size={13} color={colors.textLighter} style={{ marginTop: 2 }}>
+            <Typo size={13} color={colors.textLighter} style={styles.subtitleMargin}>
               {subtitle}
             </Typo>
           )}
@@ -376,6 +376,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: spacingY._30,
     marginBottom: spacingY._20,
+  },
+  subtitleMargin: {
+    marginTop: 2,
   },
 });
 

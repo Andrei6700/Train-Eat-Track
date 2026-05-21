@@ -18,6 +18,9 @@ import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -79,10 +82,21 @@ const ProfileModal = () => {
         <Header
           title={t("profile_modal_title")}
           leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._10 }}
+          style={styles.headerMargin}
         />
         {/* form */}
-        <ScrollView contentContainerStyle={styles.form}>
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+        <ScrollView
+          contentContainerStyle={styles.form}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={
+            Platform.OS === "ios" ? "interactive" : "on-drag"
+          }
+          onScrollBeginDrag={Keyboard.dismiss}
+        >
           <View style={styles.avatarContainer}>
             <Image
               style={styles.avatar}
@@ -110,10 +124,11 @@ const ProfileModal = () => {
             />
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
       {/* footer */}
       <View style={styles.footer}>
-        <Button onPress={onSubmit} loading={loading} style={{ flex: 1 }}>
+        <Button onPress={onSubmit} loading={loading} style={styles.flexOne}>
           <Typo color={colors.black} fontWeight={"700"}>
             {t("profile_modal_update_button")}
           </Typo>
@@ -130,6 +145,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "space-between",
     paddingHorizontal: spacingX._20,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  headerMargin: {
+    marginBottom: spacingY._10,
   },
   footer: {
     alignItems: "center",
