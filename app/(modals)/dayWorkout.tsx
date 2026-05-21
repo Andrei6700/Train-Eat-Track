@@ -18,6 +18,9 @@ import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -213,170 +216,181 @@ const DayWorkout = () => {
         <Header
           title={displayDayLabel}
           leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._15 }}
+          style={styles.headerMargin}
         />
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <TouchableOpacity
-            style={styles.restDayButton}
-            onPress={handleMarkRestDay}
-            disabled={saving}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+            onScrollBeginDrag={Keyboard.dismiss}
+            nestedScrollEnabled
           >
-            <Typo size={16} fontWeight="600" color={colors.white}>
-              {t("day_workout_modal_mark_rest_day")}
-            </Typo>
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Typo
-              size={14}
-              color={colors.neutral400}
-              style={{ paddingHorizontal: spacingX._10 }}
+            <TouchableOpacity
+              style={styles.restDayButton}
+              onPress={handleMarkRestDay}
+              disabled={saving}
             >
-              {t("common_or")}
-            </Typo>
-            <View style={styles.dividerLine} />
-          </View>
+              <Typo size={16} fontWeight="600" color={colors.white}>
+                {t("day_workout_modal_mark_rest_day")}
+              </Typo>
+            </TouchableOpacity>
 
-          <>
-            <Typo
-              size={18}
-              fontWeight="600"
-              style={{ marginBottom: spacingY._15 }}
-            >
-              {t("day_workout_modal_exercises_title")}
-            </Typo>
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Typo
+                size={14}
+                color={colors.neutral400}
+                style={styles.dividerText}
+              >
+                {t("common_or")}
+              </Typo>
+              <View style={styles.dividerLine} />
+            </View>
 
-            {exercises.map((exercise, exerciseIndex) => (
-              <View key={exerciseIndex} style={styles.exerciseCard}>
-                <View style={styles.exerciseHeader}>
-                  <Typo size={16} fontWeight="600">
-                    {t("day_workout_modal_exercise_label", {
-                      index: exerciseIndex + 1,
-                    })}
-                  </Typo>
-                  {exercises.length > 1 && (
-                    <TouchableOpacity
-                      onPress={() => removeExercise(exerciseIndex)}
-                      style={styles.removeButton}
-                    >
-                      <Icons.Trash size={20} color={colors.rose} />
-                    </TouchableOpacity>
-                  )}
-                </View>
+            <>
+              <Typo
+                size={18}
+                fontWeight="600"
+                style={styles.exercisesTitle}
+              >
+                {t("day_workout_modal_exercises_title")}
+              </Typo>
 
-                <Input
-                  placeholder={t("day_workout_modal_exercise_placeholder")}
-                  value={exercise.exerciseName}
-                  onChangeText={(text) =>
-                    updateExerciseName(exerciseIndex, text)
-                  }
-                  containerStyle={{ marginBottom: spacingY._15 }}
-                />
-
-                <Typo
-                  size={14}
-                  fontWeight="500"
-                  style={{ marginBottom: spacingY._10 }}
-                >
-                  {t("common_sets")}
-                </Typo>
-
-                {exercise.sets.map((set, setIndex) => (
-                  <View key={setIndex} style={styles.setRow}>
-                    <View style={styles.setNumber}>
-                      <Typo size={13} color={colors.neutral400}>
-                        {setIndex + 1}
-                      </Typo>
-                    </View>
-
-                    <View style={styles.setInput}>
-                      <Input
-                        placeholder={t("day_workout_modal_reps_placeholder")}
-                        keyboardType="numeric"
-                        value={set.reps > 0 ? set.reps.toString() : ""}
-                        onChangeText={(text) =>
-                          updateSet(
-                            exerciseIndex,
-                            setIndex,
-                            "reps",
-                            parseInt(text) || 0
-                          )
-                        }
-                        containerStyle={styles.smallInput}
-                      />
-                    </View>
-
-                    <View style={styles.setInput}>
-                      <Input
-                        placeholder={t("day_workout_modal_weight_placeholder")}
-                        keyboardType="numeric"
-                        value={set.weight > 0 ? set.weight.toString() : ""}
-                        onChangeText={(text) =>
-                          updateSet(
-                            exerciseIndex,
-                            setIndex,
-                            "weight",
-                            parseFloat(text) || 0
-                          )
-                        }
-                        containerStyle={styles.smallInput}
-                      />
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.unitButton}
-                      onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
-                    >
-                      <Typo size={13} fontWeight="600">
-                        {set.weightUnit}
-                      </Typo>
-                    </TouchableOpacity>
-
-                    {exercise.sets.length > 1 && (
+              {exercises.map((exercise, exerciseIndex) => (
+                <View key={exerciseIndex} style={styles.exerciseCard}>
+                  <View style={styles.exerciseHeader}>
+                    <Typo size={16} fontWeight="600">
+                      {t("day_workout_modal_exercise_label", {
+                        index: exerciseIndex + 1,
+                      })}
+                    </Typo>
+                    {exercises.length > 1 && (
                       <TouchableOpacity
-                        onPress={() => removeSet(exerciseIndex, setIndex)}
-                        style={styles.removeSetButton}
+                        onPress={() => removeExercise(exerciseIndex)}
+                        style={styles.removeButton}
                       >
-                        <Icons.Trash size={18} color={colors.rose} />
+                        <Icons.Trash size={20} color={colors.rose} />
                       </TouchableOpacity>
                     )}
                   </View>
-                ))}
 
-                <TouchableOpacity
-                  style={styles.addSetButton}
-                  onPress={() => addSet(exerciseIndex)}
-                >
-                  <Icons.Plus size={16} color={colors.primary} />
-                  <Typo size={14} color={colors.primary}>
-                    {t("day_workout_modal_add_set")}
+                  <Input
+                    placeholder={t("day_workout_modal_exercise_placeholder")}
+                    value={exercise.exerciseName}
+                    onChangeText={(text) =>
+                      updateExerciseName(exerciseIndex, text)
+                    }
+                    containerStyle={styles.exerciseNameInput}
+                  />
+
+                  <Typo
+                    size={14}
+                    fontWeight="500"
+                    style={styles.setsLabel}
+                  >
+                    {t("common_sets")}
                   </Typo>
-                </TouchableOpacity>
-              </View>
-            ))}
 
-            <TouchableOpacity
-              style={styles.addExerciseButton}
-              onPress={addExercise}
-            >
-              <Icons.Plus size={20} color={colors.primary} />
-              <Typo size={16} fontWeight="600" color={colors.primary}>
-                {t("day_workout_modal_add_exercise")}
-              </Typo>
-            </TouchableOpacity>
-          </>
-        </ScrollView>
+                  {exercise.sets.map((set, setIndex) => (
+                    <View key={setIndex} style={styles.setRow}>
+                      <View style={styles.setNumber}>
+                        <Typo size={13} color={colors.neutral400}>
+                          {setIndex + 1}
+                        </Typo>
+                      </View>
+
+                      <View style={styles.setInput}>
+                        <Input
+                          placeholder={t("day_workout_modal_reps_placeholder")}
+                          keyboardType="numeric"
+                          value={set.reps > 0 ? set.reps.toString() : ""}
+                          onChangeText={(text) =>
+                            updateSet(
+                              exerciseIndex,
+                              setIndex,
+                              "reps",
+                              parseInt(text) || 0
+                            )
+                          }
+                          containerStyle={styles.smallInput}
+                        />
+                      </View>
+
+                      <View style={styles.setInput}>
+                        <Input
+                          placeholder={t("day_workout_modal_weight_placeholder")}
+                          keyboardType="numeric"
+                          value={set.weight > 0 ? set.weight.toString() : ""}
+                          onChangeText={(text) =>
+                            updateSet(
+                              exerciseIndex,
+                              setIndex,
+                              "weight",
+                              parseFloat(text) || 0
+                            )
+                          }
+                          containerStyle={styles.smallInput}
+                        />
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.unitButton}
+                        onPress={() => toggleWeightUnit(exerciseIndex, setIndex)}
+                      >
+                        <Typo size={13} fontWeight="600">
+                          {set.weightUnit}
+                        </Typo>
+                      </TouchableOpacity>
+
+                      {exercise.sets.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => removeSet(exerciseIndex, setIndex)}
+                          style={styles.removeSetButton}
+                        >
+                          <Icons.Trash size={18} color={colors.rose} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={styles.addSetButton}
+                    onPress={() => addSet(exerciseIndex)}
+                  >
+                    <Icons.Plus size={16} color={colors.primary} />
+                    <Typo size={14} color={colors.primary}>
+                      {t("day_workout_modal_add_set")}
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={styles.addExerciseButton}
+                onPress={addExercise}
+              >
+                <Icons.Plus size={20} color={colors.primary} />
+                <Typo size={16} fontWeight="600" color={colors.primary}>
+                  {t("day_workout_modal_add_exercise")}
+                </Typo>
+              </TouchableOpacity>
+            </>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
         <View style={[styles.footerSticky, { bottom: insets.bottom + 12 }]}>
           <Button
             onPress={handleAddExercises}
             loading={saving}
-            style={{ flex: 1 }}
+            style={styles.flex}
           >
             <Typo color={colors.black} fontWeight="700" size={16}>
               {t("day_workout_modal_save_exercises")}
@@ -391,12 +405,18 @@ const DayWorkout = () => {
 export default DayWorkout;
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     paddingHorizontal: spacingX._20,
   },
+  headerMargin: {
+    marginBottom: spacingY._15,
+  },
   scrollContent: {
-    paddingBottom: verticalScale(20),
+    paddingBottom: verticalScale(80),
     gap: spacingY._10,
   },
   restDayButton: {
@@ -416,6 +436,12 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.neutral600,
   },
+  dividerText: {
+    paddingHorizontal: spacingX._10,
+  },
+  exercisesTitle: {
+    marginBottom: spacingY._15,
+  },
   exerciseCard: {
     backgroundColor: colors.neutral800,
     borderRadius: radius._15,
@@ -429,6 +455,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacingY._12,
+  },
+  exerciseNameInput: {
+    marginBottom: spacingY._15,
+  },
+  setsLabel: {
+    marginBottom: spacingY._10,
   },
   removeButton: {
     padding: spacingX._5,
