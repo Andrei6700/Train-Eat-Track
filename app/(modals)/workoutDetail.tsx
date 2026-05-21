@@ -104,7 +104,7 @@ const WorkoutDetail = () => {
           <Header
             title={t("workout_detail_modal_title")}
             leftIcon={<BackButton />}
-            style={{ marginBottom: spacingY._20 }}
+            style={styles.headerMargin}
           />
         </View>
         <Loading />
@@ -119,7 +119,7 @@ const WorkoutDetail = () => {
           <Header
             title={t("workout_detail_modal_title")}
             leftIcon={<BackButton />}
-            style={{ marginBottom: spacingY._20 }}
+            style={styles.headerMargin}
           />
           <Typo>{t("workout_detail_modal_not_found")}</Typo>
         </View>
@@ -132,7 +132,7 @@ const WorkoutDetail = () => {
       <View style={styles.container}>
         <Header
           leftIcon={<BackButton />}
-          style={{ marginBottom: spacingY._20 }}
+          style={styles.headerMargin}
         />
 
         <ScrollView
@@ -143,7 +143,7 @@ const WorkoutDetail = () => {
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Icons.CalendarIcon size={24} color={colors.primary} />
-              <View style={{ flex: 1 }}>
+              <View style={styles.flexOne}>
                 <Typo size={13} color={colors.neutral400}>
                   {t("workout_detail_modal_date")}
                 </Typo>
@@ -157,7 +157,7 @@ const WorkoutDetail = () => {
 
             <View style={styles.infoRow}>
               <Icons.TimerIcon size={24} color={colors.primary} />
-              <View style={{ flex: 1 }}>
+              <View style={styles.flexOne}>
                 <Typo size={13} color={colors.neutral400}>
                   {t("workout_detail_modal_duration")}
                 </Typo>
@@ -170,7 +170,7 @@ const WorkoutDetail = () => {
 
           {/* Exercises */}
           <View style={styles.section}>
-            <Typo size={20} fontWeight="600" style={{ marginBottom: spacingY._15 }}>
+            <Typo size={20} fontWeight="600" style={styles.sectionTitle}>
               {t("workout_detail_modal_exercises_count", {
                 count: workout.exercises?.length || 0,
               })}
@@ -322,6 +322,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.rose,
     width: "92%",
+  },
+  headerMargin: {
+    marginBottom: spacingY._20,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  sectionTitle: {
+    marginBottom: spacingY._15,
   },
 });
 

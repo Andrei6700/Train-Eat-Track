@@ -211,7 +211,7 @@ const WorkoutPlanSelectionScreen = () => {
         <View
           style={[
             styles.optionIconContainer,
-            { borderColor: accentColor, backgroundColor: "rgba(20,20,20,0.75)" },
+            { borderColor: accentColor },
           ]}
         >
           {loading ? (
@@ -404,7 +404,7 @@ const WorkoutPlanSelectionScreen = () => {
                 <Typo size={14} fontWeight="700" color={colors.text}>
                   Not sure where to start?
                 </Typo>
-                <Typo size={12} color={colors.neutral300} style={{ marginTop: 6 }}>
+                <Typo size={12} color={colors.neutral300} style={styles.infoDescription}>
                   Full Body is the easiest option to begin, then move to
                   Upper/Lower when you want more training volume.
                 </Typo>
@@ -511,6 +511,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: spacingX._12,
     borderWidth: 1.5,
+    backgroundColor: "rgba(20,20,20,0.75)",
   },
   optionContent: {
     flex: 1,
@@ -662,6 +663,9 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: radius.full,
     backgroundColor: colors.primary,
+  },
+  infoDescription: {
+    marginTop: 6,
   },
 });
 
