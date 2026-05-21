@@ -313,9 +313,10 @@ const NutritionCalendarLogModal = ({
 
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={{
-            paddingBottom: insets.bottom + spacingY._20,
-          }}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + spacingY._20 },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.calendarCard}>
@@ -523,6 +524,9 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  scrollContent: {
+    // paddingBottom is applied dynamically via insets
   },
   calendarCard: {
     backgroundColor: colors.neutral700,

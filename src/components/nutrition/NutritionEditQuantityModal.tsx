@@ -89,7 +89,13 @@ const NutritionEditQuantityModal = ({
             <View style={styles.modalHeaderSpacer} />
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+          >
             {editingFood && (
               <View style={styles.modalContent}>
                 <View style={styles.foodInfo}>
