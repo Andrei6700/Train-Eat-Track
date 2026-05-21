@@ -2,7 +2,7 @@ import { colors, fontFamilies, radius } from '@/constants/theme';
 import { InputProps } from '@/src/types/index';
 import { verticalScale, scale } from '@/src/utils/styling';
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, TextInput, View } from 'react-native';
 
 const Input = (props: InputProps) => {
   const {
@@ -32,6 +32,7 @@ const Input = (props: InputProps) => {
         placeholderTextColor={colors.textMuted}
         ref={inputRef && inputRef}
         {...textInputProps}
+        scrollEnabled={false}
         onFocus={(event) => {
           setIsFocused(true);
           onFocus?.(event);
@@ -76,5 +77,9 @@ const styles = StyleSheet.create({
         fontSize: verticalScale(16),
         fontFamily: fontFamilies.bodyRegular,
         minHeight: verticalScale(24),
+        paddingVertical: 0,
+        textAlignVertical: 'center',
+        ...(Platform.OS === 'android' && { includeFontPadding: false }),
     }
 })
+
