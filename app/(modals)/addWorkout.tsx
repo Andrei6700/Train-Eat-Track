@@ -11,23 +11,22 @@ import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { addWorkout, getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutExercise, WorkoutHistory, WorkoutSet } from "@/src/types/index";
+import { scale, verticalScale } from "@/src/utils/styling";
 import { findLastSuccessfulWorkoutForCycleDay } from "@/src/utils/workoutPlanCycle";
-import { verticalScale } from "@/src/utils/styling";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Keyboard,
-    KeyboardAvoidingView,
-    PanResponder,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  PanResponder,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,7 +43,7 @@ const AddWorkout = () => {
   const [activePage, setActivePage] = useState(1);
   const activePageRef = useRef(activePage);
 
-  // CRITICAL FIX: Parse and normalize the target date at component initialization
+  // FIX: Parse and normalize the target date at component initialization
   // This ensures the date is set correctly and doesn't change during the session
   const targetDate = React.useMemo(() => {
     if (selectedDate) {
@@ -64,7 +63,7 @@ const AddWorkout = () => {
   // Timer states
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Keep history of exercises to show previous workout data
   const [historyExercises, setHistoryExercises] = useState<
@@ -78,9 +77,7 @@ const AddWorkout = () => {
     },
   ]);
 
-  /**
-   * Calculate which day index in the split cycle the target date corresponds to
-   */
+  // Calculate which day index in the split cycle the target date corresponds to
   const getTodayDayIndex = (): number => {
     if (!workoutPlan || !workoutPlan.splitDays) {
       if (__DEV__) {
@@ -108,7 +105,7 @@ const AddWorkout = () => {
 
     const daysDifference = Math.floor(
       (workoutDate.getTime() - planCreatedDate.getTime()) /
-        (1000 * 60 * 60 * 24),
+      (1000 * 60 * 60 * 24),
     );
 
     if (__DEV__) {
@@ -125,18 +122,14 @@ const AddWorkout = () => {
     return daysDifference % workoutPlan.splitDays;
   };
 
-  /**
-   * Get the day name for target date based on split cycle
-   */
+  // Get the day name for target date based on split cycle
   const getTodayDayName = (): string => {
     const dayIndex = getTodayDayIndex();
     return `Day ${dayIndex + 1}`;
   };
 
-  /**
-   * Find the most recent workout that contains a specific exercise
-   * Used to prefill weights and reps from previous sessions
-   */
+  // Find the most recent workout that contains a specific exercise
+  // Used to prefill weights and reps from previous sessions
   const findMostRecentExercise = (
     exerciseName: string,
     history: WorkoutHistory[],
@@ -175,7 +168,7 @@ const AddWorkout = () => {
   const loadWorkoutData = async () => {
     if (!workoutPlan || !user?.uid) return;
 
-    // CRITICAL FIX: Use targetDate for all calculations
+    // FIX: Use targetDate for all calculations
     const workoutDate = new Date(targetDate);
     workoutDate.setHours(0, 0, 0, 0);
 
@@ -194,11 +187,11 @@ const AddWorkout = () => {
 
     const daysDifference = Math.floor(
       (workoutDate.getTime() - planCreatedDate.getTime()) /
-        (1000 * 60 * 60 * 24),
+      (1000 * 60 * 60 * 24),
     );
 
     // Calculate which day in the current cycle
-    const currentDayIndex = daysDifference % workoutPlan.splitDays;
+    const currentDayIndex = daysDifference % (workoutPlan.splitDays ?? 1);
     const dayName = `Day ${currentDayIndex + 1}`;
 
     if (__DEV__) {
@@ -269,7 +262,7 @@ const AddWorkout = () => {
     if (
       planDay.exercises &&
       planDay.exercises.length > 0 &&
-      daysDifference < workoutPlan.splitDays
+      daysDifference < (workoutPlan.splitDays ?? 1)
     ) {
       if (__DEV__) {
         console.log(
@@ -424,12 +417,13 @@ const AddWorkout = () => {
       onMoveShouldSetPanResponderCapture: (_, gestureState) => {
         const absDx = Math.abs(gestureState.dx);
         const absDy = Math.abs(gestureState.dy);
-        return absDx > 14 && absDx > absDy + 8;
+        // High threshold to avoid capturing vertical scroll gestures
+        return absDx > 30 && absDx > absDy * 2;
       },
       onPanResponderTerminationRequest: () => true,
       onPanResponderRelease: (_, gestureState) => {
-        const shouldGoRight = gestureState.dx > 34 || gestureState.vx > 0.2;
-        const shouldGoLeft = gestureState.dx < -34 || gestureState.vx < -0.2;
+        const shouldGoRight = gestureState.dx > 50 || gestureState.vx > 0.3;
+        const shouldGoLeft = gestureState.dx < -50 || gestureState.vx < -0.3;
         const currentPage = activePageRef.current;
 
         if (currentPage === 1 && shouldGoRight) {
@@ -500,7 +494,7 @@ const AddWorkout = () => {
     const newExercises = [...exercises];
     const lastSet =
       newExercises[exerciseIndex].sets[
-        newExercises[exerciseIndex].sets.length - 1
+      newExercises[exerciseIndex].sets.length - 1
       ];
     newExercises[exerciseIndex].sets.push({
       reps: lastSet?.reps || 0,
@@ -566,7 +560,7 @@ const AddWorkout = () => {
       return;
     }
 
-    // CRITICAL FIX: Create a new date object from targetDate to ensure immutability
+    // FIX: Create a new date object from targetDate to ensure immutability
     // and proper date handling. Normalize to noon to avoid timezone issues.
     const workoutDateToSave = new Date(targetDate);
     workoutDateToSave.setHours(12, 0, 0, 0);
@@ -600,8 +594,8 @@ const AddWorkout = () => {
             ? t("add_workout_modal_saved_offline_message")
             : isHistoricalWorkout
               ? t("add_workout_modal_logged_success_for_date", {
-                  date: formatTargetDate(),
-                })
+                date: formatTargetDate(),
+              })
               : t("add_workout_modal_saved_success_message"),
           [
             {
@@ -637,9 +631,7 @@ const AddWorkout = () => {
     }
   };
 
-  /**
-   * Helper function to get the historical set data for display
-   */
+  // Helper function to get the historical set data for display
   const getHistoricalSet = (
     exerciseName: string,
     setIndex: number,
@@ -658,405 +650,404 @@ const AddWorkout = () => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <View style={styles.container}>
-            <Header
-              title={
-                isHistoricalWorkout
-                  ? t("add_workout_modal_title_log_past")
-                  : t("add_workout_modal_title_log")
-              }
-              leftIcon={<BackButton />}
-              style={{ marginBottom: spacingY._12 }}
-            />
+        <View style={styles.container}>
+          <Header
+            title={
+              isHistoricalWorkout
+                ? t("add_workout_modal_title_log_past")
+                : t("add_workout_modal_title_log")
+            }
+            leftIcon={<BackButton />}
+            style={styles.headerMargin}
+          />
 
-            {/* Historical Date Banner */}
-            {isHistoricalWorkout && (
-              <View style={styles.historicalBanner}>
-                <Icons.ClockCounterClockwise
-                  size={20}
-                  color={colors.primary}
-                  weight="fill"
-                />
-                <View style={{ flex: 1 }}>
-                  <Typo size={13} fontWeight="600" color={colors.primary}>
-                    {t("add_workout_modal_logging_for")}
-                  </Typo>
-                  <Typo size={14} color={colors.white}>
-                    {formatTargetDate()}
-                  </Typo>
-                </View>
+          {/* Historical Date Banner */}
+          {isHistoricalWorkout && (
+            <View style={styles.historicalBanner}>
+              <Icons.ClockCounterClockwise
+                size={20}
+                color={colors.primary}
+                weight="fill"
+              />
+              <View style={styles.flexOne}>
+                <Typo size={13} fontWeight="600" color={colors.primary}>
+                  {t("add_workout_modal_logging_for")}
+                </Typo>
+                <Typo size={14} color={colors.white}>
+                  {formatTargetDate()}
+                </Typo>
               </View>
-            )}
-
-            <View style={styles.pageSwitch}>
-              <TouchableOpacity
-                onPress={() => goToPage(0)}
-                style={[
-                  styles.pageSwitchButton,
-                  activePage === 0 && styles.pageSwitchButtonActive,
-                ]}
-              >
-                <Icons.Timer
-                  size={16}
-                  color={activePage === 0 ? colors.black : colors.neutral300}
-                  weight="bold"
-                />
-                <Typo
-                  size={12}
-                  fontWeight="700"
-                  color={activePage === 0 ? colors.black : colors.neutral300}
-                >
-                  {t("add_workout_modal_tab_timer")}
-                </Typo>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => goToPage(1)}
-                style={[
-                  styles.pageSwitchButton,
-                  activePage === 1 && styles.pageSwitchButtonActive,
-                ]}
-              >
-                <Icons.Barbell
-                  size={16}
-                  color={activePage === 1 ? colors.black : colors.neutral300}
-                  weight="bold"
-                />
-                <Typo
-                  size={12}
-                  fontWeight="700"
-                  color={activePage === 1 ? colors.black : colors.neutral300}
-                >
-                  {t("add_workout_modal_tab_workout_log")}
-                </Typo>
-              </TouchableOpacity>
             </View>
+          )}
 
-            <View style={styles.pageFrame} {...panResponder.panHandlers}>
-              {activePage === 0 ? (
-                <View style={styles.timerPage}>
-                  {/* Timer Container */}
-                  <View style={styles.timerContainer}>
-                    <View style={styles.currentTimeSection}>
-                      <Typo
-                        size={12}
-                        color={colors.neutral400}
-                        style={{ marginBottom: spacingY._5 }}
-                      >
-                        {t("add_workout_modal_rest_timer")}
-                      </Typo>
-                      <Typo size={44} fontWeight="700" color={colors.primary}>
-                        {formatTime(currentTime)}
-                      </Typo>
-                    </View>
-                    <View style={styles.timerStatsRow}>
-                      <View style={styles.timerStatCard}>
-                        <Typo size={11} color={colors.neutral400}>
-                          {t("add_workout_modal_total_time")}
-                        </Typo>
-                        <Typo size={16} fontWeight="600" color={colors.white}>
-                          {formatTime(totalTime)}
-                        </Typo>
-                      </View>
-                      <View style={styles.timerStatCard}>
-                        <Typo size={11} color={colors.neutral400}>
-                          {t("add_workout_modal_target_date")}
-                        </Typo>
-                        <Typo size={14} fontWeight="600" color={colors.white}>
-                          {targetDate.toLocaleDateString(
-                            LOCALE_BY_LANGUAGE[language],
-                            {
-                              month: "short",
-                              day: "numeric",
-                            },
-                          )}
-                        </Typo>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleLap}
-                      style={styles.lapButton}
-                    >
-                      <Icons.ArrowCounterClockwise
-                        size={18}
-                        color={colors.black}
-                        weight="bold"
-                      />
-                      <Typo size={14} fontWeight="700" color={colors.black}>
-                        {t("add_workout_modal_reset_rest")}
-                      </Typo>
-                    </TouchableOpacity>
-                  </View>
+          <View style={styles.pageSwitch}>
+            <TouchableOpacity
+              onPress={() => goToPage(0)}
+              style={[
+                styles.pageSwitchButton,
+                activePage === 0 && styles.pageSwitchButtonActive,
+              ]}
+            >
+              <Icons.Timer
+                size={16}
+                color={activePage === 0 ? colors.black : colors.neutral300}
+                weight="bold"
+              />
+              <Typo
+                size={12}
+                fontWeight="700"
+                color={activePage === 0 ? colors.black : colors.neutral300}
+              >
+                {t("add_workout_modal_tab_timer")}
+              </Typo>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => goToPage(1)}
+              style={[
+                styles.pageSwitchButton,
+                activePage === 1 && styles.pageSwitchButtonActive,
+              ]}
+            >
+              <Icons.Barbell
+                size={16}
+                color={activePage === 1 ? colors.black : colors.neutral300}
+                weight="bold"
+              />
+              <Typo
+                size={12}
+                fontWeight="700"
+                color={activePage === 1 ? colors.black : colors.neutral300}
+              >
+                {t("add_workout_modal_tab_workout_log")}
+              </Typo>
+            </TouchableOpacity>
+          </View>
 
-                  <View style={styles.timerHintCard}>
-                    <Icons.ArrowsHorizontal
-                      size={18}
-                      color={colors.primary}
-                      weight="bold"
-                    />
+          <View style={styles.pageFrame} {...panResponder.panHandlers}>
+            {activePage === 0 ? (
+              <View style={styles.timerPage}>
+                {/* Timer Container */}
+                <View style={styles.timerContainer}>
+                  <View style={styles.currentTimeSection}>
                     <Typo
-                      size={13}
-                      color={colors.neutral300}
-                      style={{ flex: 1 }}
+                      size={12}
+                      color={colors.neutral400}
+                      style={styles.restTimerLabel}
                     >
-                      {t("add_workout_modal_swipe_hint")}
+                      {t("add_workout_modal_rest_timer")}
+                    </Typo>
+                    <Typo size={44} fontWeight="700" color={colors.primary}>
+                      {formatTime(currentTime)}
                     </Typo>
                   </View>
-
+                  <View style={styles.timerStatsRow}>
+                    <View style={styles.timerStatCard}>
+                      <Typo size={11} color={colors.neutral400}>
+                        {t("add_workout_modal_total_time")}
+                      </Typo>
+                      <Typo size={16} fontWeight="600" color={colors.white}>
+                        {formatTime(totalTime)}
+                      </Typo>
+                    </View>
+                    <View style={styles.timerStatCard}>
+                      <Typo size={11} color={colors.neutral400}>
+                        {t("add_workout_modal_target_date")}
+                      </Typo>
+                      <Typo size={14} fontWeight="600" color={colors.white}>
+                        {targetDate.toLocaleDateString(
+                          LOCALE_BY_LANGUAGE[language],
+                          {
+                            month: "short",
+                            day: "numeric",
+                          },
+                        )}
+                      </Typo>
+                    </View>
+                  </View>
                   <TouchableOpacity
-                    onPress={() => goToPage(1)}
-                    style={styles.timerActionButton}
+                    onPress={handleLap}
+                    style={styles.lapButton}
                   >
-                    <Icons.CaretRight
-                      size={16}
+                    <Icons.ArrowCounterClockwise
+                      size={18}
                       color={colors.black}
                       weight="bold"
                     />
                     <Typo size={14} fontWeight="700" color={colors.black}>
-                      {t("add_workout_modal_go_to_workout_log")}
+                      {t("add_workout_modal_reset_rest")}
                     </Typo>
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <View style={styles.page}>
-                  <View style={styles.workoutTopRow}>
-                    <Typo size={16} fontWeight="700">
-                      {t("add_workout_modal_exercises")}
-                    </Typo>
-                    <TouchableOpacity
-                      onPress={() => goToPage(0)}
-                      style={styles.timerBadge}
-                    >
-                      <Icons.Timer
-                        size={14}
-                        color={colors.primary}
-                        weight="bold"
-                      />
-                      <Typo size={12} fontWeight="600" color={colors.primary}>
-                        {formatTime(currentTime)}
-                      </Typo>
-                    </TouchableOpacity>
-                  </View>
 
-                  <ScrollView
-                    style={styles.scrollView}
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode={
-                      Platform.OS === "ios" ? "interactive" : "on-drag"
-                    }
-                    nestedScrollEnabled
+                <View style={styles.timerHintCard}>
+                  <Icons.ArrowsHorizontal
+                    size={18}
+                    color={colors.primary}
+                    weight="bold"
+                  />
+                  <Typo
+                    size={13}
+                    color={colors.neutral300}
+                    style={styles.flexOne}
                   >
-                    {exercises.map((exercise, exerciseIndex) => (
-                      <View key={exerciseIndex} style={styles.exerciseCard}>
-                        <View style={styles.exerciseHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Typo
-                              size={16}
-                              fontWeight="600"
-                              color={colors.neutral300}
-                              style={{ marginBottom: 4 }}
-                            >
-                              {t("add_workout_modal_exercise_label", {
-                                index: exerciseIndex + 1,
-                              })}
-                            </Typo>
-                            <Input
-                              placeholder={t(
-                                "add_workout_modal_exercise_name_placeholder",
-                              )}
-                              value={exercise.exerciseName}
-                              onChangeText={(text) =>
-                                updateExerciseName(exerciseIndex, text)
-                              }
-                              containerStyle={styles.exerciseNameInput}
-                            />
-                          </View>
-
-                          {exercises.length > 1 && (
-                            <TouchableOpacity
-                              onPress={() => removeExercise(exerciseIndex)}
-                              style={styles.removeButton}
-                            >
-                              <Icons.Trash size={20} color={colors.rose} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-
-                        {/* Header Row for Sets */}
-                        <View style={styles.setHeaderRow}>
-                          <Typo
-                            size={12}
-                            color={colors.neutral400}
-                            style={{ width: 30, textAlign: "center" }}
-                          >
-                            {t("add_workout_modal_set_label")}
-                          </Typo>
-                          <Typo
-                            size={12}
-                            color={colors.neutral400}
-                            style={{ flex: 1, textAlign: "center" }}
-                          >
-                            {t("add_workout_modal_reps_label")}
-                          </Typo>
-                          <Typo
-                            size={12}
-                            color={colors.neutral400}
-                            style={{ flex: 1, textAlign: "center" }}
-                          >
-                            {t("add_workout_modal_weight_label")}
-                          </Typo>
-                          <View style={{ width: 30 }} />
-                        </View>
-
-                        {exercise.sets.map((set, setIndex) => {
-                          const historicalSet = getHistoricalSet(
-                            exercise.exerciseName,
-                            setIndex,
-                          );
-
-                          return (
-                            <View key={setIndex} style={styles.setRow}>
-                              <View style={styles.setNumber}>
-                                <Typo
-                                  size={14}
-                                  fontWeight="600"
-                                  color={colors.neutral400}
-                                >
-                                  {setIndex + 1}
-                                </Typo>
-                              </View>
-
-                              {/* Input Reps with historical placeholder */}
-                              <View style={styles.setInput}>
-                                <Input
-                                  placeholder={
-                                    historicalSet
-                                      ? `${historicalSet.reps}`
-                                      : "0"
-                                  }
-                                  keyboardType="numeric"
-                                  value={
-                                    set.reps > 0 ? set.reps.toString() : ""
-                                  }
-                                  onChangeText={(text) =>
-                                    updateSet(
-                                      exerciseIndex,
-                                      setIndex,
-                                      "reps",
-                                      text,
-                                    )
-                                  }
-                                  containerStyle={styles.smallInput}
-                                  inputStyle={styles.smallInputText}
-                                />
-                              </View>
-
-                              {/* Input Weight with historical placeholder */}
-                              <View style={styles.setInput}>
-                                <Input
-                                  placeholder={
-                                    historicalSet
-                                      ? `${historicalSet.weight}`
-                                      : "0"
-                                  }
-                                  keyboardType="numeric"
-                                  value={
-                                    set.weight > 0 ? set.weight.toString() : ""
-                                  }
-                                  onChangeText={(text) =>
-                                    updateSet(
-                                      exerciseIndex,
-                                      setIndex,
-                                      "weight",
-                                      text,
-                                    )
-                                  }
-                                  containerStyle={styles.smallInput}
-                                  inputStyle={styles.smallInputText}
-                                />
-                                <Typo
-                                  size={12}
-                                  color={colors.neutral400}
-                                  style={styles.unitLabel}
-                                >
-                                  {set.weightUnit}
-                                </Typo>
-                              </View>
-
-                              <TouchableOpacity
-                                onPress={() =>
-                                  removeSet(exerciseIndex, setIndex)
-                                }
-                                style={styles.removeSetButton}
-                              >
-                                <Icons.X
-                                  size={16}
-                                  color={colors.rose}
-                                  weight="bold"
-                                />
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })}
-
-                        <TouchableOpacity
-                          onPress={() => addSet(exerciseIndex)}
-                          style={styles.addSetButton}
-                        >
-                          <Icons.Plus
-                            size={16}
-                            color={colors.primary}
-                            weight="bold"
-                          />
-                          <Typo
-                            size={14}
-                            fontWeight="600"
-                            color={colors.primary}
-                          >
-                            {t("add_workout_modal_add_set")}
-                          </Typo>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-
-                    <TouchableOpacity
-                      onPress={addExercise}
-                      style={styles.addExerciseButton}
-                    >
-                      <Icons.PlusCircle
-                        size={24}
-                        color={colors.primary}
-                        weight="fill"
-                      />
-                      <Typo size={16} fontWeight="600" color={colors.primary}>
-                        {t("add_workout_modal_add_exercise")}
-                      </Typo>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
-              )}
-            </View>
-
-            {!isKeyboardVisible && activePage === 1 && (
-              <View
-                style={[
-                  styles.saveButtonContainer,
-                  { paddingBottom: Math.max(insets.bottom, spacingY._10) },
-                ]}
-              >
-                <Button onPress={handleSave} loading={loading}>
-                  <Typo size={18} fontWeight="700" color={colors.black}>
-                    {isHistoricalWorkout
-                      ? t("add_workout_modal_log_workout")
-                      : t("add_workout_modal_save_workout")}
+                    {t("add_workout_modal_swipe_hint")}
                   </Typo>
-                </Button>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => goToPage(1)}
+                  style={styles.timerActionButton}
+                >
+                  <Icons.CaretRight
+                    size={16}
+                    color={colors.black}
+                    weight="bold"
+                  />
+                  <Typo size={14} fontWeight="700" color={colors.black}>
+                    {t("add_workout_modal_go_to_workout_log")}
+                  </Typo>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.page}>
+                <View style={styles.workoutTopRow}>
+                  <Typo size={16} fontWeight="700">
+                    {t("add_workout_modal_exercises")}
+                  </Typo>
+                  <TouchableOpacity
+                    onPress={() => goToPage(0)}
+                    style={styles.timerBadge}
+                  >
+                    <Icons.Timer
+                      size={14}
+                      color={colors.primary}
+                      weight="bold"
+                    />
+                    <Typo size={12} fontWeight="600" color={colors.primary}>
+                      {formatTime(currentTime)}
+                    </Typo>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={styles.scrollView}
+                  contentContainerStyle={styles.scrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode={
+                    Platform.OS === "ios" ? "interactive" : "on-drag"
+                  }
+                  onScrollBeginDrag={Keyboard.dismiss}
+                  nestedScrollEnabled
+                >
+                  {exercises.map((exercise, exerciseIndex) => (
+                    <View key={exerciseIndex} style={styles.exerciseCard}>
+                      <View style={styles.exerciseHeader}>
+                        <View style={styles.flexOne}>
+                          <Typo
+                            size={16}
+                            fontWeight="600"
+                            color={colors.neutral300}
+                            style={styles.exerciseLabelMargin}
+                          >
+                            {t("add_workout_modal_exercise_label", {
+                              index: exerciseIndex + 1,
+                            })}
+                          </Typo>
+                          <Input
+                            placeholder={t(
+                              "add_workout_modal_exercise_name_placeholder",
+                            )}
+                            value={exercise.exerciseName}
+                            onChangeText={(text) =>
+                              updateExerciseName(exerciseIndex, text)
+                            }
+                            containerStyle={styles.exerciseNameInput}
+                          />
+                        </View>
+
+                        {exercises.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() => removeExercise(exerciseIndex)}
+                            style={styles.removeButton}
+                          >
+                            <Icons.Trash size={20} color={colors.rose} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* Header Row for Sets */}
+                      <View style={styles.setHeaderRow}>
+                        <Typo
+                          size={12}
+                          color={colors.neutral400}
+                          style={styles.setHeaderLabel}
+                        >
+                          {t("add_workout_modal_set_label")}
+                        </Typo>
+                        <Typo
+                          size={12}
+                          color={colors.neutral400}
+                          style={styles.setHeaderLabelFlex}
+                        >
+                          {t("add_workout_modal_reps_label")}
+                        </Typo>
+                        <Typo
+                          size={12}
+                          color={colors.neutral400}
+                          style={styles.setHeaderLabelFlex}
+                        >
+                          {t("add_workout_modal_weight_label")}
+                        </Typo>
+                        <View style={styles.setHeaderSpacer} />
+                      </View>
+
+                      {exercise.sets.map((set, setIndex) => {
+                        const historicalSet = getHistoricalSet(
+                          exercise.exerciseName,
+                          setIndex,
+                        );
+
+                        return (
+                          <View key={setIndex} style={styles.setRow}>
+                            <View style={styles.setNumber}>
+                              <Typo
+                                size={14}
+                                fontWeight="600"
+                                color={colors.neutral400}
+                              >
+                                {setIndex + 1}
+                              </Typo>
+                            </View>
+
+                            {/* Input Reps with historical placeholder */}
+                            <View style={styles.setInput}>
+                              <Input
+                                placeholder={
+                                  historicalSet
+                                    ? `${historicalSet.reps}`
+                                    : "0"
+                                }
+                                keyboardType="numeric"
+                                value={
+                                  set.reps > 0 ? set.reps.toString() : ""
+                                }
+                                onChangeText={(text) =>
+                                  updateSet(
+                                    exerciseIndex,
+                                    setIndex,
+                                    "reps",
+                                    text,
+                                  )
+                                }
+                                containerStyle={styles.smallInput}
+                                inputStyle={styles.smallInputText}
+                              />
+                            </View>
+
+                            {/* Input Weight with historical placeholder */}
+                            <View style={styles.setInput}>
+                              <Input
+                                placeholder={
+                                  historicalSet
+                                    ? `${historicalSet.weight}`
+                                    : "0"
+                                }
+                                keyboardType="numeric"
+                                value={
+                                  set.weight > 0 ? set.weight.toString() : ""
+                                }
+                                onChangeText={(text) =>
+                                  updateSet(
+                                    exerciseIndex,
+                                    setIndex,
+                                    "weight",
+                                    text,
+                                  )
+                                }
+                                containerStyle={styles.smallInput}
+                                inputStyle={styles.smallInputText}
+                              />
+                              <Typo
+                                size={12}
+                                color={colors.neutral400}
+                                style={styles.unitLabel}
+                              >
+                                {set.weightUnit}
+                              </Typo>
+                            </View>
+
+                            <TouchableOpacity
+                              onPress={() =>
+                                removeSet(exerciseIndex, setIndex)
+                              }
+                              style={styles.removeSetButton}
+                            >
+                              <Icons.X
+                                size={16}
+                                color={colors.rose}
+                                weight="bold"
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+
+                      <TouchableOpacity
+                        onPress={() => addSet(exerciseIndex)}
+                        style={styles.addSetButton}
+                      >
+                        <Icons.Plus
+                          size={16}
+                          color={colors.primary}
+                          weight="bold"
+                        />
+                        <Typo
+                          size={14}
+                          fontWeight="600"
+                          color={colors.primary}
+                        >
+                          {t("add_workout_modal_add_set")}
+                        </Typo>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    onPress={addExercise}
+                    style={styles.addExerciseButton}
+                  >
+                    <Icons.PlusCircle
+                      size={24}
+                      color={colors.primary}
+                      weight="fill"
+                    />
+                    <Typo size={16} fontWeight="600" color={colors.primary}>
+                      {t("add_workout_modal_add_exercise")}
+                    </Typo>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
             )}
           </View>
-        </TouchableWithoutFeedback>
+
+          {!isKeyboardVisible && activePage === 1 && (
+            <View
+              style={[
+                styles.saveButtonContainer,
+                { paddingBottom: Math.max(insets.bottom, spacingY._10) },
+              ]}
+            >
+              <Button onPress={handleSave} loading={loading}>
+                <Typo size={18} fontWeight="700" color={colors.black}>
+                  {isHistoricalWorkout
+                    ? t("add_workout_modal_log_workout")
+                    : t("add_workout_modal_save_workout")}
+                </Typo>
+              </Button>
+            </View>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </ModalWrapper>
   );
@@ -1227,9 +1218,9 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._10,
   },
   removeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: scale(36),
+    height: verticalScale(36),
+    borderRadius: scale(18),
     backgroundColor: colors.neutral700,
     alignItems: "center",
     justifyContent: "center",
@@ -1248,9 +1239,9 @@ const styles = StyleSheet.create({
     marginBottom: spacingY._10,
   },
   setNumber: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scale(30),
+    height: verticalScale(30),
+    borderRadius: scale(15),
     backgroundColor: colors.neutral700,
     alignItems: "center",
     justifyContent: "center",
@@ -1279,9 +1270,9 @@ const styles = StyleSheet.create({
     width: 24,
   },
   removeSetButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scale(30),
+    height: verticalScale(30),
+    borderRadius: scale(15),
     backgroundColor: colors.neutral700,
     alignItems: "center",
     justifyContent: "center",
@@ -1313,6 +1304,29 @@ const styles = StyleSheet.create({
   saveButtonContainer: {
     paddingTop: spacingY._10,
     backgroundColor: colors.neutral800,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  headerMargin: {
+    marginBottom: spacingY._12,
+  },
+  restTimerLabel: {
+    marginBottom: spacingY._5,
+  },
+  exerciseLabelMargin: {
+    marginBottom: 4,
+  },
+  setHeaderLabel: {
+    width: scale(30),
+    textAlign: "center" as const,
+  },
+  setHeaderLabelFlex: {
+    flex: 1,
+    textAlign: "center" as const,
+  },
+  setHeaderSpacer: {
+    width: scale(30),
   },
 });
 

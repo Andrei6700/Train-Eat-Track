@@ -260,7 +260,7 @@ const ManualProductEntry = () => {
             <Typo size={20} fontWeight="700">
               Manual Product Entry
             </Typo>
-            <View style={{ width: 24 }} />
+            <View style={styles.headerSpacer} />
           </View>
 
           <ScrollView
@@ -551,5 +551,8 @@ const styles = StyleSheet.create({
     paddingTop: spacingY._15,
     borderTopWidth: 1,
     borderTopColor: colors.neutral700,
+  },
+  headerSpacer: {
+    width: 24,
   },
 });

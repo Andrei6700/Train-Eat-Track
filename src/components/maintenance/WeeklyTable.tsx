@@ -4,7 +4,6 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import { WeeklyData } from "@/src/types/maintenance";
-import { WEEK_DAYS_RO } from "@/src/types/maintenance";
 import { generateWeekDays, parseDateKey } from "@/src/services/maintenanceService";
 
 type WeeklyTableProps = {
@@ -12,7 +11,7 @@ type WeeklyTableProps = {
 };
 
 const formatShortDate = (dateKey: string): string => {
-  const [year, month, day] = dateKey.split("-").map(Number);
+  const [_year, month, day] = dateKey.split("-").map(Number);
   const monthNames = [
     "Ian", "Feb", "Mar", "Apr", "Mai", "Iun",
     "Iul", "Aug", "Sep", "Oct", "Noi", "Dec",

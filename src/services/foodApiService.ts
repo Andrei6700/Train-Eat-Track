@@ -1,3 +1,4 @@
+import { auth } from "@/src/config/firebase";
 import { addFoodsToCache } from "@/src/services/cacheService";
 import {
   saveCustomProduct,
@@ -10,7 +11,6 @@ import {
   searchFoods as searchFoodsInProvider,
 } from "@/src/services/nutritionixService";
 import { Food, ResponseType } from "@/src/types/index";
-import { auth } from "@/src/config/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -533,7 +533,7 @@ export const getFoodByBarcode = async (barcode: string): Promise<ResponseType> =
       fat: providerFood.fat,
       servingSize: providerFood.servingSize,
       brands: providerFood.brands,
-      image: undefined,
+      image: providerFood.image,
     };
 
     const successResult: ResponseType = { success: true, data: simplifiedFood };
@@ -575,9 +575,7 @@ export const getFoodByBarcode = async (barcode: string): Promise<ResponseType> =
   }
 };
 
-/**
- * Food suggestions by category
- */
+// Food suggestions by category
 export const getFoodSuggestions = (
   category: "protein" | "carbs" | "snacks" | "breakfast",
 ): string[] => {

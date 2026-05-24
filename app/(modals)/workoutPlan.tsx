@@ -24,7 +24,9 @@ import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     TouchableOpacity,
@@ -531,16 +533,21 @@ const WorkoutPlanScreen = () => {
               : t("workout_plan_modal_create_title")
           }
           leftIcon={<BackButton onPress={handleClose} />}
-          style={{ marginBottom: spacingY._15 }}
+          style={styles.headerMargin}
         />
 
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: footerReserve },
-          ]}
-          showsVerticalScrollIndicator={false}
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: footerReserve },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
           <Animated.View
             entering={FadeInDown.duration(400)}
             style={styles.inputContainer}
@@ -571,7 +578,7 @@ const WorkoutPlanScreen = () => {
                 activeOpacity={0.85}
               >
                 <Icons.FileXls size={20} color={colors.primary} weight="fill" />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flexOne}>
                   <Typo size={15} fontWeight="700" color={colors.white}>
                     {importing
                       ? t("workout_plan_modal_import_loading")
@@ -580,7 +587,7 @@ const WorkoutPlanScreen = () => {
                   <Typo
                     size={12}
                     color={colors.neutral400}
-                    style={{ marginTop: 2 }}
+                    style={styles.marginTop2}
                   >
                     {t("workout_plan_modal_import_caption")}
                   </Typo>
@@ -762,7 +769,7 @@ const WorkoutPlanScreen = () => {
                           <Typo
                             size={13}
                             color={colors.primary}
-                            style={{ marginTop: 4, marginLeft: 14 }}
+                            style={styles.moreExercisesText}
                           >
                             {t("workout_plan_modal_more_exercises", {
                               count: exerciseCount - 3,
@@ -776,7 +783,7 @@ const WorkoutPlanScreen = () => {
                       <Typo
                         size={14}
                         color={colors.neutral500}
-                        style={{ marginTop: spacingY._5 }}
+                        style={styles.tapAddExercisesText}
                       >
                         {t("workout_plan_modal_tap_add_exercises")}
                       </Typo>
@@ -795,7 +802,7 @@ const WorkoutPlanScreen = () => {
                 disabled={deleting}
               >
                 <Icons.Trash size={20} color={colors.rose} weight="fill" />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flexOne}>
                   <Typo size={16} fontWeight="600" color={colors.rose}>
                     {deleting
                       ? t("workout_plan_modal_delete_button_loading")
@@ -804,7 +811,7 @@ const WorkoutPlanScreen = () => {
                   <Typo
                     size={12}
                     color={colors.neutral400}
-                    style={{ marginTop: 2 }}
+                    style={styles.marginTop2}
                   >
                     {t("workout_plan_modal_delete_caption")}
                   </Typo>
@@ -813,6 +820,7 @@ const WorkoutPlanScreen = () => {
             </Animated.View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
 
         <View style={[styles.footerSticky, { bottom: footerBottomOffset }]}>
           <Button onPress={handleSave} loading={saving}>
@@ -839,7 +847,7 @@ const WorkoutPlanScreen = () => {
                 <Typo
                   size={18}
                   fontWeight="700"
-                  style={{ flex: 1, marginLeft: 10 }}
+                  style={styles.infoModalTitle}
                 >
                   {t("workout_plan_modal_info_title")}
                 </Typo>
@@ -852,7 +860,7 @@ const WorkoutPlanScreen = () => {
                 <Typo
                   size={15}
                   color={colors.neutral200}
-                  style={{ lineHeight: 22 }}
+                  style={styles.infoModalDesc}
                 >
                   {t("workout_plan_modal_info_desc")}
                 </Typo>
@@ -898,7 +906,7 @@ const WorkoutPlanScreen = () => {
                 <Typo
                   size={13}
                   color={colors.neutral500}
-                  style={{ marginTop: 15, fontStyle: "italic" }}
+                  style={styles.infoModalFooterText}
                 >
                   {t("workout_plan_modal_info_footer")}
                 </Typo>
@@ -913,11 +921,15 @@ const WorkoutPlanScreen = () => {
           animationType="fade"
           onRequestClose={() => setShowCustomSplitModal(false)}
         >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowCustomSplitModal(false)}
+          <KeyboardAvoidingView
+            style={styles.flexOne}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setShowCustomSplitModal(false)}
+            >
             <TouchableOpacity
               activeOpacity={1}
               onPress={() => {}}
@@ -960,6 +972,7 @@ const WorkoutPlanScreen = () => {
               </View>
             </TouchableOpacity>
           </TouchableOpacity>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </ModalWrapper>
@@ -1213,5 +1226,32 @@ const styles = StyleSheet.create({
   },
   customSplitApplyButton: {
     flex: 1,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  headerMargin: {
+    marginBottom: spacingY._15,
+  },
+  marginTop2: {
+    marginTop: 2,
+  },
+  moreExercisesText: {
+    marginTop: 4,
+    marginLeft: 14,
+  },
+  tapAddExercisesText: {
+    marginTop: spacingY._5,
+  },
+  infoModalTitle: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  infoModalDesc: {
+    lineHeight: 22,
+  },
+  infoModalFooterText: {
+    marginTop: 15,
+    fontStyle: "italic",
   },
 });

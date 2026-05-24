@@ -19,6 +19,7 @@ import { DailyNutrition, DailyWater, WorkoutHistory, WorkoutPlan } from "@/src/t
 import {
   SyncAction,
   SyncActionHandlersV2,
+  getSyncQueue,
 } from "./syncQueueService";
 
 const DEFAULT_NUTRITION_GOALS = {
@@ -200,7 +201,15 @@ const asWorkoutPlanSnapshot = (action: SyncAction): WorkoutPlan | null => {
   };
 };
 
-export const buildSyncHandlers = (): SyncActionHandlersV2 => ({
+export const buildSyncHandlers = (): SyncActionHandlersV2 => {
+  // Safety net: log pending queue items before sync
+  getSyncQueue().then((queue) => {
+    if (queue.length > 0) {
+      console.warn(`[SyncEngine] ${queue.length} items pending before migration sync`);
+    }
+  }).catch(() => { /* ignore */ });
+
+  return {
   ADD_WORKOUT: async (action) => {
     const workout = action.data as WorkoutHistory;
     if (!workout?.userID || !workout?.date) {
@@ -261,7 +270,7 @@ export const buildSyncHandlers = (): SyncActionHandlersV2 => ({
       return { status: "failed", error: "Invalid nutrition payload" };
     }
 
-    const remoteResult = await getDailyNutrition(nutrition.userID, toDate(nutrition.date));
+    const remoteResult = await getDailyNutrition(nutrition.userID!, toDate(nutrition.date));
     if (!remoteResult.success) {
       return { status: "retry", error: remoteResult.msg || "Cannot fetch remote nutrition" };
     }
@@ -303,7 +312,7 @@ export const buildSyncHandlers = (): SyncActionHandlersV2 => ({
       return { status: "failed", error: "Invalid water payload" };
     }
 
-    const remoteResult = await getDailyWater(water.userID, toDate(water.date));
+    const remoteResult = await getDailyWater(water.userID!, toDate(water.date));
     if (!remoteResult.success) {
       return { status: "retry", error: remoteResult.msg || "Cannot fetch remote water" };
     }
@@ -413,7 +422,7 @@ export const buildSyncHandlers = (): SyncActionHandlersV2 => ({
       return { status: "failed", error: "Invalid workout plan payload" };
     }
 
-    const remoteResult = await getUserWorkoutPlan(plan.userID);
+    const remoteResult = await getUserWorkoutPlan(plan.userID!);
     if (!remoteResult.success) {
       return { status: "retry", error: remoteResult.msg || "Cannot fetch remote workout plan" };
     }
@@ -482,4 +491,5 @@ export const buildSyncHandlers = (): SyncActionHandlersV2 => ({
       error: "Missing workout plan handler",
     };
   },
-});
+  };
+};

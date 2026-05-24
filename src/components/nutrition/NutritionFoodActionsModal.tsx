@@ -2,10 +2,10 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { getMealLabel } from "@/src/i18n/translations";
-import React, { useMemo } from "react";
+import { verticalScale } from "@/src/utils/styling";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Modal,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import * as Icons from "phosphor-react-native";
 import { EditableFoodState } from "./NutritionEditQuantityModal";
+
+type ActionMode = "move" | "copy";
 
 type NutritionFoodActionsModalProps = {
   visible: boolean;
@@ -36,93 +38,139 @@ const NutritionFoodActionsModal = ({
   onDelete,
 }: NutritionFoodActionsModalProps) => {
   const { language, t } = useLanguage();
+  const [mode, setMode] = useState<ActionMode>("move");
+
   const actionsModalStyle = useMemo<ViewStyle>(
     () => ({
-      bottom: spacingY._20,
-      maxHeight: "78%",
       paddingBottom: bottomInset + spacingY._10,
     }),
     [bottomInset],
   );
+
   const availableMeals = useMemo(
     () => meals.filter((meal) => meal !== actionFood?.mealName),
     [actionFood?.mealName, meals],
   );
 
+  const handleMealAction = useCallback(
+    (meal: string) => {
+      if (mode === "move") {
+        onMove(meal);
+      } else {
+        onCopy(meal);
+      }
+    },
+    [mode, onCopy, onMove],
+  );
+
+  const handleClose = useCallback(() => {
+    setMode("move");
+    onClose();
+  }, [onClose]);
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.actionsOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.actionsModal, actionsModalStyle]}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
+        <View
+          style={[styles.modal, actionsModalStyle]}
+          onStartShouldSetResponder={() => true}
+        >
           {actionFood && (
             <>
-              <View style={styles.actionsHeader}>
-                <Typo size={18} fontWeight="700">
+              {/* Handle bar */}
+              <View style={styles.handleBar} />
+
+              {/* Food name */}
+              <View style={styles.header}>
+                <Typo size={18} fontWeight="700" textProps={{ numberOfLines: 2 }}>
                   {actionFood.food.name}
                 </Typo>
               </View>
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.actionsScrollContent}
-              >
-                <View style={styles.actionsList}>
-                  <View style={styles.actionGroup}>
-                    <Typo
-                      size={15}
-                      fontWeight="600"
-                      color={colors.neutral400}
-                      style={styles.actionGroupTitle}
-                    >
-                      {t("nutrition_copy_to")}
-                    </Typo>
-                    {availableMeals.map((meal, idx) => (
-                      <TouchableOpacity
-                        key={`copy-${idx}`}
-                        style={styles.actionButton}
-                        onPress={() => onCopy(meal)}
-                      >
-                        <Icons.Copy size={20} color={colors.primary} weight="bold" />
-                        <Typo size={16} fontWeight="500">
-                          {getMealLabel(language, meal)}
-                        </Typo>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <View style={styles.actionGroup}>
-                    <Typo
-                      size={15}
-                      fontWeight="600"
-                      color={colors.neutral400}
-                      style={styles.actionGroupTitle}
-                    >
-                      {t("nutrition_move_to")}
-                    </Typo>
-                    {availableMeals.map((meal, idx) => (
-                      <TouchableOpacity
-                        key={`move-${idx}`}
-                        style={styles.actionButton}
-                        onPress={() => onMove(meal)}
-                      >
-                        <Icons.ArrowsDownUp size={20} color={colors.green} weight="bold" />
-                        <Typo size={16} fontWeight="500">
-                          {getMealLabel(language, meal)}
-                        </Typo>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.deleteAction]}
-                    onPress={onDelete}
+              {/* Mode Toggle: Move / Copy */}
+              <View style={styles.modeToggle}>
+                <TouchableOpacity
+                  style={[styles.modeButton, mode === "move" && styles.modeButtonActive]}
+                  onPress={() => setMode("move")}
+                  activeOpacity={0.7}
+                >
+                  <Icons.ArrowsDownUp
+                    size={verticalScale(18)}
+                    color={mode === "move" ? colors.black : colors.neutral400}
+                    weight="bold"
+                  />
+                  <Typo
+                    size={14}
+                    fontWeight="600"
+                    color={mode === "move" ? colors.black : colors.neutral400}
                   >
-                    <Icons.Trash size={20} color={colors.rose} weight="bold" />
-                    <Typo size={16} fontWeight="600" color={colors.rose}>
-                      {t("nutrition_delete_food")}
+                    {t("nutrition_move_to").replace(":", "")}
+                  </Typo>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modeButton, mode === "copy" && styles.modeButtonActive]}
+                  onPress={() => setMode("copy")}
+                  activeOpacity={0.7}
+                >
+                  <Icons.Copy
+                    size={verticalScale(18)}
+                    color={mode === "copy" ? colors.black : colors.neutral400}
+                    weight="bold"
+                  />
+                  <Typo
+                    size={14}
+                    fontWeight="600"
+                    color={mode === "copy" ? colors.black : colors.neutral400}
+                  >
+                    {t("nutrition_copy_to").replace(":", "")}
+                  </Typo>
+                </TouchableOpacity>
+              </View>
+
+              {/* Meal buttons */}
+              <View style={styles.mealList}>
+                {availableMeals.map((meal) => (
+                  <TouchableOpacity
+                    key={meal}
+                    style={styles.mealButton}
+                    onPress={() => handleMealAction(meal)}
+                    activeOpacity={0.7}
+                  >
+                    {mode === "move" ? (
+                      <Icons.ArrowRight
+                        size={verticalScale(20)}
+                        color={colors.primary}
+                        weight="bold"
+                      />
+                    ) : (
+                      <Icons.CopySimple
+                        size={verticalScale(20)}
+                        color={colors.primary}
+                        weight="bold"
+                      />
+                    )}
+                    <Typo size={16} fontWeight="500">
+                      {getMealLabel(language, meal)}
                     </Typo>
                   </TouchableOpacity>
-                </View>
-              </ScrollView>
+                ))}
+              </View>
+
+              {/* Separator */}
+              <View style={styles.separator} />
+
+              {/* Delete */}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={onDelete}
+                activeOpacity={0.7}
+              >
+                <Icons.Trash size={verticalScale(20)} color={colors.rose} weight="bold" />
+                <Typo size={16} fontWeight="600" color={colors.rose}>
+                  {t("nutrition_delete_food")}
+                </Typo>
+              </TouchableOpacity>
             </>
           )}
         </View>
@@ -134,51 +182,76 @@ const NutritionFoodActionsModal = ({
 export default React.memo(NutritionFoodActionsModal);
 
 const styles = StyleSheet.create({
-  actionsOverlay: {
+  overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
   },
-  actionsModal: {
-    position: "absolute",
-    left: spacingX._20,
-    right: spacingX._20,
+  modal: {
+    marginHorizontal: spacingX._15,
     backgroundColor: colors.neutral900,
-    borderRadius: radius._17,
-    padding: spacingX._20,
-    maxHeight: "70%",
+    borderRadius: radius._20,
+    paddingHorizontal: spacingX._20,
+    paddingTop: spacingY._10,
   },
-  actionsHeader: {
-    paddingBottom: spacingY._15,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral700,
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.neutral600,
+    borderRadius: 2,
+    alignSelf: "center",
     marginBottom: spacingY._15,
   },
-  actionsList: {
-    gap: spacingY._20,
+  header: {
+    marginBottom: spacingY._15,
   },
-  actionsScrollContent: {
-    paddingBottom: spacingY._5,
+  modeToggle: {
+    flexDirection: "row",
+    backgroundColor: colors.neutral800,
+    borderRadius: radius._12,
+    padding: 4,
+    gap: 4,
+    marginBottom: spacingY._15,
   },
-  actionGroup: {
+  modeButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._7,
+    paddingVertical: spacingY._10,
+    borderRadius: radius._10,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  mealList: {
     gap: spacingY._10,
+    marginBottom: spacingY._5,
   },
-  actionGroupTitle: {
-    marginBottom: spacingY._10,
-  },
-  actionButton: {
+  mealButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._12,
     backgroundColor: colors.neutral800,
     padding: spacingX._15,
     borderRadius: radius._12,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.neutral700,
   },
-  deleteAction: {
+  separator: {
+    height: 1,
+    backgroundColor: colors.neutral700,
+    marginVertical: spacingY._12,
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._12,
+    backgroundColor: colors.neutral800,
+    padding: spacingX._15,
+    borderRadius: radius._12,
+    borderWidth: 1.5,
     borderColor: colors.rose,
-    marginTop: spacingY._10,
   },
 });
-

@@ -18,10 +18,10 @@ import NutritionCalendar, {
   NutritionCalendarDayData,
 } from "@/src/components/ui/NutritionCalendar";
 import Typo from "@/src/components/ui/Typo";
-import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { useAuth } from "@/src/contexts/authContext";
 import { useLanguage } from "@/src/contexts/languageContext";
 import { useNutrition } from "@/src/contexts/nutritionContext";
+import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { getMealLabel, MONTH_NAMES } from "@/src/i18n/translations";
 import {
   batchGetCachedNutritionDays,
@@ -567,7 +567,7 @@ const Nutrition = () => {
       setCalendarEarliestDate(earliestDate);
 
       // Set calendarDays directly so React batches it with earliestDate,
-      // avoiding a visible 49→147 day rebuild flash.
+      // avoiding a visible 49->147 day rebuild flash.
       const nextCalendarDays = buildCalendarDays(earliestDate);
       setCalendarDays((previousDays) => {
         if (areCalendarDaysEqual(previousDays, nextCalendarDays)) {

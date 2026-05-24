@@ -136,7 +136,7 @@ const WorkoutCalendarStrip = ({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.calendarContainer}
-        estimatedItemSize={ITEM_WIDTH}
+
         onMomentumScrollEnd={handleMomentumScrollEnd}
         scrollEventThrottle={16}
         extraData={extraDataToken}

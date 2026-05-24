@@ -25,7 +25,7 @@ import {
 import { scale, verticalScale } from "@/src/utils/styling";
 import { PlusCircle, Table } from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, {
     Easing,
     FadeIn,
@@ -35,8 +35,6 @@ import Animated, {
 } from "react-native-reanimated";
 
 type TabType = "add" | "table";
-
-const TAB_WIDTH = scale(150);
 
 // Onboarding behavior toggle:
 // - true  => show popup every time this screen opens for testing
@@ -54,6 +52,11 @@ const MaintenanceTrackerScreen = () => {
   const [analysis, setAnalysis] = useState<MaintenanceAnalysisResult | null>(
     null,
   );
+
+  const { width: screenWidth } = useWindowDimensions();
+  // Tab container inner width = screen - horizontal padding (20*2) - container padding (4*2)
+  const tabContainerInnerWidth = screenWidth - spacingX._20 * 2 - scale(4) * 2;
+  const singleTabWidth = tabContainerInnerWidth / 2;
 
   const tabIndicatorPosition = useSharedValue(0);
 
@@ -106,18 +109,20 @@ const MaintenanceTrackerScreen = () => {
   const handleTabChange = useCallback(
     (tab: TabType) => {
       setActiveTab(tab);
-      tabIndicatorPosition.value = withTiming(tab === "add" ? 0 : TAB_WIDTH, {
+      tabIndicatorPosition.value = withTiming(tab === "add" ? 0 : singleTabWidth, {
         duration: 250,
         easing: Easing.out(Easing.ease),
       });
     },
-    [tabIndicatorPosition],
+    [tabIndicatorPosition, singleTabWidth],
   );
 
   const handleOnboardingDismiss = useCallback(async () => {
     setShowOnboarding(false);
-    await setOnboardingSeen(user.uid);
-  }, [user.uid]);
+    if (user?.uid) {
+      await setOnboardingSeen(user.uid);
+    }
+  }, [user?.uid]);
 
   const handleSaveEntry = useCallback(
     async (entry: WeightEntry) => {
@@ -151,7 +156,7 @@ const MaintenanceTrackerScreen = () => {
         <Animated.View entering={FadeIn.delay(100)} style={styles.tabBar}>
           <View style={styles.tabContainer}>
             <Animated.View
-              style={[styles.tabIndicator, animatedIndicatorStyle]}
+              style={[styles.tabIndicator, { width: singleTabWidth }, animatedIndicatorStyle]}
             />
             <Pressable
               style={styles.tab}
@@ -257,13 +262,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: scale(4),
     left: scale(4),
-    width: TAB_WIDTH,
+    width: "48%",
     height: verticalScale(40),
     backgroundColor: colors.primary,
     borderRadius: radius._6,
   },
   tab: {
-    width: TAB_WIDTH,
+    flex: 1,
     height: verticalScale(40),
     flexDirection: "row",
     alignItems: "center",

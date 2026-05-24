@@ -1,9 +1,7 @@
 import { WorkoutHistory, WorkoutPlan } from "@/src/types/index";
 import { DAY_IN_MS, startOfDay, toValidDate } from "@/src/utils/dateKey";
 
-/**
- * Returns the 0-based cycle day index for a given date within the plan's split cycle.
- */
+// Returns the 0-based cycle day index for a given date within the plan's split cycle.
 export const getCycleDayIndex = (
   date: Date,
   workoutPlan: WorkoutPlan | null | undefined,

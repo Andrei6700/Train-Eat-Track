@@ -143,7 +143,7 @@ const HistoryCalendarStrip = ({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.calendarContainer}
-        estimatedItemSize={ITEM_WIDTH}
+
         onScroll={handleScroll}
         scrollEventThrottle={16}
         extraData={extraDataToken}

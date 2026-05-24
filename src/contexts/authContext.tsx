@@ -118,8 +118,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser({ ...userData });
       }
     } catch (error: any) {
-      let msg = error.message;
-      // return { success: false, msg };
       if (__DEV__) {
         console.log("error:", error);
       }

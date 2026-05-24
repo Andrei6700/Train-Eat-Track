@@ -8,7 +8,28 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "jest",
+    "test:unit": "jest --watchAll=false tests/unit",
+    "test:coverage": "jest --watchAll=false --coverage tests/unit"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "clearMocks": true,
+    "setupFiles": ["./tests/setup.js"],
+    "moduleNameMapper": {
+      "^@/src/config/firebase$": "<rootDir>/tests/__mocks__/firebaseConfig.js",
+      "^@/(.*)$": "<rootDir>/$1"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg))"
+    ],
+    "coverageThreshold": {
+      "./src/utils/dateKey.ts": { "branches": 90, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/utils/utils.ts": { "branches": 90, "functions": 90, "lines": 90, "statements": 90 },
+      "./src/utils/workoutPlanCycle.ts": { "branches": 80, "functions": 90, "lines": 90, "statements": 80 },
+      "./src/features/home/homeSelectors.ts": { "branches": 80, "functions": 90, "lines": 90, "statements": 90 }
+    }
   },
   "dependencies": {
     "@expo-google-fonts/bebas-neue": "^0.4.1",
@@ -22,6 +43,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@shopify/flash-list": "2.0.2",
+    "@types/jest": "29.5.14",
     "axios": "^1.12.2",
     "expo": "~54.0.13",
     "expo-camera": "~17.0.9",
@@ -41,6 +63,8 @@
     "expo-system-ui": "~6.0.7",
     "expo-web-browser": "~15.0.8",
     "firebase": "^12.4.0",
+    "jest": "~29.7.0",
+    "jest-expo": "~54.0.17",
     "phosphor-react-native": "^3.0.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -63,6 +87,7 @@
     "baseline-browser-mapping": "^2.9.11",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "firebase-admin": "^13.9.0",
     "typescript": "~5.9.2"
   },
   "private": true

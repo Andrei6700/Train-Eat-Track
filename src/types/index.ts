@@ -164,7 +164,7 @@ export type WorkoutExercise = {
 
 export type WorkoutHistory = {
   id?: string;
-  userID: string;
+  userID?: string;
   date: Date | string;
   duration: number;
   exercises: WorkoutExercise[];
@@ -200,7 +200,7 @@ export type WorkoutTemplate = {
 
 export type WorkoutPlan = {
   id?: string;
-  userID: string;
+  userID?: string;
   planName: string;
   splitDays?: number; // Cycle length: 2, 4, 7, 9, 14, etc. Default: 7
   days: DayWorkout[];
@@ -225,7 +225,7 @@ export type Meal = {
 
 export type DailyNutrition = {
   id?: string;
-  userID: string;
+  userID?: string;
   date: Date | string;
   calorieGoal: number;
   proteinGoal: number;
@@ -243,7 +243,7 @@ export type WaterIntake = {
 
 export type DailyWater = {
   id?: string;
-  userID: string;
+  userID?: string;
   date: Date | string;
   goal: number;
   intakes: WaterIntake[];

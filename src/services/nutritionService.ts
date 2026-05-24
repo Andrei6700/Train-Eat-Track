@@ -135,6 +135,14 @@ const pickLatestNutritionDoc = (
   return best;
 };
 
+/** Returns the user-scoped nutrition subcollection reference */
+const userNutritionCol = (userID: string) =>
+  collection(firestore, "users", userID, COLLECTION_NAME);
+
+/** Returns a document reference within the user-scoped nutrition subcollection */
+const userNutritionDoc = (userID: string, docId: string) =>
+  doc(firestore, "users", userID, COLLECTION_NAME, docId);
+
 export const getDailyNutrition = async (
   userID: string,
   date: Date,
@@ -143,8 +151,7 @@ export const getDailyNutrition = async (
     const dateKey = getDateKey(date);
 
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userNutritionCol(userID),
       where("dateKey", "==", dateKey),
     );
 
@@ -177,12 +184,17 @@ export const saveDailyNutrition = async (
   nutrition: DailyNutrition,
 ): Promise<ResponseType> => {
   try {
+    const userID = nutrition.userID;
+    if (!userID) {
+      return { success: false, msg: "Missing userID", code: "UNKNOWN_ERROR" };
+    }
+
     const date = new Date(nutrition.date);
     const dateKey = getDateKey(date);
 
     if (nutrition.id) {
-      const docRef = doc(firestore, COLLECTION_NAME, nutrition.id);
-      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+      const docRef = userNutritionDoc(userID, nutrition.id);
+      const { id, userID: _uid, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
         localUpdatedAt?: number;
       };
 
@@ -200,8 +212,7 @@ export const saveDailyNutrition = async (
     }
 
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", nutrition.userID),
+      userNutritionCol(userID),
       where("dateKey", "==", dateKey),
     );
     const querySnapshot = await withTimeout(
@@ -211,8 +222,8 @@ export const saveDailyNutrition = async (
 
     if (!querySnapshot.empty) {
       const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
-      const docRef = doc(firestore, COLLECTION_NAME, latestDoc.id);
-      const { id, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+      const docRef = userNutritionDoc(userID, latestDoc.id);
+      const { id, userID: _uid, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
         localUpdatedAt?: number;
       };
 
@@ -229,9 +240,12 @@ export const saveDailyNutrition = async (
       return { success: true, data: { id: latestDoc.id } };
     }
 
+    // Strip userID before writing to Firestore
+    const { userID: _uid, ...nutritionWithoutUser } = nutrition;
+
     const docRef = await withTimeout(
-      addDoc(collection(firestore, COLLECTION_NAME), {
-        ...nutrition,
+      addDoc(userNutritionCol(userID), {
+        ...nutritionWithoutUser,
         dateKey,
         date: Timestamp.fromDate(date),
         createdAt: serverTimestamp(),
@@ -254,8 +268,7 @@ export const getUserNutritionHistory = async (
 ): Promise<ResponseType> => {
   try {
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userNutritionCol(userID),
     );
 
     const querySnapshot = await withTimeout(
@@ -312,8 +325,7 @@ export const getUserNutritionEarliestDate = async (
 ): Promise<Date | null> => {
   const getEarliestFromUserOnlyQuery = async (): Promise<Date | null> => {
     const fallbackQuery = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userNutritionCol(userID),
     );
 
     const querySnapshot = await withTimeout(
@@ -350,8 +362,7 @@ export const getUserNutritionEarliestDate = async (
 
   try {
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userNutritionCol(userID),
       orderBy("dateKey", "asc"),
       limit(1),
     );
@@ -413,8 +424,7 @@ export const updateNutritionGoals = async (
     const dateKey = getDateKey(new Date());
 
     const q = query(
-      collection(firestore, COLLECTION_NAME),
-      where("userID", "==", userID),
+      userNutritionCol(userID),
       where("dateKey", "==", dateKey),
     );
 
@@ -424,7 +434,7 @@ export const updateNutritionGoals = async (
     );
 
     if (!querySnapshot.empty) {
-      const docRef = doc(firestore, COLLECTION_NAME, querySnapshot.docs[0].id);
+      const docRef = userNutritionDoc(userID, querySnapshot.docs[0].id);
       await withTimeout(
         updateDoc(docRef, {
           ...goals,

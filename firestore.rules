@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // customProducts: anyone authenticated can read,
+    // only authenticated users can create (not edit/delete others')
+    match /customProducts/{productId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.addedBy == request.auth.uid;
+
+      // Permite update dacă: ești cel care a adăugat-o SAU documentul e vechi (fără addedBy)
+      // Aceasta e o regulă tranzitorie — după ce documentele vechi sunt actualizate organic,
+      // se pot scoate condițiile || resource.data.addedBy == "" || !("addedBy" in resource.data)
+      allow update: if request.auth != null
+        && (resource.data.addedBy == request.auth.uid
+            || resource.data.addedBy == ""
+            || !("addedBy" in resource.data));
+
+      allow delete: if false; // no deletion for now
+    }
+
+    // users profile document
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ALL subcollections under a user — one rule covers everything
+    match /users/{uid}/{subcollection}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

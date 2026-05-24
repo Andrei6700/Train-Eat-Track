@@ -49,7 +49,7 @@ export const useOfflineSupport = (): UseOfflineSupportReturn => {
       if (isConnected) {
         try {
           return await onlineAction();
-        } catch (error) {
+        } catch (_error) {
           console.log("⚠️ Online action failed, falling back to offline");
           if (syncType && syncData) {
             await queueAction(syncType, syncData);
