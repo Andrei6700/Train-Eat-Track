@@ -1,9 +1,45 @@
 const USDA_SEARCH_ENDPOINT = "https://api.nal.usda.gov/fdc/v1/foods/search";
+const OFF_PRODUCT_ENDPOINT = "https://world.openfoodfacts.net/api/v2/product";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_RETRIES = 2;
 const DEFAULT_PAGE_SIZE = 20;
 
+// Open Food Facts types
+type OFFNutriments = {
+  "energy-kcal_100g"?: number;
+  energy_100g?: number;
+  fat_100g?: number;
+  carbohydrates_100g?: number;
+  proteins_100g?: number;
+  fiber_100g?: number;
+  [key: string]: number | string | undefined;
+};
+
+type OFFProduct = {
+  code?: string;
+  product_name?: string;
+  product_name_ro?: string;
+  product_name_en?: string;
+  brands?: string;
+  image_front_url?: string;
+  image_front_small_url?: string;
+  image_url?: string;
+  nutriments?: OFFNutriments;
+  serving_size?: string;
+  product_quantity?: number;
+  product_quantity_unit?: string;
+  quantity?: string;
+};
+
+type OFFResponse = {
+  code?: string;
+  product?: OFFProduct | null;
+  status?: number; // 1 = found, 0 = not found
+  status_verbose?: string;
+};
+
+// USDA types
 type UsdaSearchResponse = {
   foods?: UsdaFoodItem[];
 };
@@ -35,6 +71,7 @@ export type NutritionBarcodeFood = {
   fiber?: number;
   servingSize: string;
   brands?: string;
+  image?: string;
 };
 
 export type NutritionSearchOptions = {
@@ -272,6 +309,83 @@ const dedupeFoods = (foods: NutritionBarcodeFood[]): NutritionBarcodeFood[] => {
   return deduped;
 };
 
+// Open Food Facts text search
+const OFF_SEARCH_ENDPOINT = "https://world.openfoodfacts.net/cgi/search.pl";
+
+type OFFSearchResponse = {
+  count?: number;
+  page?: number;
+  page_size?: number;
+  products?: OFFProduct[];
+};
+
+const fetchOFFTextSearch = async (
+  query: string,
+  options: NutritionSearchOptions = {},
+): Promise<NutritionBarcodeFood[]> => {
+  const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
+  const page = options.page ?? 1;
+
+  const params = new URLSearchParams({
+    search_terms: query,
+    json: "1",
+    page_size: String(pageSize),
+    page: String(page),
+    fields: "code,product_name,product_name_ro,product_name_en,brands,nutriments,image_front_url,image_front_small_url,image_url",
+  });
+
+  const url = `${OFF_SEARCH_ENDPOINT}?${params.toString()}`;
+
+  try {
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "TrainEatTrack/1.0 (https://github.com/Andrei6700/Train-Eat-Track)",
+        },
+      },
+      {
+        timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        retries: options.retries ?? 1,
+        signal: options.signal,
+      },
+    );
+
+    if (!response.ok) {
+      if (__DEV__) {
+        console.warn(
+          `[NutritionixService] OFF search failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      return [];
+    }
+
+    const data = (await response.json()) as OFFSearchResponse;
+    const products = data.products || [];
+
+    const mapped = products
+      .map((p) => mapOFFToFood(p, p.code || ""))
+      .filter((f): f is NutritionBarcodeFood => f !== null);
+
+    if (__DEV__) {
+      console.log(`[NutritionixService] OFF text search found ${mapped.length} products for "${query}"`);
+    }
+
+    return mapped;
+  } catch (error) {
+    if (isAbortError(error) && options.signal?.aborted) {
+      throw error;
+    }
+
+    if (__DEV__) {
+      console.error("[NutritionixService] OFF text search failed:", error);
+    }
+    return [];
+  }
+};
+
 export const searchFoods = async (
   query: string,
   options: NutritionSearchOptions = {},
@@ -281,31 +395,163 @@ export const searchFoods = async (
     return [];
   }
 
-  try {
-    const foods = await fetchUsdaFoods(normalizedQuery, {
-      ...options,
-      pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
-    });
+  const searchOptions = {
+    ...options,
+    pageSize: options.pageSize ?? DEFAULT_PAGE_SIZE,
+  };
 
-    const mapped = foods.map(mapUsdaToFood).filter((food) => food.calories > 0);
-    return dedupeFoods(mapped);
+  // Search both APIs in parallel
+  const [usdaResult, offResult] = await Promise.allSettled([
+    fetchUsdaFoods(normalizedQuery, searchOptions).then((foods) =>
+      foods.map(mapUsdaToFood).filter((food) => food.calories > 0),
+    ),
+    fetchOFFTextSearch(normalizedQuery, searchOptions),
+  ]);
+
+  const usdaFoods =
+    usdaResult.status === "fulfilled" ? usdaResult.value : [];
+  const offFoods =
+    offResult.status === "fulfilled" ? offResult.value : [];
+
+  if (__DEV__) {
+    if (usdaResult.status === "rejected") {
+      console.error("[NutritionixService] USDA text search failed:", usdaResult.reason);
+    }
+    if (offResult.status === "rejected") {
+      console.error("[NutritionixService] OFF text search failed:", offResult.reason);
+    }
+  }
+
+  // Merge: USDA first (generic ingredients), then OFF (branded products)
+  const merged = [...usdaFoods, ...offFoods];
+  return dedupeFoods(merged);
+};
+
+
+// Open Food Facts barcode lookup
+
+const mapOFFToFood = (product: OFFProduct, barcode: string): NutritionBarcodeFood | null => {
+  const name =
+    product.product_name?.trim() ||
+    product.product_name_ro?.trim() ||
+    product.product_name_en?.trim() ||
+    "";
+
+  if (!name) return null;
+
+  const n = product.nutriments || {};
+
+  // OFF stores energy as energy-kcal_100g (kcal) or energy_100g (kJ)
+  // kcal directly, otherwise convert kJ -> kcal
+  let calories = Number(n["energy-kcal_100g"]) || 0;
+  if (!calories && n.energy_100g) {
+    calories = Math.round(Number(n.energy_100g) / 4.184);
+  }
+
+  const protein = Math.max(0, Math.round((Number(n.proteins_100g) || 0) * 10) / 10);
+  const carbs = Math.max(0, Math.round((Number(n.carbohydrates_100g) || 0) * 10) / 10);
+  const fat = Math.max(0, Math.round((Number(n.fat_100g) || 0) * 10) / 10);
+  const fiber = Math.max(0, Math.round((Number(n.fiber_100g) || 0) * 10) / 10);
+
+  const image =
+    product.image_front_url ||
+    product.image_front_small_url ||
+    product.image_url ||
+    undefined;
+
+  return {
+    code: product.code || barcode,
+    product_name: name,
+    name,
+    calories: Math.max(0, Math.round(calories)),
+    protein,
+    carbs,
+    fat,
+    fiber: fiber || undefined,
+    servingSize: "100g",
+    brands: product.brands?.trim() || undefined,
+    image,
+  };
+};
+
+const fetchOFFProduct = async (
+  barcode: string,
+  options: NutritionSearchOptions = {},
+): Promise<NutritionBarcodeFood | null> => {
+  const url = `${OFF_PRODUCT_ENDPOINT}/${encodeURIComponent(barcode)}`;
+
+  try {
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "TrainEatTrack/1.0 (https://github.com/Andrei6700/Train-Eat-Track)",
+        },
+      },
+      {
+        timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        retries: options.retries ?? 1,
+        signal: options.signal,
+      },
+    );
+
+    if (!response.ok) {
+      if (__DEV__) {
+        console.warn(
+          `[NutritionixService] OFF request failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      return null;
+    }
+
+    const data = (await response.json()) as OFFResponse;
+
+    // OFF returns status 0 when product is not found
+    if (!data.product || data.status === 0) {
+      if (__DEV__) {
+        console.log(`[NutritionixService] OFF: product not found for barcode ${barcode}`);
+      }
+      return null;
+    }
+
+    const mapped = mapOFFToFood(data.product, barcode);
+
+    if (mapped && __DEV__) {
+      console.log(`[NutritionixService] OFF: found "${mapped.name}" for barcode ${barcode}`);
+    }
+
+    return mapped;
   } catch (error) {
     if (isAbortError(error) && options.signal?.aborted) {
       throw error;
     }
 
     if (__DEV__) {
-      console.error("[NutritionixService] USDA text search failed:", error);
+      console.error("[NutritionixService] OFF barcode lookup failed:", error);
     }
-    return [];
+    return null;
   }
 };
+
+// Combined barcode search
 
 export const searchByBarcode = async (
   barcode: string,
   options: NutritionSearchOptions = {},
 ): Promise<NutritionBarcodeFood | null> => {
-  const variants = getBarcodeVariants(barcode);
+  const normalized = normalizeBarcode(barcode);
+  if (!normalized) return null;
+
+  // 1. Try Open Food Facts first (global database, for EAN/international barcodes)
+  const offResult = await fetchOFFProduct(normalized, options);
+  if (offResult) {
+    return offResult;
+  }
+
+  // 2. Fall back to USDA (US-centric)
+  const variants = getBarcodeVariants(normalized);
   if (variants.length === 0) {
     return null;
   }
@@ -344,3 +590,4 @@ export const searchByBarcode = async (
 
   return null;
 };
+

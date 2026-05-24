@@ -533,7 +533,7 @@ export const getFoodByBarcode = async (barcode: string): Promise<ResponseType> =
       fat: providerFood.fat,
       servingSize: providerFood.servingSize,
       brands: providerFood.brands,
-      image: undefined,
+      image: providerFood.image,
     };
 
     const successResult: ResponseType = { success: true, data: simplifiedFood };
