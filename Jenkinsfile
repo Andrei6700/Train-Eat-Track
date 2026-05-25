@@ -35,7 +35,7 @@ pipeline {
         //         sh '''
         //         npx expo prebuild --platform android
         //         cd android
-        //         ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=2 --no-daemon
+        //         ./gradlew assembleRelease --max-workers=2 --no-daemon
         //         '''
         //     }
         // }
