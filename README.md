@@ -1,50 +1,100 @@
-# Welcome to your Expo app 👋
+# Train-Eat-Track
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Train-Eat-Track is a high-performance, cross-platform mobile application designed to help users track their workouts, log daily meals, and visualize progress over time. Built with **React Native**, **Expo**, and **TypeScript**, the app integrates seamless database sync, analytics charts, and clean, premium animations.
 
-## Get started
+---
 
-1. Install dependencies
+## Features
 
+- **Workout Tracking:** Log exercises, track sets, reps, weights, and structure your custom workout plans.
+- **Nutrition Logging:** Keep track of daily meals, search foods using the integrated **USDA FoodData Central API**, and monitor your macro-nutrients.
+- **Progress Analytics:** Interactive dashboards showing weekly and monthly progress using beautiful visual charts.
+- **Secure Authentication:** Full user sign-up, sign-in, and password management powered by **Firebase Authentication**.
+- **Media Uploads:** Take photos of workouts or meals and upload them seamlessly using **Cloudinary** integration.
+- **Data Export:** Export your progress, workouts, or nutritional statistics directly to Excel spreadsheets (`.xlsx`).
+- **Smooth Animations:** Powered by **React Native Reanimated (v4)** for premium, fluid transitions and splash screens.
+- **Offline Resilience:** Integrated network connectivity monitoring (`@react-native-community/netinfo`) to ensure a robust user experience.
+
+---
+
+## Tech Stack
+
+- **Client Framework:** React Native (Expo SDK 54), Expo Router (File-based routing), TypeScript
+- **State & UI Components:** React Native Reanimated, Shopify FlashList, React Native Calendars, Gifted Charts, Phosphor Icons
+- **Backend & Cloud:** Firebase (Auth, Firestore), Cloudinary CDN (Image Hosting)
+- **External APIs:** USDA FoodData Central API
+- **DevOps & CI/CD:** Jenkins pipelines, Docker containerization
+
+---
+
+# Getting Started
+
+Follow these instructions to get a copy of the project up and running on your local machine for development and testing.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- [Expo Go](https://expo.dev/client) app installed on your physical device, or an Android/iOS emulator configured.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (optional, if you plan to run the Jenkins CI/CD pipeline).
+
+## Run Locally
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Andrei6700/Train-Eat-Track.git
+   cd Train-Eat-Track
+   ```
+
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-2. Start the app
+3. **Configure Environment Variables:**
+   Create a `.env.local` file in the root directory and add your credentials:
+   ```env
+   # Firebase Web Configuration
+   EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
+   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
+   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
+   EXPO_PUBLIC_FIREBASE_APP_ID=your_firebase_app_id
 
-   ```bash
-   npx expo start
+   # Cloudinary Integration
+   EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+   EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your_cloudinary_upload_preset
+
+   # USDA FoodData Central API (https://fdc.nal.usda.gov/api-key-signup.html)
+   EXPO_PUBLIC_USDA_API_KEY=your_usda_api_key
    ```
 
-In the output, you'll find options to open the app in a
+4. **Start the development server:**
+   ```bash
+   npm start
+   ```
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+# Detailed Documentation
 
-## Get a fresh project
+For detailed technical information specific to the project, access the pages in the index below:
 
-When you're ready, run:
+*  **[Architecture](docs/ARCHITECTURE.md)** – Directory structure, data flows, and Firestore database schema.
+*  **[DevOps & CI/CD Pipeline](docs/CICD.md)** – Complete step-by-step guide for configuring Jenkins in Docker and automating the pipeline.
+*  **[Developer Guide & API Reference](docs/API_REFERENCE.md)** – Environment variables, external API integrations (USDA, Cloudinary), and services.
 
+---
+
+## Running Tests
+
+To run the test suite, use the command:
 ```bash
-npm run reset-project
+npm run test
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## License
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is licensed under the [MIT](https://choosealicense.com/licenses/mit/) license.
