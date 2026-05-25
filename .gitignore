@@ -42,12 +42,6 @@ app-example
 /ios
 /android
 
-# Firebase config
-src/config/firebase.ts
-
-# Cloudinary config
-constants/config.ts
-
 # VSCode settings 
 .vscode/
 
