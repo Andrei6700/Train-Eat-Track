@@ -14,7 +14,8 @@
     "android": {
       "ndk": "26.1.10909125",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE"
+        "foregroundImage": "./assets/images/Logo.png",
+        "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
@@ -24,11 +25,11 @@
       "package": "com.andreibalanoiu.TrainEatTrack"
     },
     "androidStatusBar": {
-      "backgroundColor": "#000000",
+      "backgroundColor": "#0A0A0A",
       "barStyle": "light-content"
     },
     "androidNavigationBar": {
-      "backgroundColor": "#000000",
+      "backgroundColor": "#0A0A0A",
       "barStyle": "light-content"
     },
     "web": {
@@ -43,9 +44,9 @@
           "image": "./assets/images/Logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#0A0A0A",
           "dark": {
-            "backgroundColor": "#FFFFFF"
+            "backgroundColor": "#0A0A0A"
           }
         }
       ],
