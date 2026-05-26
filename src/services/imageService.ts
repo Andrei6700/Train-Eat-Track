@@ -24,13 +24,17 @@ export const uploadFileToCloudinary = async (
             formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
             formData.append("folder", folderName);
 
-            const response = await axios.post(CLOUDINARY_API_URL, formData, {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            },
-        });
+            const response = await fetch(CLOUDINARY_API_URL, {
+                method: "POST",
+                body: formData,
+            });
+            const data = await response.json();
 
-            return { success: true, data: response?.data?.secure_url };
+            if (response.ok && data?.secure_url) {
+                return { success: true, data: data.secure_url };
+            } else {
+                return { success: false, msg: data?.error?.message || "Could not upload image." };
+            }
         }
         return { success: true };
     } catch (error: any) {
