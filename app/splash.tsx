@@ -13,7 +13,7 @@ const index = () => {
     <View style={styles.container}>
       <Image
         style={styles.logo}
-        source={require('@/assets/images/splashImage.png')}
+        source={require('@/assets/images/Logo.png')}
         resizeMode="contain"
       />
     </View>
@@ -27,7 +27,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.neutral900,
+    backgroundColor: colors.background,
   },
   logo: {
     height: '20%',
