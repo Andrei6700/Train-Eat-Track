@@ -48,7 +48,7 @@ const ProfileModal = () => {
   const onPickImage = async () => {
      let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-    //   allowsEditing: true,   //* e imaginea full screen
+    //   allowsEditing: true,   
       aspect: [4, 3],
       quality: 0.5,
     });
