@@ -46,7 +46,16 @@ const ProfileModal = () => {
   }, [user]);
 
   const onPickImage = async () => {
-     let result = await ImagePicker.launchImageLibraryAsync({
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        t("profile_modal_alert_title"),
+        "Please allow access to your photo library to change your profile picture."
+      );
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
     //   allowsEditing: true,   
       aspect: [4, 3],
@@ -67,12 +76,12 @@ const ProfileModal = () => {
 
     setLoading(true);
     const res = await updateUser(user?.uid as string, userData);
-    setLoading(false);
+
     if (res.success) {
-      // update user
-      updateUserData(user?.uid as string);
+      await updateUserData(user?.uid as string);
       router.back();
     } else {
+      setLoading(false);
       Alert.alert(t("profile_modal_alert_title"), res.msg);
     }
   };
