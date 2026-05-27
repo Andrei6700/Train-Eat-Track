@@ -48,7 +48,7 @@ const ProfileModal = () => {
   const onPickImage = async () => {
      let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-    //   allowsEditing: true,   //* e imaginea full screen
+    //   allowsEditing: true,   
       aspect: [4, 3],
       quality: 0.5,
     });
@@ -84,55 +84,60 @@ const ProfileModal = () => {
           leftIcon={<BackButton />}
           style={styles.headerMargin}
         />
-        {/* form */}
+        {/* form + footer inside KAV + ScrollView */}
         <KeyboardAvoidingView
           style={styles.flexOne}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
-        <ScrollView
-          contentContainerStyle={styles.form}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={
-            Platform.OS === "ios" ? "interactive" : "on-drag"
-          }
-          onScrollBeginDrag={Keyboard.dismiss}
-        >
-          <View style={styles.avatarContainer}>
-            <Image
-              style={styles.avatar}
-              source={getProfileImage(userData.image)}
-              contentFit="cover"
-              transition={100}
-            />
-            <TouchableOpacity onPress={onPickImage} style={styles.editIcon}>
-              <Icons.PencilIcon
-                size={verticalScale(20)}
-                color={colors.neutral800}
-              />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.inputContainer}>
-            <Typo color={colors.neutral200}>{t("profile_modal_name_label")}</Typo>
-            <Input
-              placeholder={t("profile_modal_name_placeholder")}
-              value={userData.name}
-              onChangeText={(value) =>
-                setUserData({ ...userData, name: value })
-              }
-              containerStyle={styles.nameInput}
-              inputStyle={styles.nameInputText}
-            />
-          </View>
-        </ScrollView>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === "ios" ? "interactive" : "on-drag"
+            }
+            onScrollBeginDrag={Keyboard.dismiss}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={styles.formContent}>
+              <View style={styles.avatarContainer}>
+                <Image
+                  style={styles.avatar}
+                  source={getProfileImage(userData.image)}
+                  contentFit="cover"
+                  transition={100}
+                />
+                <TouchableOpacity onPress={onPickImage} style={styles.editIcon}>
+                  <Icons.PencilIcon
+                    size={verticalScale(20)}
+                    color={colors.neutral800}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.inputContainer}>
+                <Typo color={colors.neutral200}>{t("profile_modal_name_label")}</Typo>
+                <Input
+                  placeholder={t("profile_modal_name_placeholder")}
+                  value={userData.name}
+                  onChangeText={(value) =>
+                    setUserData({ ...userData, name: value })
+                  }
+                  containerStyle={styles.nameInput}
+                  inputStyle={styles.nameInputText}
+                />
+              </View>
+            </View>
+            {/* footer pinned to bottom */}
+            <View style={styles.footer}>
+              <Button onPress={onSubmit} loading={loading} style={styles.flexOne}>
+                <Typo color={colors.black} fontWeight={"700"}>
+                  {t("profile_modal_update_button")}
+                </Typo>
+              </Button>
+            </View>
+          </ScrollView>
         </KeyboardAvoidingView>
-      </View>
-      {/* footer */}
-      <View style={styles.footer}>
-        <Button onPress={onSubmit} loading={loading} style={styles.flexOne}>
-          <Typo color={colors.black} fontWeight={"700"}>
-            {t("profile_modal_update_button")}
-          </Typo>
-        </Button>
       </View>
     </ModalWrapper>
   );
@@ -143,7 +148,6 @@ export default ProfileModal;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "space-between",
     paddingHorizontal: spacingX._20,
   },
   flexOne: {
@@ -151,6 +155,14 @@ const styles = StyleSheet.create({
   },
   headerMargin: {
     marginBottom: spacingY._10,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+  },
+  formContent: {
+    gap: spacingY._30,
+    marginTop: spacingY._15,
   },
   footer: {
     alignItems: "center",
@@ -162,10 +174,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.neutral700,
     marginBottom: spacingY._5,
     borderTopWidth: 1,
-  },
-  form: {
-    gap: spacingY._30,
-    marginTop: spacingY._15,
   },
   avatarContainer: {
     position: "relative",

@@ -1,4 +1,4 @@
-import { colors, spacingX, spacingY } from "@/constants/theme";
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
 import Button from "@/src/components/ui/Button";
@@ -10,14 +10,6 @@ import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
 import React, { useRef, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
-
-const AUTH_COLORS = {
-  background: "#FBFBF9",
-  text: "#1C293C",
-  muted: "#475569",
-  icon: "#334155",
-  accent: "#FDC800",
-};
 
 const ForgotPassword = () => {
   const emailRef = useRef("");
@@ -46,34 +38,27 @@ const ForgotPassword = () => {
 
   if (emailSent) {
     return (
-      <ScreenWrapper
-        style={{ backgroundColor: AUTH_COLORS.background }}
-        statusBarStyle="dark-content"
-        statusBarBackgroundColor={AUTH_COLORS.background}
-      >
+      <ScreenWrapper>
         <View style={styles.container}>
-          <BackButton
-            iconSize={28}
-            buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
-          />
+          <BackButton iconSize={28} />
 
           <View style={styles.successContainer}>
             <Icons.CheckCircle
               size={verticalScale(80)}
-              color={AUTH_COLORS.accent}
+              color={colors.primary}
               weight="fill"
             />
             <Typo
-              size={24}
-              fontWeight={"800"}
-              color={AUTH_COLORS.text}
+              size={32}
+              variant="heading"
+              color={colors.textPrimary}
               style={{ textAlign: "center", marginTop: spacingY._20 }}
             >
               {t("auth_forgot_password_email_sent_title")}
             </Typo>
             <Typo
               size={16}
-              color={AUTH_COLORS.muted}
+              color={colors.textMuted}
               style={{ textAlign: "center", marginTop: spacingY._10 }}
             >
               {t("auth_forgot_password_email_sent_subtitle")}
@@ -85,52 +70,42 @@ const ForgotPassword = () => {
   }
 
   return (
-    <ScreenWrapper
-      style={{ backgroundColor: AUTH_COLORS.background }}
-      statusBarStyle="dark-content"
-      statusBarBackgroundColor={AUTH_COLORS.background}
-    >
+    <ScreenWrapper>
       <View style={styles.container}>
-        <BackButton
-          iconSize={28}
-          buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
-        />
+        <BackButton iconSize={28} />
 
-        <View style={{ gap: 5, marginTop: spacingY._20 }}>
-          <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
+        <View style={styles.headingGroup}>
+          <Typo size={40} variant="heading" color={colors.textPrimary}>
             {t("auth_forgot_password_heading_line1")}
           </Typo>
-          <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
+          <Typo size={40} variant="heading" color={colors.textPrimary}>
             {t("auth_forgot_password_heading_line2")}
           </Typo>
         </View>
 
         <View style={styles.form}>
-          <Typo size={16} color={AUTH_COLORS.muted}>
+          <Typo size={16} color={colors.textMuted}>
             {t("auth_forgot_password_subtitle")}
           </Typo>
           <Input
             placeholder={t("auth_placeholder_email")}
             onChangeText={(value) => (emailRef.current = value)}
-            containerStyle={styles.authInput}
-            inputStyle={styles.authInputText}
             icon={
               <Icons.At
                 size={verticalScale(26)}
-                color={AUTH_COLORS.icon}
+                color={colors.neutral400}
                 weight="fill"
               />
             }
           />
-          <Button
-            loading={isLoading}
-            onPress={handleSubmit}
-            buttonStyle={{ backgroundColor: AUTH_COLORS.accent }}
-          >
-            <Typo fontWeight={"700"} color={colors.black} size={21}>
-              {t("auth_forgot_password_button")}
-            </Typo>
-          </Button>
+          <View style={styles.buttonOuter}>
+            <View style={styles.buttonShadow} />
+            <Button loading={isLoading} onPress={handleSubmit}>
+              <Typo fontWeight={"700"} color={colors.black} size={21}>
+                {t("auth_forgot_password_button")}
+              </Typo>
+            </Button>
+          </View>
         </View>
       </View>
     </ScreenWrapper>
@@ -145,17 +120,27 @@ const styles = StyleSheet.create({
     gap: spacingY._30,
     paddingHorizontal: spacingX._20,
   },
+  headingGroup: {
+    gap: 5,
+    marginTop: spacingY._20,
+  },
   form: {
     gap: spacingY._20,
   },
-  authInput: {
-    backgroundColor: colors.white,
-    borderWidth: 2,
-    borderColor: colors.black,
-    borderRadius: 8,
+  buttonOuter: {
+    position: "relative",
+    marginRight: 6,
+    marginBottom: 6,
   },
-  authInputText: {
-    color: AUTH_COLORS.text,
+  buttonShadow: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.black,
+    opacity: 0.25,
+    borderRadius: radius._12,
   },
   successContainer: {
     flex: 1,

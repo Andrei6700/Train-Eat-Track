@@ -25,16 +25,16 @@
       "package": "com.andreibalanoiu.TrainEatTrack"
     },
     "androidStatusBar": {
-      "backgroundColor": "#000000",
+      "backgroundColor": "#0A0A0A",
       "barStyle": "light-content"
     },
     "androidNavigationBar": {
-      "backgroundColor": "#000000",
+      "backgroundColor": "#0A0A0A",
       "barStyle": "light-content"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/Logo.png"
     },
     "plugins": [
       "expo-router",
@@ -44,9 +44,9 @@
           "image": "./assets/images/Logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#0A0A0A",
           "dark": {
-            "backgroundColor": "#FFFFFF"
+            "backgroundColor": "#0A0A0A"
           }
         }
       ],

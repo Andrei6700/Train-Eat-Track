@@ -1,4 +1,4 @@
-import { colors, spacingX, spacingY } from "@/constants/theme";
+import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import BackButton from "@/src/components/navigation/BackButton";
 import Button from "@/src/components/ui/Button";
@@ -19,14 +19,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-
-const AUTH_COLORS = {
-  background: "#FBFBF9",
-  text: "#1C293C",
-  muted: "#475569",
-  icon: "#334155",
-  accent: "#FDC800",
-};
 
 const Register = () => {
   const emailRef = useRef("");
@@ -63,11 +55,7 @@ const Register = () => {
   };
 
   return (
-    <ScreenWrapper
-      style={styles.screenBackground}
-      statusBarStyle="dark-content"
-      statusBarBackgroundColor={AUTH_COLORS.background}
-    >
+    <ScreenWrapper>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -78,33 +66,28 @@ const Register = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.container}>
-            <BackButton
-              iconSize={28}
-              buttonStyle={styles.backButton}
-            />
+            <BackButton iconSize={28} />
 
             <View style={styles.headingGroup}>
-              <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
+              <Typo size={40} variant="heading" color={colors.textPrimary}>
                 {t("auth_register_heading_line1")}
               </Typo>
-              <Typo size={30} fontWeight={"800"} color={AUTH_COLORS.text}>
+              <Typo size={40} variant="heading" color={colors.textPrimary}>
                 {t("auth_register_heading_line2")}
               </Typo>
             </View>
 
             <View style={styles.form}>
-              <Typo size={16} color={AUTH_COLORS.muted}>
+              <Typo size={16} color={colors.textMuted}>
                 {t("auth_register_subtitle")}
               </Typo>
               <Input
                 placeholder={t("auth_placeholder_name")}
                 onChangeText={(value) => (nameRef.current = value)}
-                containerStyle={styles.authInput}
-                inputStyle={styles.authInputText}
                 icon={
                   <Icons.User
                     size={verticalScale(26)}
-                    color={AUTH_COLORS.icon}
+                    color={colors.neutral400}
                     weight="fill"
                   />
                 }
@@ -112,12 +95,10 @@ const Register = () => {
               <Input
                 placeholder={t("auth_placeholder_email")}
                 onChangeText={(value) => (emailRef.current = value)}
-                containerStyle={styles.authInput}
-                inputStyle={styles.authInputText}
                 icon={
                   <Icons.At
                     size={verticalScale(26)}
-                    color={AUTH_COLORS.icon}
+                    color={colors.neutral400}
                     weight="fill"
                   />
                 }
@@ -127,12 +108,10 @@ const Register = () => {
                   placeholder={t("auth_placeholder_password")}
                   onChangeText={(value) => (passwordRef.current = value)}
                   secureTextEntry={!isPasswordVisible}
-                  containerStyle={styles.authInput}
-                  inputStyle={styles.authInputText}
                   icon={
                     <Icons.Lock
                       size={verticalScale(26)}
-                      color={AUTH_COLORS.icon}
+                      color={colors.neutral400}
                       weight="fill"
                     />
                   }
@@ -144,33 +123,32 @@ const Register = () => {
                   {isPasswordVisible ? (
                     <Icons.Eye
                       size={verticalScale(24)}
-                      color={AUTH_COLORS.icon}
+                      color={colors.neutral400}
                       weight="fill"
                     />
                   ) : (
                     <Icons.EyeSlash
                       size={verticalScale(24)}
-                      color={AUTH_COLORS.icon}
+                      color={colors.neutral400}
                       weight="fill"
                     />
                   )}
                 </Pressable>
               </View>
 
-              <Button
-                loading={isLoading}
-                onPress={handleSubmit}
-                buttonStyle={styles.registerButton}
-              >
-                <Typo fontWeight={"700"} color={colors.black} size={21}>
-                  {t("auth_register_button")}
-                </Typo>
-              </Button>
+              <View style={styles.buttonOuter}>
+                <View style={styles.buttonShadow} />
+                <Button loading={isLoading} onPress={handleSubmit}>
+                  <Typo fontWeight={"700"} color={colors.black} size={21}>
+                    {t("auth_register_button")}
+                  </Typo>
+                </Button>
+              </View>
             </View>
             <View style={styles.footer}>
-              <Typo size={15} color={AUTH_COLORS.text}>{t("auth_register_have_account")}</Typo>
+              <Typo size={15} color={colors.textMuted}>{t("auth_register_have_account")}</Typo>
               <Pressable onPress={() => router.push("/(auth)/login")}>
-                <Typo size={15} fontWeight={"700"} color={AUTH_COLORS.accent}>
+                <Typo size={15} fontWeight={"700"} color={colors.primary}>
                   {t("auth_register_login")}
                 </Typo>
               </Pressable>
@@ -188,9 +166,6 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  screenBackground: {
-    backgroundColor: AUTH_COLORS.background,
-  },
   scrollContent: {
     flexGrow: 1,
   },
@@ -199,9 +174,6 @@ const styles = StyleSheet.create({
     gap: spacingY._30,
     paddingHorizontal: spacingX._20,
   },
-  backButton: {
-    backgroundColor: AUTH_COLORS.accent,
-  },
   headingGroup: {
     gap: 5,
     marginTop: spacingY._20,
@@ -209,17 +181,20 @@ const styles = StyleSheet.create({
   form: {
     gap: spacingY._20,
   },
-  authInput: {
-    backgroundColor: colors.white,
-    borderWidth: 2,
-    borderColor: colors.black,
-    borderRadius: 8,
+  buttonOuter: {
+    position: "relative",
+    marginRight: 6,
+    marginBottom: 6,
   },
-  authInputText: {
-    color: AUTH_COLORS.text,
-  },
-  registerButton: {
-    backgroundColor: AUTH_COLORS.accent,
+  buttonShadow: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: -4,
+    bottom: -4,
+    backgroundColor: colors.black,
+    opacity: 0.25,
+    borderRadius: radius._12,
   },
   footer: {
     flexDirection: "row",
