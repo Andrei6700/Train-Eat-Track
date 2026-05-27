@@ -15,7 +15,7 @@
       "ndk": "26.1.10909125",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Logo.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#E6F4FE"
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
