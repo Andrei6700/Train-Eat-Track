@@ -14,6 +14,7 @@
     "android": {
       "ndk": "26.1.10909125",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/Logo.png",
         "backgroundColor": "#E6F4FE"
       },
       "edgeToEdgeEnabled": false,
