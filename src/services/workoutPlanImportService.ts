@@ -665,106 +665,120 @@ const derivePlanName = (fileName: string, fallbackSheetName: string): string => 
   return fallbackSheetName.trim() || "Imported Plan";
 };
 
-const importWorkoutPlanWithGemini = async (
+const importWorkoutPlanWithAI = async (
   fileContent: string,
   fallbackPlanName: string
 ): Promise<ImportWorkoutPlanResult> => {
-  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return { success: false, code: "PARSE_FAILED", msg: "Gemini API key not configured." };
+    return { success: false, code: "PARSE_FAILED", msg: "Groq API key not configured." };
   }
 
-  const prompt = `Extract workout plan data from this file and return JSON only.
-Extract:
-- Plan name if it's not put a name (fallback to "${fallbackPlanName}")
-- Split days (cycle length)
-- For each day:
-  - Is rest day: true/false
-  - Exercises list:
-    - exercise name
-    - sets, reps, weight (kg)
+  const prompt = `You are a fitness data extraction assistant. Your task is to extract workout plan data from the provided text and return ONLY a raw JSON object. Do not add any conversational text or markdown blocks.
 
-The JSON should match this exact TypeScript type:
-type DayWorkout = { 
-  day: string, 
-  isRestDay: boolean, 
-  exercises: { 
-    exerciseName: string, 
-    sets: { reps: number, weight: number, weightUnit: "kg" }[] 
-  }[] 
-};
-type ImportedWorkoutPlanDraft = { 
-  planName: string, 
-  splitDays: number, 
-  days: DayWorkout[] 
-};
+The JSON MUST EXACTLY MATCH this structure:
+{
+  "planName": "Name of the plan",
+  "splitDays": 6,
+  "days": [
+    {
+      "day": "Day 1",
+      "notes": "Chest & Triceps",
+      "isRestDay": false,
+      "exercises": [
+        {
+          "exerciseName": "Bench Press",
+          "sets": [
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" }
+          ]
+        }
+      ]
+    },
+    {
+      "day": "Day 3",
+      "notes": "REST DAY",
+      "isRestDay": true,
+      "exercises": []
+    }
+  ]
+}
 
-Return ONLY valid JSON matching the ImportedWorkoutPlanDraft type without any markdown formatting, just the raw { ... } JSON object.
+Rules:
+1. If no plan name is found, use "${fallbackPlanName}".
+2. If it says "4 sets x 8 reps", you MUST generate an array with exactly 4 objects inside "sets", each having reps: 8.
+3. If it is a rest day, set "isRestDay": true and "exercises": [].
+4. Output ONLY valid JSON.
 
-File content:
+File content to parse:
 ${fileContent}`;
 
-  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
-  let lastError = "";
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" },
+        stream: false,
+        temperature: 0.1
+      })
+    });
 
-  for (const model of modelsToTry) {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }]
-        })
-      });
-
-      if (!response.ok) {
-        lastError = await response.text();
-        if (__DEV__) console.warn(`Gemini API Error with ${model}:`, lastError);
-        continue; // Try next model
-      }
-
-      const data = await response.json();
-      let textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!textResponse) {
-        continue;
-      }
-
-      // Clean potential markdown wrap if model ignored instructions
-      textResponse = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-      const parsed = JSON.parse(textResponse) as ImportedWorkoutPlanDraft;
-
-      // Validate
-      if (!parsed.days || !Array.isArray(parsed.days)) {
-        continue; // Try next model or fail
-      }
-
-      if (!parsed.splitDays) parsed.splitDays = parsed.days.length;
-      if (!parsed.planName) parsed.planName = fallbackPlanName;
-
-      // Normalize formats
-      parsed.days = parsed.days.map((day, idx) => ({
-        day: day.day || `Day ${idx + 1}`,
-        isRestDay: !!day.isRestDay,
-        exercises: Array.isArray(day.exercises) ? day.exercises.map(ex => ({
-          exerciseName: ex.exerciseName || "Unknown Exercise",
-          sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({
-            reps: Number(s.reps) || 0,
-            weight: Number(s.weight) || 0,
-            weightUnit: s.weightUnit || "kg"
-          })) : []
-        })) : []
-      }));
-
-      return { success: true, data: parsed };
-    } catch (error) {
-      if (__DEV__) console.error(`Error in Gemini import with ${model}:`, error);
-      // Continue to next model on parse error
+    if (!response.ok) {
+      const lastError = await response.text();
+      if (__DEV__) console.warn(`Groq API Error:`, lastError);
+      return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed: " + lastError };
     }
-  }
 
-  return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed: " + lastError };
+    const data = await response.json();
+    let textResponse = data.choices?.[0]?.message?.content;
+
+    if (!textResponse) {
+      return { success: false, code: "PARSE_FAILED", msg: "Empty response from AI." };
+    }
+
+    if (__DEV__) console.log("RAW AI RESPONSE:", textResponse);
+
+    // Clean potential markdown wrap if model ignored instructions
+    textResponse = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    const parsed = JSON.parse(textResponse) as ImportedWorkoutPlanDraft;
+
+    // Validate
+    if (!parsed.days || !Array.isArray(parsed.days)) {
+      return { success: false, code: "PARSE_FAILED", msg: "Invalid JSON structure from AI." };
+    }
+
+    if (!parsed.splitDays) parsed.splitDays = parsed.days.length;
+    if (!parsed.planName) parsed.planName = fallbackPlanName;
+
+    // Normalize formats
+    parsed.days = parsed.days.map((day, idx) => ({
+      day: `Day ${idx + 1}`,
+      isRestDay: !!day.isRestDay,
+      notes: day.notes || "",
+      exercises: Array.isArray(day.exercises) ? day.exercises.map(ex => ({
+        exerciseName: ex.exerciseName || "Unknown Exercise",
+        sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({
+          reps: Number(s.reps) || 0,
+          weight: Number(s.weight) || 0,
+          weightUnit: s.weightUnit || "kg"
+        })) : []
+      })) : []
+    }));
+
+    return { success: true, data: parsed };
+  } catch (error) {
+    if (__DEV__) console.error(`Error in Groq import:`, error);
+    return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed due to network or JSON error." };
+  }
 };
 
 export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanResult> => {
@@ -837,9 +851,9 @@ export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanRes
         return `Sheet: ${name}\n${csv}`;
       }).join("\n\n");
 
-      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
       if (apiKey) {
-        const aiResult = await importWorkoutPlanWithGemini(fileTextForAI, fallbackName);
+        const aiResult = await importWorkoutPlanWithAI(fileTextForAI, fallbackName);
         if (aiResult.success) return aiResult;
         if (__DEV__) console.warn("AI parsing failed, falling back to manual Excel parsing.");
       }
@@ -897,16 +911,16 @@ export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanRes
         };
       }
 
-      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
       if (!apiKey) {
         return {
           success: false,
           code: "PARSE_FAILED",
-          msg: "Gemini API key is required to parse non-Excel files.",
+          msg: "Groq API key is required to parse non-Excel files.",
         };
       }
 
-      return await importWorkoutPlanWithGemini(fileTextForAI, fallbackName);
+      return await importWorkoutPlanWithAI(fileTextForAI, fallbackName);
     }
   } catch (error: unknown) {
     const message =
