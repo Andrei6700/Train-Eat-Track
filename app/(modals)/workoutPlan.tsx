@@ -202,6 +202,17 @@ const WorkoutPlanScreen = () => {
 
     // Check if we have template data in params
     if (params.templateId) {
+      if (currentWorkoutPlan && !currentWorkoutPlan.id && currentWorkoutPlan.days.length > 0) {
+        setExistingPlanId(null);
+        setPlanName(currentWorkoutPlan.planName || "");
+        setSplitDays(currentWorkoutPlan.splitDays || 1);
+        setDays(currentWorkoutPlan.days);
+        setIsFromTemplate(true);
+        setIsFromImport(false);
+        setLoading(false);
+        return;
+      }
+
       const template = getTemplateById(params.templateId as string);
       if (template) {
         const { normalizedDays, cycleLength } =
