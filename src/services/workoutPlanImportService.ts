@@ -37,14 +37,14 @@ type FormatDetectionResult = {
 
 type ParseResult =
   | {
-      success: true;
-      splitDays: number;
-      days: DayWorkout[];
-    }
+    success: true;
+    splitDays: number;
+    days: DayWorkout[];
+  }
   | {
-      success: false;
-      errors: string[];
-    };
+    success: false;
+    errors: string[];
+  };
 
 type DayRowsAccumulator = Map<number, DayWorkout>;
 
@@ -255,11 +255,11 @@ const parseDayNumberTableFormat = (rows: string[][]): ParseResult => {
   let currentDayNumber: number | null = null;
   let headerColumns:
     | {
-        exerciseIndex: number;
-        setsIndex: number;
-        repsIndex: number;
-        weightIndex: number | null;
-      }
+      exerciseIndex: number;
+      setsIndex: number;
+      repsIndex: number;
+      weightIndex: number | null;
+    }
     | null = null;
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
@@ -665,10 +665,118 @@ const derivePlanName = (fileName: string, fallbackSheetName: string): string => 
   return fallbackSheetName.trim() || "Imported Plan";
 };
 
+const importWorkoutPlanWithGemini = async (
+  fileContent: string,
+  fallbackPlanName: string
+): Promise<ImportWorkoutPlanResult> => {
+  const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { success: false, code: "PARSE_FAILED", msg: "Gemini API key not configured." };
+  }
+
+  const prompt = `Extract workout plan data from this file and return JSON only.
+Extract:
+- Plan name if it's not put a name (fallback to "${fallbackPlanName}")
+- Split days (cycle length)
+- For each day:
+  - Is rest day: true/false
+  - Exercises list:
+    - exercise name
+    - sets, reps, weight (kg)
+
+The JSON should match this exact TypeScript type:
+type DayWorkout = { 
+  day: string, 
+  isRestDay: boolean, 
+  exercises: { 
+    exerciseName: string, 
+    sets: { reps: number, weight: number, weightUnit: "kg" }[] 
+  }[] 
+};
+type ImportedWorkoutPlanDraft = { 
+  planName: string, 
+  splitDays: number, 
+  days: DayWorkout[] 
+};
+
+Return ONLY valid JSON matching the ImportedWorkoutPlanDraft type without any markdown formatting, just the raw { ... } JSON object.
+
+File content:
+${fileContent}`;
+
+  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
+  let lastError = "";
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) {
+        lastError = await response.text();
+        if (__DEV__) console.warn(`Gemini API Error with ${model}:`, lastError);
+        continue; // Try next model
+      }
+
+      const data = await response.json();
+      let textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!textResponse) {
+        continue;
+      }
+
+      // Clean potential markdown wrap if model ignored instructions
+      textResponse = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+      const parsed = JSON.parse(textResponse) as ImportedWorkoutPlanDraft;
+
+      // Validate
+      if (!parsed.days || !Array.isArray(parsed.days)) {
+        continue; // Try next model or fail
+      }
+
+      if (!parsed.splitDays) parsed.splitDays = parsed.days.length;
+      if (!parsed.planName) parsed.planName = fallbackPlanName;
+
+      // Normalize formats
+      parsed.days = parsed.days.map((day, idx) => ({
+        day: day.day || `Day ${idx + 1}`,
+        isRestDay: !!day.isRestDay,
+        exercises: Array.isArray(day.exercises) ? day.exercises.map(ex => ({
+          exerciseName: ex.exerciseName || "Unknown Exercise",
+          sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({
+            reps: Number(s.reps) || 0,
+            weight: Number(s.weight) || 0,
+            weightUnit: s.weightUnit || "kg"
+          })) : []
+        })) : []
+      }));
+
+      return { success: true, data: parsed };
+    } catch (error) {
+      if (__DEV__) console.error(`Error in Gemini import with ${model}:`, error);
+      // Continue to next model on parse error
+    }
+  }
+
+  return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed: " + lastError };
+};
+
 export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanResult> => {
   try {
     const pickedFile = await DocumentPicker.getDocumentAsync({
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      type: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "text/csv",
+        "text/plain",
+        "application/json"
+      ],
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -689,80 +797,117 @@ export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanRes
       };
     }
 
-    if (!pickedAsset.name.toLowerCase().endsWith(".xlsx")) {
-      return {
-        success: false,
-        code: "INVALID_FILE_TYPE",
-        msg: "Only .xlsx files are supported.",
-      };
-    }
+    const fileNameLower = pickedAsset.name.toLowerCase();
+    const isExcel = fileNameLower.endsWith(".xlsx") || fileNameLower.endsWith(".xls");
 
-    let fileBase64 = "";
-    try {
-      fileBase64 = await FileSystem.readAsStringAsync(pickedAsset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-    } catch {
-      return {
-        success: false,
-        code: "READ_FAILED",
-        msg: "Could not read the selected Excel file.",
-      };
-    }
+    let fileTextForAI = "";
+    const fallbackName = derivePlanName(pickedAsset.name, "Imported Plan");
 
-    let workbook: XLSX.WorkBook;
-    try {
-      workbook = XLSX.read(fileBase64, {
-        type: "base64",
-        raw: false,
-      });
-    } catch {
-      return {
-        success: false,
-        code: "READ_FAILED",
-        msg: "The selected file is not a valid Excel workbook.",
-      };
-    }
-
-    const sheetRows = extractRowsBySheet(workbook);
-
-    for (const entry of sheetRows) {
-      const detected = detectFormatForSheet(entry.sheetName, entry.rows);
-      if (!detected) continue;
-
-      let parsed: ParseResult;
-      if (detected.format === "DAY_NUMBER_TABLE") {
-        parsed = parseDayNumberTableFormat(detected.rows);
-      } else if (detected.format === "WEEK_EXERCITIU") {
-        parsed = parseWeekExercitiuFormat(detected.rows);
-      } else {
-        parsed = parseWeekWorkingSetsFormat(detected.rows);
-      }
-
-      if (!parsed.success) {
+    if (isExcel) {
+      let fileBase64 = "";
+      try {
+        fileBase64 = await FileSystem.readAsStringAsync(pickedAsset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } catch {
         return {
           success: false,
-          code: "PARSE_FAILED",
-          msg: "Could not import workout plan from this Excel file.",
-          errors: parsed.errors,
+          code: "READ_FAILED",
+          msg: "Could not read the selected Excel file.",
+        };
+      }
+
+      let workbook: XLSX.WorkBook;
+      try {
+        workbook = XLSX.read(fileBase64, {
+          type: "base64",
+          raw: false,
+        });
+      } catch {
+        return {
+          success: false,
+          code: "READ_FAILED",
+          msg: "The selected file is not a valid Excel workbook.",
+        };
+      }
+
+      // Convert all sheets to a single text representation for AI
+      fileTextForAI = workbook.SheetNames.map(name => {
+        const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[name]);
+        return `Sheet: ${name}\n${csv}`;
+      }).join("\n\n");
+
+      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        const aiResult = await importWorkoutPlanWithGemini(fileTextForAI, fallbackName);
+        if (aiResult.success) return aiResult;
+        if (__DEV__) console.warn("AI parsing failed, falling back to manual Excel parsing.");
+      }
+
+      // Fallback manual Excel parsing
+      const sheetRows = extractRowsBySheet(workbook);
+      for (const entry of sheetRows) {
+        const detected = detectFormatForSheet(entry.sheetName, entry.rows);
+        if (!detected) continue;
+
+        let parsed: ParseResult;
+        if (detected.format === "DAY_NUMBER_TABLE") {
+          parsed = parseDayNumberTableFormat(detected.rows);
+        } else if (detected.format === "WEEK_EXERCITIU") {
+          parsed = parseWeekExercitiuFormat(detected.rows);
+        } else {
+          parsed = parseWeekWorkingSetsFormat(detected.rows);
+        }
+
+        if (!parsed.success) {
+          return {
+            success: false,
+            code: "PARSE_FAILED",
+            msg: "Could not import workout plan from this Excel file.",
+            errors: parsed.errors,
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            planName: derivePlanName(pickedAsset.name, detected.sheetName),
+            splitDays: parsed.splitDays,
+            days: parsed.days,
+          },
         };
       }
 
       return {
-        success: true,
-        data: {
-          planName: derivePlanName(pickedAsset.name, detected.sheetName),
-          splitDays: parsed.splitDays,
-          days: parsed.days,
-        },
+        success: false,
+        code: "UNSUPPORTED_FORMAT",
+        msg: "Excel format not supported for workout import.",
       };
-    }
+    } else {
+      // It's a text file (CSV, TXT, JSON)
+      try {
+        fileTextForAI = await FileSystem.readAsStringAsync(pickedAsset.uri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      } catch {
+        return {
+          success: false,
+          code: "READ_FAILED",
+          msg: "Could not read the selected text file.",
+        };
+      }
 
-    return {
-      success: false,
-      code: "UNSUPPORTED_FORMAT",
-      msg: "Excel format not supported for workout import.",
-    };
+      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return {
+          success: false,
+          code: "PARSE_FAILED",
+          msg: "Gemini API key is required to parse non-Excel files.",
+        };
+      }
+
+      return await importWorkoutPlanWithGemini(fileTextForAI, fallbackName);
+    }
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Could not import workout plan.";
