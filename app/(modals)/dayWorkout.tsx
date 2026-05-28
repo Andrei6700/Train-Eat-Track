@@ -77,13 +77,13 @@ const DayWorkout = () => {
   };
 
   const updateExerciseName = (index: number, name: string) => {
-    const newExercises = [...exercises];
+    const newExercises = exercises.map(ex => ({...ex, sets: ex.sets.map(set => ({...set}))}));
     newExercises[index].exerciseName = name;
     setExercises(newExercises);
   };
 
   const addSet = (exerciseIndex: number) => {
-    const newExercises = [...exercises];
+    const newExercises = exercises.map(ex => ({...ex, sets: ex.sets.map(set => ({...set}))}));
     const lastSet =
       newExercises[exerciseIndex].sets[
         newExercises[exerciseIndex].sets.length - 1
@@ -101,7 +101,7 @@ const DayWorkout = () => {
       Alert.alert(t("common_error"), t("common_validation_need_one_set"));
       return;
     }
-    const newExercises = [...exercises];
+    const newExercises = exercises.map(ex => ({...ex, sets: ex.sets.map(set => ({...set}))}));
     newExercises[exerciseIndex].sets = newExercises[exerciseIndex].sets.filter(
       (_, i) => i !== setIndex
     );
@@ -114,7 +114,7 @@ const DayWorkout = () => {
     field: keyof WorkoutSet,
     value: string | number
   ) => {
-    const newExercises = [...exercises];
+    const newExercises = exercises.map(ex => ({...ex, sets: ex.sets.map(set => ({...set}))}));
     const target = newExercises[exerciseIndex].sets[setIndex];
     if (field === "reps") {
       target.reps = typeof value === "number" ? value : parseInt(value) || 0;
@@ -127,7 +127,7 @@ const DayWorkout = () => {
   };
 
   const toggleWeightUnit = (exerciseIndex: number, setIndex: number) => {
-    const newExercises = [...exercises];
+    const newExercises = exercises.map(ex => ({...ex, sets: ex.sets.map(set => ({...set}))}));
     const currentUnit = newExercises[exerciseIndex].sets[setIndex].weightUnit;
     newExercises[exerciseIndex].sets[setIndex].weightUnit =
       currentUnit === "kg" ? "lbs" : "kg";
