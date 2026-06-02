@@ -24,21 +24,21 @@ pipeline {
 
         // Build Android
         // Temporarily disabled due to Gradle build daemon disappeared unexpectedly
-        // stage('Build Android') {
-        //     agent{
-        //         docker{
-        //             image 'reactnativecommunity/react-native-android'
-        //             reuseNode true
-        //         }
-        //     }
-        //     steps {
-        //         sh '''
-        //         npx expo prebuild --platform android
-        //         cd android
-        //         ./gradlew assembleRelease --max-workers=2 --no-daemon
-        //         '''
-        //     }
-        // }
+        stage('Build Android') {
+            agent{
+                docker{
+                    image 'reactnativecommunity/react-native-android'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh '''
+                npx expo prebuild --platform android
+                # cd android
+                # ./gradlew assembleRelease --max-workers=2 --no-daemon
+                '''
+            }
+        }
 
         // Static code analysis stages
         stage('ESLint'){
