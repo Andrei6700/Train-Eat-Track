@@ -21,7 +21,7 @@ import { verticalScale } from "@/src/utils/styling";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
     Alert,
     KeyboardAvoidingView,
@@ -142,6 +142,12 @@ const WorkoutPlanScreen = () => {
   const [days, setDays] = useState<DayWorkout[]>([]);
   const [isFromTemplate, setIsFromTemplate] = useState(false);
   const [isFromImport, setIsFromImport] = useState(false);
+  
+  const workoutPlanRef = useRef(workoutPlan);
+  useEffect(() => {
+    workoutPlanRef.current = workoutPlan;
+  }, [workoutPlan]);
+
   const footerBottomOffset = insets.bottom + spacingY._12;
   const footerReserve =
     footerBottomOffset + FOOTER_BUTTON_HEIGHT + spacingY._15;
@@ -192,8 +198,21 @@ const WorkoutPlanScreen = () => {
   const loadWorkoutPlan = async () => {
     if (!user?.uid) return;
 
+    const currentWorkoutPlan = workoutPlanRef.current;
+
     // Check if we have template data in params
     if (params.templateId) {
+      if (currentWorkoutPlan && !currentWorkoutPlan.id && currentWorkoutPlan.days.length > 0) {
+        setExistingPlanId(null);
+        setPlanName(currentWorkoutPlan.planName || "");
+        setSplitDays(currentWorkoutPlan.splitDays || 1);
+        setDays(currentWorkoutPlan.days);
+        setIsFromTemplate(true);
+        setIsFromImport(false);
+        setLoading(false);
+        return;
+      }
+
       const template = getTemplateById(params.templateId as string);
       if (template) {
         const { normalizedDays, cycleLength } =
@@ -211,11 +230,11 @@ const WorkoutPlanScreen = () => {
     }
 
     // Check if we have imported data from context (set by selection screen)
-    if (params.fromImport && workoutPlan && !workoutPlan.id) {
+    if (params.fromImport && currentWorkoutPlan && !currentWorkoutPlan.id) {
       setExistingPlanId(null);
-      setPlanName(workoutPlan.planName || "");
-      setSplitDays(workoutPlan.splitDays || 1);
-      setDays(workoutPlan.days || []);
+      setPlanName(currentWorkoutPlan.planName || "");
+      setSplitDays(currentWorkoutPlan.splitDays || 1);
+      setDays(currentWorkoutPlan.days || []);
       setIsFromTemplate(false);
       setIsFromImport(true);
       setLoading(false);
@@ -229,11 +248,11 @@ const WorkoutPlanScreen = () => {
     }
 
     // Otherwise, load existing plan if available
-    if (workoutPlan && !workoutPlan.id) {
+    if (currentWorkoutPlan && !currentWorkoutPlan.id) {
       setExistingPlanId(null);
-      setPlanName(workoutPlan.planName || "");
-      setSplitDays(workoutPlan.splitDays || 1);
-      setDays(workoutPlan.days || []);
+      setPlanName(currentWorkoutPlan.planName || "");
+      setSplitDays(currentWorkoutPlan.splitDays || 1);
+      setDays(currentWorkoutPlan.days || []);
       setLoading(false);
       return;
     }

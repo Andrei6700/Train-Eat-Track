@@ -37,14 +37,14 @@ type FormatDetectionResult = {
 
 type ParseResult =
   | {
-      success: true;
-      splitDays: number;
-      days: DayWorkout[];
-    }
+    success: true;
+    splitDays: number;
+    days: DayWorkout[];
+  }
   | {
-      success: false;
-      errors: string[];
-    };
+    success: false;
+    errors: string[];
+  };
 
 type DayRowsAccumulator = Map<number, DayWorkout>;
 
@@ -255,11 +255,11 @@ const parseDayNumberTableFormat = (rows: string[][]): ParseResult => {
   let currentDayNumber: number | null = null;
   let headerColumns:
     | {
-        exerciseIndex: number;
-        setsIndex: number;
-        repsIndex: number;
-        weightIndex: number | null;
-      }
+      exerciseIndex: number;
+      setsIndex: number;
+      repsIndex: number;
+      weightIndex: number | null;
+    }
     | null = null;
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
@@ -665,10 +665,132 @@ const derivePlanName = (fileName: string, fallbackSheetName: string): string => 
   return fallbackSheetName.trim() || "Imported Plan";
 };
 
+const importWorkoutPlanWithAI = async (
+  fileContent: string,
+  fallbackPlanName: string
+): Promise<ImportWorkoutPlanResult> => {
+  const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    return { success: false, code: "PARSE_FAILED", msg: "Groq API key not configured." };
+  }
+
+  const prompt = `You are a fitness data extraction assistant. Your task is to extract workout plan data from the provided text and return ONLY a raw JSON object. Do not add any conversational text or markdown blocks.
+
+The JSON MUST EXACTLY MATCH this structure:
+{
+  "planName": "Name of the plan",
+  "splitDays": 6,
+  "days": [
+    {
+      "day": "Day 1",
+      "notes": "Chest & Triceps",
+      "isRestDay": false,
+      "exercises": [
+        {
+          "exerciseName": "Bench Press",
+          "sets": [
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" },
+            { "reps": 8, "weight": 85, "weightUnit": "kg" }
+          ]
+        }
+      ]
+    },
+    {
+      "day": "Day 3",
+      "notes": "REST DAY",
+      "isRestDay": true,
+      "exercises": []
+    }
+  ]
+}
+
+Rules:
+1. If no plan name is found, use "${fallbackPlanName}".
+2. If it says "4 sets x 8 reps", you MUST generate an array with exactly 4 objects inside "sets", each having reps: 8.
+3. If it is a rest day, set "isRestDay": true and "exercises": [].
+4. Output ONLY valid JSON.
+
+File content to parse:
+${fileContent}`;
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" },
+        stream: false,
+        temperature: 0.1
+      })
+    });
+
+    if (!response.ok) {
+      const lastError = await response.text();
+      if (__DEV__) console.warn(`Groq API Error:`, lastError);
+      return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed: " + lastError };
+    }
+
+    const data = await response.json();
+    let textResponse = data.choices?.[0]?.message?.content;
+
+    if (!textResponse) {
+      return { success: false, code: "PARSE_FAILED", msg: "Empty response from AI." };
+    }
+
+    if (__DEV__) console.log("RAW AI RESPONSE:", textResponse);
+
+    // Clean potential markdown wrap if model ignored instructions
+    textResponse = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    const parsed = JSON.parse(textResponse) as ImportedWorkoutPlanDraft;
+
+    // Validate
+    if (!parsed.days || !Array.isArray(parsed.days)) {
+      return { success: false, code: "PARSE_FAILED", msg: "Invalid JSON structure from AI." };
+    }
+
+    if (!parsed.splitDays) parsed.splitDays = parsed.days.length;
+    if (!parsed.planName) parsed.planName = fallbackPlanName;
+
+    // Normalize formats
+    parsed.days = parsed.days.map((day, idx) => ({
+      day: `Day ${idx + 1}`,
+      isRestDay: !!day.isRestDay,
+      notes: day.notes || "",
+      exercises: Array.isArray(day.exercises) ? day.exercises.map(ex => ({
+        exerciseName: ex.exerciseName || "Unknown Exercise",
+        sets: Array.isArray(ex.sets) ? ex.sets.map(s => ({
+          reps: Number(s.reps) || 0,
+          weight: Number(s.weight) || 0,
+          weightUnit: s.weightUnit || "kg"
+        })) : []
+      })) : []
+    }));
+
+    return { success: true, data: parsed };
+  } catch (error) {
+    if (__DEV__) console.error(`Error in Groq import:`, error);
+    return { success: false, code: "PARSE_FAILED", msg: "AI parsing failed due to network or JSON error." };
+  }
+};
+
 export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanResult> => {
   try {
     const pickedFile = await DocumentPicker.getDocumentAsync({
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      type: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "text/csv",
+        "text/plain",
+        "application/json"
+      ],
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -689,80 +811,117 @@ export const importWorkoutPlanFromExcel = async (): Promise<ImportWorkoutPlanRes
       };
     }
 
-    if (!pickedAsset.name.toLowerCase().endsWith(".xlsx")) {
-      return {
-        success: false,
-        code: "INVALID_FILE_TYPE",
-        msg: "Only .xlsx files are supported.",
-      };
-    }
+    const fileNameLower = pickedAsset.name.toLowerCase();
+    const isExcel = fileNameLower.endsWith(".xlsx") || fileNameLower.endsWith(".xls");
 
-    let fileBase64 = "";
-    try {
-      fileBase64 = await FileSystem.readAsStringAsync(pickedAsset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-    } catch {
-      return {
-        success: false,
-        code: "READ_FAILED",
-        msg: "Could not read the selected Excel file.",
-      };
-    }
+    let fileTextForAI = "";
+    const fallbackName = derivePlanName(pickedAsset.name, "Imported Plan");
 
-    let workbook: XLSX.WorkBook;
-    try {
-      workbook = XLSX.read(fileBase64, {
-        type: "base64",
-        raw: false,
-      });
-    } catch {
-      return {
-        success: false,
-        code: "READ_FAILED",
-        msg: "The selected file is not a valid Excel workbook.",
-      };
-    }
-
-    const sheetRows = extractRowsBySheet(workbook);
-
-    for (const entry of sheetRows) {
-      const detected = detectFormatForSheet(entry.sheetName, entry.rows);
-      if (!detected) continue;
-
-      let parsed: ParseResult;
-      if (detected.format === "DAY_NUMBER_TABLE") {
-        parsed = parseDayNumberTableFormat(detected.rows);
-      } else if (detected.format === "WEEK_EXERCITIU") {
-        parsed = parseWeekExercitiuFormat(detected.rows);
-      } else {
-        parsed = parseWeekWorkingSetsFormat(detected.rows);
-      }
-
-      if (!parsed.success) {
+    if (isExcel) {
+      let fileBase64 = "";
+      try {
+        fileBase64 = await FileSystem.readAsStringAsync(pickedAsset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } catch {
         return {
           success: false,
-          code: "PARSE_FAILED",
-          msg: "Could not import workout plan from this Excel file.",
-          errors: parsed.errors,
+          code: "READ_FAILED",
+          msg: "Could not read the selected Excel file.",
+        };
+      }
+
+      let workbook: XLSX.WorkBook;
+      try {
+        workbook = XLSX.read(fileBase64, {
+          type: "base64",
+          raw: false,
+        });
+      } catch {
+        return {
+          success: false,
+          code: "READ_FAILED",
+          msg: "The selected file is not a valid Excel workbook.",
+        };
+      }
+
+      // Convert all sheets to a single text representation for AI
+      fileTextForAI = workbook.SheetNames.map(name => {
+        const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[name]);
+        return `Sheet: ${name}\n${csv}`;
+      }).join("\n\n");
+
+      const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
+      if (apiKey) {
+        const aiResult = await importWorkoutPlanWithAI(fileTextForAI, fallbackName);
+        if (aiResult.success) return aiResult;
+        if (__DEV__) console.warn("AI parsing failed, falling back to manual Excel parsing.");
+      }
+
+      // Fallback manual Excel parsing
+      const sheetRows = extractRowsBySheet(workbook);
+      for (const entry of sheetRows) {
+        const detected = detectFormatForSheet(entry.sheetName, entry.rows);
+        if (!detected) continue;
+
+        let parsed: ParseResult;
+        if (detected.format === "DAY_NUMBER_TABLE") {
+          parsed = parseDayNumberTableFormat(detected.rows);
+        } else if (detected.format === "WEEK_EXERCITIU") {
+          parsed = parseWeekExercitiuFormat(detected.rows);
+        } else {
+          parsed = parseWeekWorkingSetsFormat(detected.rows);
+        }
+
+        if (!parsed.success) {
+          return {
+            success: false,
+            code: "PARSE_FAILED",
+            msg: "Could not import workout plan from this Excel file.",
+            errors: parsed.errors,
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            planName: derivePlanName(pickedAsset.name, detected.sheetName),
+            splitDays: parsed.splitDays,
+            days: parsed.days,
+          },
         };
       }
 
       return {
-        success: true,
-        data: {
-          planName: derivePlanName(pickedAsset.name, detected.sheetName),
-          splitDays: parsed.splitDays,
-          days: parsed.days,
-        },
+        success: false,
+        code: "UNSUPPORTED_FORMAT",
+        msg: "Excel format not supported for workout import.",
       };
-    }
+    } else {
+      // It's a text file (CSV, TXT, JSON)
+      try {
+        fileTextForAI = await FileSystem.readAsStringAsync(pickedAsset.uri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      } catch {
+        return {
+          success: false,
+          code: "READ_FAILED",
+          msg: "Could not read the selected text file.",
+        };
+      }
 
-    return {
-      success: false,
-      code: "UNSUPPORTED_FORMAT",
-      msg: "Excel format not supported for workout import.",
-    };
+      const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        return {
+          success: false,
+          code: "PARSE_FAILED",
+          msg: "Groq API key is required to parse non-Excel files.",
+        };
+      }
+
+      return await importWorkoutPlanWithAI(fileTextForAI, fallbackName);
+    }
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Could not import workout plan.";
