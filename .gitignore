@@ -69,3 +69,5 @@ Development/
 
 # Firebase Admin credentials
 scripts/
+
+coverage/
