@@ -28,6 +28,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef } from "react";
 import { Alert, StatusBar, View } from "react-native";
 import "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 if (__DEV__) {
   const originalWarn = console.warn;
@@ -179,83 +180,85 @@ const SyncManager = () => {
 
 const StackLayout = () => {
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      <OfflineBanner />
-      <SyncManager />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: "none",
-          contentStyle: {
-            backgroundColor: colors.background,
-          },
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-
-        <Stack.Screen
-          name="(modals)/profileModal"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/addWorkout"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/workoutPlanSelection"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/workoutPlan"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/dayWorkout"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/workoutDetail"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/mealDetail"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/nutritionSettings"
-          options={{ presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="(modals)/manualCalories"
-          options={{ presentation: "modal", animation: "fade_from_bottom" }}
-        />
-        <Stack.Screen
-          name="(modals)/barcodeScanner"
-          options={{
-            presentation: "fullScreenModal",
-            animation: "slide_from_bottom",
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+        <OfflineBanner />
+        <SyncManager />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: "none",
+            contentStyle: {
+              backgroundColor: colors.background,
+            },
           }}
-        />
-        <Stack.Screen
-          name="(modals)/manualProductEntry"
-          options={{ presentation: "modal", animation: "slide_from_bottom" }}
-        />
-        <Stack.Screen
-          name="(modals)/createFood"
-          options={{ presentation: "modal", animation: "slide_from_bottom" }}
-        />
-        <Stack.Screen
-          name="(modals)/privacyPolicy"
-          options={{ presentation: "modal", animation: "slide_from_right" }}
-        />
-        <Stack.Screen
-          name="(modals)/maintenanceTracker"
-          options={{ presentation: "modal", animation: "slide_from_bottom" }}
-        />
-      </Stack>
-    </View>
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+
+          <Stack.Screen
+            name="(modals)/profileModal"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/addWorkout"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/workoutPlanSelection"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/workoutPlan"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/dayWorkout"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/workoutDetail"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/mealDetail"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/nutritionSettings"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="(modals)/manualCalories"
+            options={{ presentation: "modal", animation: "fade_from_bottom" }}
+          />
+          <Stack.Screen
+            name="(modals)/barcodeScanner"
+            options={{
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="(modals)/manualProductEntry"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen
+            name="(modals)/createFood"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen
+            name="(modals)/privacyPolicy"
+            options={{ presentation: "modal", animation: "slide_from_right" }}
+          />
+          <Stack.Screen
+            name="(modals)/maintenanceTracker"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+        </Stack>
+      </View>
+    </GestureHandlerRootView>
   );
 };
 
