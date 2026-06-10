@@ -40,10 +40,12 @@ import {
   getDailyNutrition,
   getMemoryEarliestDate,
   getUserNutritionEarliestDate,
+  getNutritionForDateRange,
 } from "@/src/services/nutritionService";
 import { DailyNutrition, Food } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { measureAsync } from "@/src/utils/perf";
+import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss } from "@/src/utils/perfMonitor";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -298,6 +300,12 @@ const Nutrition = () => {
   const { language, t } = useLanguage();
   const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
+
+  const mountStartRef = useRef(Date.now());
+
+  useEffect(() => {
+    trackScreen("Nutrition", Date.now() - mountStartRef.current);
+  }, []);
   const {
     todayNutrition,
     todayWater,
@@ -688,6 +696,7 @@ const Nutrition = () => {
         let hasCachedSnapshot = false;
         const cached = await getCachedNutritionForDate(normalizedDate);
         if (cached) {
+          trackCacheHit("nutrition_day", 0);
           hasCachedSnapshot = true;
           const calories = sumNutritionCalories(cached);
           const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
@@ -696,9 +705,13 @@ const Nutrition = () => {
           if (!forceRemote) {
             return;
           }
+        } else {
+          trackCacheMiss("nutrition_day");
         }
 
+        const start = Date.now();
         const remoteResult = await getDailyNutrition(userId, normalizedDate);
+        trackDataLoad("nutrition_day", "firebase", Date.now() - start, remoteResult.success && remoteResult.data ? 1 : 0);
         if (remoteResult.success && remoteResult.data) {
           const nutrition = remoteResult.data as DailyNutrition;
           const calories = sumNutritionCalories(nutrition);
@@ -766,11 +779,13 @@ const Nutrition = () => {
           const cached = cacheMap.get(key);
 
           if (cached) {
+            trackCacheHit("nutrition_day", 0);
             const calories = sumNutritionCalories(cached);
             const goal = cached.calorieGoal || DEFAULT_GOALS.calorie;
             cacheHits.push({ date, calories, goal });
             logCalendarWeekLoaded(date, "cache");
           } else {
+            trackCacheMiss("nutrition_day");
             cacheMissDates.push(date);
           }
         }
@@ -835,29 +850,49 @@ const Nutrition = () => {
         // If no remote needed, mark cache misses as loaded (empty) and return
         if (!forceRemote && cacheMissDates.length === 0) return;
 
-        // --- Phase B: parallel remote fetches for cache misses ---
+        // --- Phase B: single batch remote fetch for cache misses ---
         const remoteDates = forceRemote ? datesToLoad : cacheMissDates;
         if (remoteDates.length === 0) return;
 
-        const remoteResults = await Promise.all(
-          remoteDates.map(async (date) => {
-            try {
-              const result = await getDailyNutrition(userId, date);
-              if (result.success && result.data) {
-                const nutrition = result.data as DailyNutrition;
-                void cacheNutritionDay(date, nutrition);
-                return {
-                  date,
-                  calories: sumNutritionCalories(nutrition),
-                  goal: nutrition.calorieGoal || DEFAULT_GOALS.calorie,
-                };
-              }
-              return null;
-            } catch {
-              return null;
-            }
-          }),
+        const minDate = startOfDay(new Date(Math.min(...remoteDates.map((d) => d.getTime()))));
+        const maxDate = new Date(Math.max(...remoteDates.map((d) => d.getTime())));
+        maxDate.setHours(23, 59, 59, 999);
+
+        const start = Date.now();
+        const batchResult = await getNutritionForDateRange(userId, minDate, maxDate);
+        trackDataLoad(
+          "nutrition_range",
+          "firebase",
+          Date.now() - start,
+          batchResult.success && Array.isArray(batchResult.data) ? batchResult.data.length : 0,
         );
+
+        const remoteResults = [];
+        if (batchResult.success && Array.isArray(batchResult.data)) {
+          const dataMap = new Map<string, DailyNutrition>();
+          for (const item of batchResult.data) {
+            dataMap.set(toDateKey(item.date), item);
+          }
+
+          for (const date of remoteDates) {
+            const dateKey = toDateKey(date);
+            const nutrition = dataMap.get(dateKey);
+            if (nutrition) {
+              void cacheNutritionDay(date, nutrition);
+              remoteResults.push({
+                date,
+                calories: sumNutritionCalories(nutrition),
+                goal: nutrition.calorieGoal || DEFAULT_GOALS.calorie,
+              });
+            } else {
+              remoteResults.push(null);
+            }
+          }
+        } else {
+          for (const date of remoteDates) {
+            remoteResults.push(null);
+          }
+        }
 
         const remoteHits = remoteResults.filter(
           (r): r is DayData => r !== null,
@@ -980,9 +1015,6 @@ const Nutrition = () => {
         return;
       }
 
-      await awaitNutritionCalendarPrefetch();
-      if (requestId !== calendarRequestIdRef.current) return;
-
       const memEarliest = getMemoryEarliestDate(userId);
       if (memEarliest !== undefined && memEarliest) {
         const memDate = startOfDay(new Date(memEarliest));
@@ -1017,9 +1049,15 @@ const Nutrition = () => {
       if (requestId !== calendarRequestIdRef.current) return;
 
       if (cacheResult.data) {
+        trackCacheHit("nutrition_calendar_summary", cacheResult.ageMs ?? 0);
         cachedSummary = cacheResult.data;
         applyCalendarSummary(cacheResult.data, "hydrate_cache");
+      } else {
+        trackCacheMiss("nutrition_calendar_summary");
       }
+
+      await awaitNutritionCalendarPrefetch();
+      if (requestId !== calendarRequestIdRef.current) return;
 
       const cachedEarliest = cachedSummary?.earliestDate ?? null;
       if (cachedEarliest && !forceRemote) {
@@ -1028,6 +1066,7 @@ const Nutrition = () => {
       }
 
       try {
+        const start = Date.now();
         const earliestDate = await measureAsync(
           "nutrition_calendar_seed_remote_ms",
           () => getUserNutritionEarliestDate(userId),
@@ -1038,6 +1077,7 @@ const Nutrition = () => {
             success: Boolean(result),
           }),
         );
+        trackDataLoad("nutrition_earliest_date", "firebase", Date.now() - start, earliestDate ? 1 : 0);
 
         if (requestId !== calendarRequestIdRef.current) return;
 

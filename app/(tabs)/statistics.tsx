@@ -1,13 +1,14 @@
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import ScreenWrapper from "@/src/components/layout/ScreenWrapper";
 import SwipeableScreen from "@/src/components/layout/SwipeableScreen";
-import WorkoutStatistics from "@/src/components/statistics/WorkoutStatistics";
 import NutritionStatistics from "@/src/components/statistics/NutritionStatistics";
+import WorkoutStatistics from "@/src/components/statistics/WorkoutStatistics";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
+import { trackScreen } from "@/src/utils/perfMonitor";
 import { verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
-import React, { useState, useCallback, useTransition, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -20,29 +21,22 @@ type StatisticsTab = "workouts" | "nutrition";
 const Statistics = React.memo(() => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<StatisticsTab>("workouts");
+  const mountStartRef = useRef(Date.now());
+
+  useEffect(() => {
+    trackScreen("Statistics", Date.now() - mountStartRef.current);
+  }, []);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>("Monthly");
   const [dataPeriod, setDataPeriod] = useState<PeriodType>("Monthly");
   const [, startTransition] = useTransition();
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimerRef = useRef<any>(null);
 
   const handlePeriodChange = useCallback((period: PeriodType) => {
     setSelectedPeriod(period);
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
+    clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      startTransition(() => {
-        setDataPeriod(period);
-      });
+      startTransition(() => setDataPeriod(period));
     }, 150);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
   }, []);
 
   const handleTabChange = useCallback((index: number) => {
@@ -91,24 +85,24 @@ const Statistics = React.memo(() => {
             </View>
           </View>
 
-          {/* Both tabs stay mounted; display:none hides the inactive one.
-              This preserves fetched data and avoids remount/refetch on every switch. */}
-          <View style={[styles.tabContent, { opacity: 1 }, activeTab !== "workouts" && styles.hidden]}>
-            <WorkoutStatistics
-              selectedPeriod={selectedPeriod}
-              dataPeriod={dataPeriod}
-              onPeriodChange={handlePeriodChange}
-              active={activeTab === "workouts"}
-            />
-          </View>
+          <View style={styles.tabContainer}>
+            <View style={[styles.tabContent, activeTab !== "workouts" && styles.hidden]}>
+              <WorkoutStatistics
+                selectedPeriod={selectedPeriod}
+                dataPeriod={dataPeriod}
+                onPeriodChange={handlePeriodChange}
+                active={activeTab === "workouts"}
+              />
+            </View>
 
-          <View style={[styles.tabContent, { opacity: 1 }, activeTab !== "nutrition" && styles.hidden]}>
-            <NutritionStatistics
-              selectedPeriod={selectedPeriod}
-              dataPeriod={dataPeriod}
-              onPeriodChange={handlePeriodChange}
-              active={activeTab === "nutrition"}
-            />
+            <View style={[styles.tabContent, activeTab !== "nutrition" && styles.hidden]}>
+              <NutritionStatistics
+                selectedPeriod={selectedPeriod}
+                dataPeriod={dataPeriod}
+                onPeriodChange={handlePeriodChange}
+                active={activeTab === "nutrition"}
+              />
+            </View>
           </View>
         </ScrollView>
       </ScreenWrapper>
@@ -157,6 +151,10 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     height: verticalScale(45),
+  },
+  tabContainer: {
+    flex: 1,
+    position: "relative",
   },
   tabContent: {
     flex: 1,

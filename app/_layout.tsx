@@ -26,7 +26,8 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef } from "react";
-import { Alert, StatusBar, View } from "react-native";
+import { Alert, Platform, StatusBar, UIManager, View } from "react-native";
+import { PerfOverlay } from "@/src/utils/perfMonitor";
 import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -41,6 +42,13 @@ if (__DEV__) {
     }
     originalWarn(...args);
   };
+}
+
+if (Platform.OS === "android") {
+  const isNewArch = (global as any).nativeFabricUIManager != null;
+  if (!isNewArch && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
 }
 
 const EMPTY_SUMMARY: SyncQueueSummary = {
@@ -257,6 +265,7 @@ const StackLayout = () => {
             options={{ presentation: "modal", animation: "slide_from_bottom" }}
           />
         </Stack>
+        {__DEV__ && <PerfOverlay />}
       </View>
     </GestureHandlerRootView>
   );

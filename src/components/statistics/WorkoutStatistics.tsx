@@ -14,24 +14,19 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   GestureResponderEvent,
-  LayoutChangeEvent,
   PanResponder,
   PanResponderGestureState,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 
 const MemoizedLineChart = React.memo(LineChart);
 
-const ChartSkeleton = ({ color }: { color: string }) => (
-  <View style={{ height: verticalScale(200), justifyContent: "center", alignItems: "center" }}>
-    <ActivityIndicator size="small" color={color} />
-  </View>
-);
+
 
 type PeriodType = "Weekly" | "Monthly" | "Yearly";
 
@@ -203,15 +198,7 @@ function WorkoutStatistics({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSwipePeriod]);
 
-  const [chartReady, setChartReady] = useState(false);
 
-  useEffect(() => {
-    setChartReady(false);
-    const t = setTimeout(() => {
-      setChartReady(true);
-    }, 50);
-    return () => clearTimeout(t);
-  }, [dataPeriod]);
 
 
 
@@ -546,13 +533,7 @@ function WorkoutStatistics({
     return workoutsHistory.some((workout) => !workout.isRestDay);
   }, [workoutsHistory]);
 
-  if (loading && workoutsHistory.length === 0) {
-    return (
-      <View style={styles.initialLoadingContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
-  }
+
 
   return (
     // Wrap in a swipeable container for period switching gestures
@@ -601,7 +582,11 @@ function WorkoutStatistics({
           <View style={styles.statCard}>
             <Icons.BarbellIcon size={24} color={colors.primary} weight="fill" />
             <Typo size={40} variant="metric" color={colors.primary} style={styles.statMetricText}>
-              {totalWorkoutsCount}
+              {loading && workoutsHistory.length === 0 ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                totalWorkoutsCount
+              )}
             </Typo>
             <Typo size={13} color={colors.neutral400} style={styles.statLabelText}>
               {t("statistics_workouts")}
@@ -614,7 +599,11 @@ function WorkoutStatistics({
           <View style={styles.statCard}>
             <Icons.TimerIcon size={24} color={colors.green} weight="fill" />
             <Typo size={40} variant="metric" color={colors.chartSuccess} style={styles.statMetricText}>
-              {totalDurationMinutes}
+              {loading && workoutsHistory.length === 0 ? (
+                <ActivityIndicator size="small" color={colors.green} />
+              ) : (
+                totalDurationMinutes
+              )}
             </Typo>
             <Typo size={13} color={colors.neutral400} style={styles.statLabelText}>
               {t("statistics_minutes")}
@@ -629,7 +618,9 @@ function WorkoutStatistics({
             <View style={styles.shadowRounded15} />
             <TouchableOpacity
               style={styles.exerciseSelectorButton}
-              onPress={() => setShowExerciseSelector(!showExerciseSelector)}
+              onPress={() => {
+                setShowExerciseSelector(!showExerciseSelector);
+              }}
             >
               <View style={styles.exerciseSelectorLeft}>
                 <Icons.ChartLineIcon
@@ -777,38 +768,34 @@ function WorkoutStatistics({
                 </View>
 
                 <View>
-                  {chartReady ? (
-                    <MemoizedLineChart
-                      data={weightChartData}
-                      width={chartWidth}
-                      height={verticalScale(200)}
-                      spacing={chartSpacing}
-                      thickness={3}
-                      color={colors.primary}
-                      startFillColor={colors.primary}
-                      endFillColor={colors.primary}
-                      startOpacity={0.3}
-                      endOpacity={0.1}
-                      initialSpacing={scale(14)}
-                      endSpacing={scale(14)}
-                      noOfSections={4}
-                      yAxisTextStyle={styles.chartYAxisText}
-                      xAxisLabelTextStyle={styles.chartXAxisText}
-                      hideRules
-                      curved
-                      areaChart
-                      hideDataPoints={false}
-                      dataPointsColor={colors.primary}
-                      dataPointsRadius={4}
-                      textShiftX={-5}
-                      rotateLabel={true}
-                      xAxisLabelsHeight={verticalScale(30)}
-                      xAxisLabelsVerticalShift={5}
-                      overflowTop={35}
-                    />
-                  ) : (
-                    <ChartSkeleton color={colors.primary} />
-                  )}
+                  <MemoizedLineChart
+                    data={weightChartData}
+                    width={chartWidth}
+                    height={verticalScale(200)}
+                    spacing={chartSpacing}
+                    thickness={3}
+                    color={colors.primary}
+                    startFillColor={colors.primary}
+                    endFillColor={colors.primary}
+                    startOpacity={0.3}
+                    endOpacity={0.1}
+                    initialSpacing={scale(14)}
+                    endSpacing={scale(14)}
+                    noOfSections={4}
+                    yAxisTextStyle={styles.chartYAxisText}
+                    xAxisLabelTextStyle={styles.chartXAxisText}
+                    hideRules
+                    curved
+                    areaChart={weightChartData.length > 1}
+                    hideDataPoints={false}
+                    dataPointsColor={colors.primary}
+                    dataPointsRadius={4}
+                    textShiftX={-5}
+                    rotateLabel={true}
+                    xAxisLabelsHeight={verticalScale(30)}
+                    xAxisLabelsVerticalShift={5}
+                    overflowTop={35}
+                  />
                 </View>
               </View>
             </View>
@@ -839,38 +826,34 @@ function WorkoutStatistics({
                 </View>
 
                 <View>
-                  {chartReady ? (
-                    <MemoizedLineChart
-                      data={repsChartData}
-                      width={chartWidth}
-                      height={verticalScale(200)}
-                      spacing={chartSpacing}
-                      thickness={3}
-                      color={colors.green}
-                      startFillColor={colors.green}
-                      endFillColor={colors.green}
-                      startOpacity={0.3}
-                      endOpacity={0.1}
-                      initialSpacing={scale(14)}
-                      endSpacing={scale(14)}
-                      noOfSections={4}
-                      yAxisTextStyle={styles.chartYAxisText}
-                      xAxisLabelTextStyle={styles.chartXAxisText}
-                      hideRules
-                      curved
-                      areaChart
-                      hideDataPoints={false}
-                      dataPointsColor={colors.green}
-                      dataPointsRadius={4}
-                      textShiftX={-5}
-                      rotateLabel={true}
-                      xAxisLabelsHeight={verticalScale(30)}
-                      xAxisLabelsVerticalShift={5}
-                      overflowTop={35}
-                    />
-                  ) : (
-                    <ChartSkeleton color={colors.green} />
-                  )}
+                  <MemoizedLineChart
+                    data={repsChartData}
+                    width={chartWidth}
+                    height={verticalScale(200)}
+                    spacing={chartSpacing}
+                    thickness={3}
+                    color={colors.green}
+                    startFillColor={colors.green}
+                    endFillColor={colors.green}
+                    startOpacity={0.3}
+                    endOpacity={0.1}
+                    initialSpacing={scale(14)}
+                    endSpacing={scale(14)}
+                    noOfSections={4}
+                    yAxisTextStyle={styles.chartYAxisText}
+                    xAxisLabelTextStyle={styles.chartXAxisText}
+                    hideRules
+                    curved
+                    areaChart={repsChartData.length > 1}
+                    hideDataPoints={false}
+                    dataPointsColor={colors.green}
+                    dataPointsRadius={4}
+                    textShiftX={-5}
+                    rotateLabel={true}
+                    xAxisLabelsHeight={verticalScale(30)}
+                    xAxisLabelsVerticalShift={5}
+                    overflowTop={35}
+                  />
                 </View>
               </View>
             </View>
@@ -904,32 +887,38 @@ function WorkoutStatistics({
       )}
 
       {availableExercises.length === 0 && (
-        <View style={styles.emptyState}>
-          <Icons.BarbellIcon
-            size={48}
-            color={colors.neutral500}
-            weight="fill"
-          />
-          <Typo
-            size={18}
-            fontWeight="600"
-            color={colors.neutral200}
-            style={styles.emptyStateTitle}
-          >
-            {dataPeriod === "Weekly" && hasAnyWorkoutHistory
-              ? t("statistics_no_workouts_this_week")
-              : t("statistics_no_workouts_yet")}
-          </Typo>
-          <Typo
-            size={14}
-            color={colors.neutral400}
-            style={styles.emptyStateSubtitle}
-          >
-            {dataPeriod === "Weekly" && hasAnyWorkoutHistory
-              ? t("statistics_log_weekly")
-              : t("statistics_start_training")}
-          </Typo>
-        </View>
+        loading ? (
+          <View style={styles.initialLoadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Icons.BarbellIcon
+              size={48}
+              color={colors.neutral500}
+              weight="fill"
+            />
+            <Typo
+              size={18}
+              fontWeight="600"
+              color={colors.neutral200}
+              style={styles.emptyStateTitle}
+            >
+              {dataPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? t("statistics_no_workouts_this_week")
+                : t("statistics_no_workouts_yet")}
+            </Typo>
+            <Typo
+              size={14}
+              color={colors.neutral400}
+              style={styles.emptyStateSubtitle}
+            >
+              {dataPeriod === "Weekly" && hasAnyWorkoutHistory
+                ? t("statistics_log_weekly")
+                : t("statistics_start_training")}
+            </Typo>
+          </View>
+        )
       )}
     </View>
   );
@@ -1135,6 +1124,8 @@ const styles = StyleSheet.create({
 });
 
 const areEqual = (prevProps: WorkoutStatisticsProps, nextProps: WorkoutStatisticsProps) => {
+  // If active state is changing, we MUST re-render
+  if (prevProps.active !== nextProps.active) return false;
   // If becoming or staying inactive → skip ALL re-renders
   if (!nextProps.active) return true;
   // Only re-render active component when data changes
