@@ -123,6 +123,39 @@ export const getDailyWater = async (
   }
 };
 
+export const getUserWaterHistory = async (
+  userID: string,
+): Promise<ResponseType> => {
+  try {
+    const q = query(
+      userWaterCol(userID),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getUserWaterHistory.getDocs",
+    );
+    const waterHistory: DailyWater[] = [];
+
+    querySnapshot.forEach((docSnap) => {
+      waterHistory.push(parseWaterDoc(docSnap.id, docSnap.data(), new Date()));
+    });
+
+    waterHistory.sort((left, right) => {
+      const leftDate = new Date(left.date);
+      const rightDate = new Date(right.date);
+      return rightDate.getTime() - leftDate.getTime();
+    });
+
+    return { success: true, data: waterHistory };
+  } catch (error: any) {
+    if (__DEV__) {
+      console.error("[WaterService] Error fetching water history:", error);
+    }
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
 export const saveDailyWater = async (
   water: DailyWater,
 ): Promise<ResponseType> => {

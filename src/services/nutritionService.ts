@@ -504,3 +504,39 @@ export const prefetchNutritionCalendarSummary = (
 export const awaitNutritionCalendarPrefetch = async (): Promise<void> => {
   if (activePrefetchPromise) await activePrefetchPromise;
 };
+
+export const getNutritionForDateRange = async (
+  userID: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<ResponseType> => {
+  try {
+    const q = query(
+      userNutritionCol(userID),
+      where("date", ">=", Timestamp.fromDate(startDate)),
+      where("date", "<=", Timestamp.fromDate(endDate)),
+    );
+
+    const querySnapshot = await withTimeout(
+      getDocs(q),
+      "getNutritionForDateRange.getDocs",
+    );
+
+    const nutritionList: DailyNutrition[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const payload = docSnap.data();
+      const docDate = parseFirestoreDate(payload.date, new Date());
+      nutritionList.push(parseNutritionDoc(docSnap.id, payload, docDate));
+    });
+
+    return {
+      success: true,
+      data: nutritionList,
+    };
+  } catch (error: any) {
+    if (__DEV__) {
+      console.error("[NutritionService] Error fetching nutrition for range:", error);
+    }
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};

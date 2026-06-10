@@ -17,6 +17,7 @@ import { getUserWorkouts } from "@/src/services/workoutService";
 import { WorkoutHistory } from "@/src/types/index";
 import { measureAsync } from "@/src/utils/perf";
 import { verticalScale } from "@/src/utils/styling";
+import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss } from "@/src/utils/perfMonitor";
 import React, {
   useCallback,
   useEffect,
@@ -38,7 +39,10 @@ const Home = React.memo(() => {
   const isMountedRef = useRef(true);
   const previousUserIdRef = useRef<string | null>(null);
 
+  const mountStartRef = useRef(Date.now());
+
   useEffect(() => {
+    trackScreen("Home", Date.now() - mountStartRef.current);
     return () => {
       isMountedRef.current = false;
     };
@@ -72,9 +76,12 @@ const Home = React.memo(() => {
         }
 
         if (cachedHistory.data) {
+          trackCacheHit("workouts", cachedHistory.ageMs ?? 0);
           hydratedFromCache = true;
           setWorkoutsHistory(cachedHistory.data);
           setLoading(false);
+        } else {
+          trackCacheMiss("workouts");
         }
       }
 
@@ -82,6 +89,7 @@ const Home = React.memo(() => {
         if (shouldInvalidateCache) {
           invalidateCache();
         }
+        const start = Date.now();
         const result = await measureAsync(
           "home_revalidate_remote_ms",
           () => getUserWorkouts(userId),
@@ -94,6 +102,7 @@ const Home = React.memo(() => {
             success: remoteResult.success,
           }),
         );
+        trackDataLoad("workouts", "firebase", Date.now() - start, Array.isArray(result.data) ? result.data.length : 0);
 
         if (!isMountedRef.current || requestId !== latestRequestIdRef.current) {
           return;
