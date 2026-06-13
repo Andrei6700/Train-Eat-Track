@@ -334,6 +334,7 @@ export const searchFood = async (
       fat: item.fat,
       servingSize: item.servingSize,
       brands: item.brands,
+      image: item.image,
     }));
 
     if (__DEV__) {

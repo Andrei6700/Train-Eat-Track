@@ -134,6 +134,7 @@ const BarcodeScanner = () => {
       carbs: Math.round(scannedFood.carbs * multiplier * 10) / 10,
       fat: Math.round(scannedFood.fat * multiplier * 10) / 10,
       servingSize: `${qty}g`,
+      image: scannedFood.image,
     };
 
     try {

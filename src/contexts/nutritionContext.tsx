@@ -89,6 +89,7 @@ type NutritionContextType = {
   }) => Promise<void>;
   addWaterIntake: (amount: number) => Promise<void>;
   resetWaterIntake: () => Promise<void>;
+  removeWaterIntake: (intakeIndex: number) => Promise<void>;
 };
 
 const buildDefaultNutrition = (userID: string, date: Date): DailyNutrition => ({
@@ -1275,6 +1276,29 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
     [cacheWaterSnapshot, persistWater, todayWater, user?.uid],
   );
 
+  const removeWaterIntake = useCallback(
+    async (intakeIndex: number) => {
+      if (!todayWater || !user?.uid) return;
+      const baseUpdatedAt = toMillis(todayWater.updatedAt);
+
+      const intakeToRemove = todayWater.intakes[intakeIndex];
+      if (!intakeToRemove) return;
+
+      const updatedIntakes = todayWater.intakes.filter((_, index) => index !== intakeIndex);
+      const updatedWater: DailyWater = {
+        ...todayWater,
+        intakes: updatedIntakes,
+        total: Math.max(0, todayWater.total - intakeToRemove.amount),
+        localUpdatedAt: Date.now(),
+      };
+
+      setTodayWater(updatedWater);
+      cacheWaterSnapshot(updatedWater);
+      await persistWater(updatedWater, baseUpdatedAt);
+    },
+    [cacheWaterSnapshot, persistWater, todayWater, user?.uid],
+  );
+
   const contextValue = useMemo(
     () => ({
       todayNutrition,
@@ -1289,6 +1313,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       updateGoals,
       addWaterIntake,
       resetWaterIntake,
+      removeWaterIntake,
     }),
     [
       addFoodToMeal,
@@ -1298,6 +1323,7 @@ export const NutritionProvider: React.FC<{ children: React.ReactNode }> = ({
       moveFoodToMeal,
       refreshNutrition,
       removeFoodFromMeal,
+      removeWaterIntake,
       resetWaterIntake,
       todayNutrition,
       todayWater,

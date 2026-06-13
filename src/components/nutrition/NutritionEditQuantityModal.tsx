@@ -59,7 +59,8 @@ const NutritionEditQuantityModal = ({
       return { calories: 0, protein: 0, carbs: 0, fat: 0 };
     }
 
-    const multiplier = quantityValue / 100;
+    const oldQuantity = Number.parseFloat(editingFood.food.servingSize) || 100;
+    const multiplier = oldQuantity > 0 ? quantityValue / oldQuantity : 1;
     return {
       calories: Math.round(editingFood.food.calories * multiplier),
       protein: Math.round(editingFood.food.protein * multiplier * 10) / 10,

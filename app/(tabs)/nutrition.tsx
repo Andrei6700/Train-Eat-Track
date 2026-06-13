@@ -312,6 +312,7 @@ const Nutrition = () => {
     refreshNutrition,
     addWaterIntake,
     resetWaterIntake,
+    removeWaterIntake,
     removeFoodFromMeal,
     updateFoodQuantity,
     copyFoodToMeal,
@@ -1410,6 +1411,17 @@ const Nutrition = () => {
     );
   }, [resetWaterIntake, t]);
 
+  const handleRemoveWater = useCallback(
+    async (index: number) => {
+      try {
+        await removeWaterIntake(index);
+      } catch (error: any) {
+        Alert.alert(t("common_error"), error?.message || "Error deleting water entry");
+      }
+    },
+    [removeWaterIntake, t],
+  );
+
   const handleFoodPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
       const currentQuantity = Number.parseFloat(food.servingSize) || 100;
@@ -1576,6 +1588,8 @@ const Nutrition = () => {
             goal={todayWater?.goal || 2000}
             onResetWater={handleResetWater}
             onAddWater={handleAddWater}
+            intakes={todayWater?.intakes || []}
+            onRemoveWater={handleRemoveWater}
           />
         </ScrollView>
 
