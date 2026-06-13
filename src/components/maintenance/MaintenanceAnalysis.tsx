@@ -13,6 +13,7 @@ import useReduceMotion from "@/src/hooks/useReduceMotion";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import { MaintenanceAnalysisResult, MaintenanceStatus } from "@/src/types/maintenance";
+import { useLanguage } from "@/src/contexts/languageContext";
 
 type MaintenanceAnalysisProps = {
   analysis: MaintenanceAnalysisResult;
@@ -52,6 +53,7 @@ const getStatusConfig = (
 };
 
 const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
+  const { t } = useLanguage();
   const statusConfig = getStatusConfig(analysis.status);
   const reduceMotion = useReduceMotion();
 
@@ -65,7 +67,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
     >
       <View style={styles.header}>
         <Typo size={verticalScale(16)} fontWeight="700" color={colors.text}>
-          Analiza Mentenanței
+          {t("maintenance_analysis_title")}
         </Typo>
       </View>
 
@@ -87,7 +89,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
       <View style={styles.comparisonContainer}>
         <View style={styles.weekBox}>
           <Typo size={verticalScale(11)} fontWeight="600" color={colors.textMuted}>
-            SĂPT. 1
+            {t("maintenance_analysis_week1")}
           </Typo>
           <Typo size={verticalScale(20)} fontWeight="700" color={colors.text}>
             {analysis.week1Average.toFixed(1)}
@@ -110,7 +112,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
 
         <View style={styles.weekBox}>
           <Typo size={verticalScale(11)} fontWeight="600" color={colors.textMuted}>
-            SĂPT. 2
+            {t("maintenance_analysis_week2")}
           </Typo>
           <Typo size={verticalScale(20)} fontWeight="700" color={colors.text}>
             {analysis.week2Average.toFixed(1)}
@@ -127,7 +129,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
           <View style={styles.estimateHeader}>
             <Fire size={verticalScale(18)} color={colors.warning} weight="fill" />
             <Typo size={verticalScale(13)} fontWeight="600" color={colors.text}>
-              Mentenanță estimată
+              {t("maintenance_analysis_estimated")}
             </Typo>
           </View>
           <View style={styles.estimateValue}>
@@ -135,7 +137,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
               {analysis.estimatedMaintenance.toLocaleString()}
             </Typo>
             <Typo size={verticalScale(14)} color={colors.textMuted}>
-              {" "}kcal/zi
+              {" "}{t("maintenance_analysis_kcal_day")}
             </Typo>
           </View>
           <Typo
@@ -143,7 +145,7 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
             color={colors.textMuted}
             style={styles.estimateNote}
           >
-            Calculat pe baza caloriilor înregistrate și schimbării în greutate
+            {t("maintenance_analysis_calculated_desc")}
           </Typo>
         </View>
       )}
@@ -151,12 +153,9 @@ const MaintenanceAnalysis = ({ analysis }: MaintenanceAnalysisProps) => {
       {/* Interpretation Help */}
       <View style={styles.helpContainer}>
         <Typo size={verticalScale(12)} color={colors.textMuted} style={styles.helpText}>
-          {analysis.status === "maintenance" &&
-            "Greutatea ta este stabilă. Acesta e nivelul tău de mentenanță."}
-          {analysis.status === "surplus" &&
-            "Ai luat în greutate. Reduci puțin caloriile pentru a reveni la mentenanță."}
-          {analysis.status === "deficit" &&
-            "Ai slăbit. Dacă vrei să menții greutatea, mărește puțin caloriile."}
+          {analysis.status === "maintenance" && t("maintenance_analysis_desc_maintenance")}
+          {analysis.status === "surplus" && t("maintenance_analysis_desc_surplus")}
+          {analysis.status === "deficit" && t("maintenance_analysis_desc_deficit")}
         </Typo>
       </View>
     </Animated.View>

@@ -9,6 +9,7 @@ import BackButton from "@/src/components/navigation/BackButton";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import {
     analyzeMaintenanceStatus,
     getWeightEntries,
@@ -43,6 +44,7 @@ const FORCE_SHOW_ONBOARDING = false;
 
 const MaintenanceTrackerScreen = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabType>("add");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ const MaintenanceTrackerScreen = () => {
         setWeeks(grouped);
 
         // Analyze if enough data
-        const analysisResult = analyzeMaintenanceStatus(grouped, "ro");
+        const analysisResult = analyzeMaintenanceStatus(grouped, language);
         setAnalysis(analysisResult);
       }
     } catch (error) {
@@ -150,7 +152,7 @@ const MaintenanceTrackerScreen = () => {
   return (
     <ModalWrapper>
       <View style={styles.container}>
-        <Header title="Tracker Mentenanță" leftIcon={<BackButton />} />
+        <Header title={t("maintenance_title")} leftIcon={<BackButton />} />
 
         {/* Tab Bar */}
         <Animated.View entering={FadeIn.delay(100)} style={styles.tabBar}>
@@ -172,7 +174,7 @@ const MaintenanceTrackerScreen = () => {
                 fontWeight={activeTab === "add" ? "700" : "500"}
                 color={activeTab === "add" ? colors.black : colors.textMuted}
               >
-                Adaugă Greutate
+                {t("maintenance_tab_add")}
               </Typo>
             </Pressable>
             <Pressable
@@ -189,7 +191,7 @@ const MaintenanceTrackerScreen = () => {
                 fontWeight={activeTab === "table" ? "700" : "500"}
                 color={activeTab === "table" ? colors.black : colors.textMuted}
               >
-                Tabel Săptămânal
+                {t("maintenance_tab_table")}
               </Typo>
             </Pressable>
           </View>
@@ -221,8 +223,7 @@ const MaintenanceTrackerScreen = () => {
                     color={colors.textMuted}
                     style={styles.helpText}
                   >
-                    Continuă să înregistrezi greutatea pentru cel puțin 2
-                    săptămâni pentru a vedea analiza mentenanței.
+                    {t("maintenance_help_min_weeks")}
                   </Typo>
                 </View>
               )}

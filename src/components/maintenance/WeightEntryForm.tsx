@@ -15,8 +15,9 @@ import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import Button from "@/src/components/ui/Button";
 import Input from "@/src/components/ui/Input";
-import { WeightEntry, WEEK_DAYS_RO } from "@/src/types/maintenance";
+import { WeightEntry, WEEK_DAYS_RO, WEEK_DAYS_EN } from "@/src/types/maintenance";
 import { formatDateKey } from "@/src/services/maintenanceService";
+import { useLanguage } from "@/src/contexts/languageContext";
 
 type WeightEntryFormProps = {
   onSave: (entry: WeightEntry) => Promise<void>;
@@ -29,6 +30,7 @@ const WeightEntryForm = ({
   loading = false,
   existingEntry,
 }: WeightEntryFormProps) => {
+  const { language, t } = useLanguage();
   const today = formatDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(existingEntry?.date || today);
   const [weight, setWeight] = useState(existingEntry?.weight?.toString() || "");
@@ -41,12 +43,17 @@ const WeightEntryForm = ({
   const formatDisplayDate = (dateKey: string): string => {
     const [year, month, day] = dateKey.split("-").map(Number);
     const date = new Date(year, month - 1, day);
-    const dayName = WEEK_DAYS_RO[date.getDay()];
-    const monthNames = [
+    const dayName = language === "ro" ? WEEK_DAYS_RO[date.getDay()] : WEEK_DAYS_EN[date.getDay()];
+    const monthNamesRo = [
       "Ian", "Feb", "Mar", "Apr", "Mai", "Iun",
       "Iul", "Aug", "Sep", "Oct", "Noi", "Dec",
     ];
-    return `${dayName}, ${day} ${monthNames[month - 1]} ${year}`;
+    const monthNamesEn = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    const monthName = language === "ro" ? monthNamesRo[month - 1] : monthNamesEn[month - 1];
+    return `${dayName}, ${day} ${monthName} ${year}`;
   };
 
   const handleDateSelect = useCallback((day: DateData) => {
@@ -73,7 +80,7 @@ const WeightEntryForm = ({
   const handleSave = useCallback(async () => {
     const weightNum = parseFloat(weight);
     if (isNaN(weightNum) || weightNum <= 0 || weightNum > 500) {
-      setError("Introdu o greutate validă (1-500 kg)");
+      setError(t("maintenance_form_error_weight"));
       return;
     }
 
@@ -109,7 +116,7 @@ const WeightEntryForm = ({
             color={colors.textMuted}
             style={styles.label}
           >
-            Data
+            {t("maintenance_form_date")}
           </Typo>
           <Pressable style={styles.dateButton} onPress={() => setShowCalendar(true)}>
             <CalendarIcon size={verticalScale(20)} color={colors.primary} />
@@ -127,12 +134,12 @@ const WeightEntryForm = ({
             color={colors.textMuted}
             style={styles.label}
           >
-            Greutate (kg)
+            {t("maintenance_form_weight")}
           </Typo>
           <Input
             value={weight}
             onChangeText={handleWeightChange}
-            placeholder="ex: 82.4"
+            placeholder={t("maintenance_form_weight_placeholder")}
             keyboardType="decimal-pad"
             hasError={!!error}
           />
@@ -151,14 +158,14 @@ const WeightEntryForm = ({
               fontWeight="600"
               color={colors.textMuted}
             >
-              Calorii consumate (opțional)
+              {t("maintenance_form_calories")}
             </Typo>
             <Fire size={verticalScale(16)} color={colors.warning} />
           </View>
           <Input
             value={calories}
             onChangeText={handleCaloriesChange}
-            placeholder="ex: 2200"
+            placeholder={t("maintenance_form_calories_placeholder")}
             keyboardType="number-pad"
           />
           <Typo
@@ -166,7 +173,7 @@ const WeightEntryForm = ({
             color={colors.textMuted}
             style={styles.helperText}
           >
-            Adaugă caloriile pentru estimarea mentenanței
+            {t("maintenance_form_calories_helper")}
           </Typo>
         </View>
 
@@ -176,7 +183,7 @@ const WeightEntryForm = ({
             <View style={styles.buttonContent}>
               <FloppyDisk size={verticalScale(20)} color={colors.black} />
               <Typo size={verticalScale(16)} fontWeight="700" color={colors.black}>
-                Salvează
+                {t("maintenance_form_save")}
               </Typo>
             </View>
           </Button>

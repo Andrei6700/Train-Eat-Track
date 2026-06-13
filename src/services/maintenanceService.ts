@@ -7,6 +7,7 @@ import {
   WeeklyData,
   WeightEntry,
 } from "@/src/types/maintenance";
+import { translateText, AppLanguage } from "@/src/i18n/translations";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   addDoc,
@@ -341,7 +342,7 @@ export const groupEntriesByWeek = (entries: WeightEntry[]): WeeklyData[] => {
 // Analyze maintenance status
 export const analyzeMaintenanceStatus = (
   weeks: WeeklyData[],
-  language: "en" | "ro" = "ro"
+  language: AppLanguage = "ro"
 ): MaintenanceAnalysisResult | null => {
   if (weeks.length < 2) return null;
 
@@ -359,18 +360,16 @@ export const analyzeMaintenanceStatus = (
   const absDifference = Math.abs(difference);
 
   let status: MaintenanceStatus;
-  let statusLabel: string;
 
   if (absDifference < 0.2) {
     status = "maintenance";
-    statusLabel = language === "ro" ? "La mentenanță" : "At maintenance";
   } else if (difference >= 0.2) {
     status = "surplus";
-    statusLabel = language === "ro" ? "Mănânci peste mentenanță" : "Eating above maintenance";
   } else {
     status = "deficit";
-    statusLabel = language === "ro" ? "Mănânci sub mentenanță" : "Eating below maintenance";
   }
+
+  const statusLabel = translateText(language, `maintenance_status_${status}`);
 
   // Calculate estimated maintenance if calories data is available
   let estimatedMaintenance: number | undefined;
