@@ -201,35 +201,44 @@ const WeightEntryForm = ({
           style={styles.modalBackdrop}
           onPress={() => setShowCalendar(false)}
         >
-          <View style={styles.calendarContainer}>
-            <RNCalendar
-              current={selectedDate}
-              maxDate={today}
-              onDayPress={handleDateSelect}
-              markedDates={{
-                [selectedDate]: {
-                  selected: true,
-                  selectedColor: colors.primary,
-                },
-              }}
-              theme={{
-                backgroundColor: colors.surfaceCard,
-                calendarBackground: colors.surfaceCard,
-                textSectionTitleColor: colors.textMuted,
-                selectedDayBackgroundColor: colors.primary,
-                selectedDayTextColor: colors.white,
-                todayTextColor: colors.primary,
-                dayTextColor: colors.text,
-                textDisabledColor: colors.surfaceMid,
-                arrowColor: colors.primary,
-                monthTextColor: colors.text,
-                textDayFontWeight: "400",
-                textMonthFontWeight: "700",
-                textDayHeaderFontWeight: "600",
-              }}
-              style={styles.calendar}
-            />
-          </View>
+          <ScrollView
+            style={styles.calendarScroll}
+            contentContainerStyle={styles.calendarScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Pressable style={styles.calendarWrapper} onPress={() => {}}>
+              <View style={styles.calendarContainer}>
+                <RNCalendar
+                  current={selectedDate}
+                  maxDate={today}
+                  onDayPress={handleDateSelect}
+                  markedDates={{
+                    [selectedDate]: {
+                      selected: true,
+                      selectedColor: colors.primary,
+                    },
+                  }}
+                  theme={{
+                    backgroundColor: colors.surfaceCard,
+                    calendarBackground: colors.surfaceCard,
+                    textSectionTitleColor: colors.textMuted,
+                    selectedDayBackgroundColor: colors.primary,
+                    selectedDayTextColor: colors.white,
+                    todayTextColor: colors.primary,
+                    dayTextColor: colors.text,
+                    textDisabledColor: colors.surfaceMid,
+                    arrowColor: colors.primary,
+                    monthTextColor: colors.text,
+                    textDayFontWeight: "400",
+                    textMonthFontWeight: "700",
+                    textDayHeaderFontWeight: "600",
+                  }}
+                  style={styles.calendar}
+                />
+              </View>
+            </Pressable>
+          </ScrollView>
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
@@ -284,9 +293,20 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.75)",
+    padding: spacingX._20,
+  },
+  calendarScroll: {
+    flex: 1,
+    width: "100%",
+  },
+  calendarScrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: spacingX._20,
+  },
+  calendarWrapper: {
+    width: "100%",
+    alignItems: "center",
   },
   calendarContainer: {
     backgroundColor: colors.surfaceCard,

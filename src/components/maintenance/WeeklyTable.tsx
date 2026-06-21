@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View, ViewStyle } from "react-native";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
@@ -10,6 +10,7 @@ import { WEEK_DAY_SHORT_NAMES, AppLanguage } from "@/src/i18n/translations";
 
 type WeeklyTableProps = {
   weeks: WeeklyData[];
+  style?: ViewStyle;
 };
 
 const formatShortDate = (dateKey: string, language: AppLanguage): string => {
@@ -31,7 +32,7 @@ const getShortDayName = (dayOfWeek: number, language: AppLanguage): string => {
   return WEEK_DAY_SHORT_NAMES[language][adjustedIndex];
 };
 
-const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
+const WeeklyTable = ({ weeks, style }: WeeklyTableProps) => {
   const { language, t } = useLanguage();
 
   if (weeks.length === 0) {
@@ -48,11 +49,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
   const reversedWeeks = [...weeks].reverse();
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={[styles.container, style]}>
       {/* Table Header */}
       <View style={styles.tableHeader}>
         <View style={[styles.headerCell, styles.dayColumn]}>
@@ -150,7 +147,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
           </View>
         );
       })}
-    </ScrollView>
+    </View>
   );
 };
 
@@ -158,10 +155,7 @@ export default WeeklyTable;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: spacingX._15,
+    paddingHorizontal: spacingX._15,
     paddingBottom: spacingY._30,
   },
   emptyContainer: {
