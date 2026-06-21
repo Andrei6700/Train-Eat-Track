@@ -216,6 +216,7 @@ export type Food = {
   carbs: number;
   fat: number;
   servingSize: string; 
+  image?: string;
 };
 
 export type Meal = {

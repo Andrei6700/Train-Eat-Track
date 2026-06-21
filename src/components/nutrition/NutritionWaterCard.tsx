@@ -3,6 +3,8 @@ import useReduceMotion from "@/src/hooks/useReduceMotion";
 import Typo from "@/src/components/ui/Typo";
 import WaterWave from "@/src/components/ui/WaterWave";
 import { useLanguage } from "@/src/contexts/languageContext";
+import { WaterIntake } from "@/src/types/index";
+import { verticalScale } from "@/src/utils/styling";
 import * as Icons from "phosphor-react-native";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -14,6 +16,8 @@ type NutritionWaterCardProps = {
   goal: number;
   onResetWater: () => void;
   onAddWater: (amount: number) => void;
+  intakes: WaterIntake[];
+  onRemoveWater: (index: number) => void;
 };
 
 const NutritionWaterCard = ({
@@ -22,9 +26,23 @@ const NutritionWaterCard = ({
   goal,
   onResetWater,
   onAddWater,
+  intakes = [],
+  onRemoveWater,
 }: NutritionWaterCardProps) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const reduceMotion = useReduceMotion();
+
+  // Sort intakes chronologically (ascending time) while keeping their original index
+  const sortedIntakesWithIndex = React.useMemo(() => {
+    return intakes
+      .map((intake, index) => ({ intake, index }))
+      .sort(
+        (a, b) =>
+          new Date(a.intake.timestamp).getTime() -
+          new Date(b.intake.timestamp).getTime(),
+      );
+  }, [intakes]);
+
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(200)}
@@ -87,6 +105,64 @@ const NutritionWaterCard = ({
               </Typo>
             </Pressable>
           </View>
+
+          {/* Chronological list of water entries */}
+          {sortedIntakesWithIndex.length > 0 && (
+            <View style={styles.entriesList}>
+              {sortedIntakesWithIndex.map((item) => {
+                const date = new Date(item.intake.timestamp);
+                const timeString = date.toLocaleTimeString(
+                  language === "ro" ? "ro-RO" : "en-US",
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  },
+                );
+
+                return (
+                  <View key={item.index} style={styles.entryRow}>
+                    {/* Bullet Indicator */}
+                    <View style={styles.bulletIndicator} />
+
+                    {/* Entry Details */}
+                    <View style={styles.entryDetails}>
+                      <Typo size={16} fontWeight="600" color={colors.textPrimary}>
+                        {item.intake.amount} ml
+                      </Typo>
+                      <View style={styles.timeRow}>
+                        <Icons.Clock
+                          size={12}
+                          color={colors.neutral400}
+                          style={styles.timeIcon}
+                        />
+                        <Typo size={12} color={colors.neutral400}>
+                          {timeString}
+                        </Typo>
+                      </View>
+                    </View>
+
+                    {/* Delete Button */}
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.deleteButton,
+                        pressed && styles.pressed,
+                      ]}
+                      onPress={() => onRemoveWater(item.index)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete water log ${item.intake.amount} ml`}
+                    >
+                      <Icons.Trash
+                        size={20}
+                        color={colors.rose}
+                        weight="fill"
+                      />
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       </View>
     </Animated.View>
@@ -164,6 +240,45 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  entriesList: {
+    width: "100%",
+    marginTop: spacingY._15,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacingY._15,
+    gap: spacingY._12,
+  },
+  entryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingVertical: spacingY._5,
+  },
+  bulletIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.waterAccent,
+    marginRight: spacingX._12,
+  },
+  entryDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  timeIcon: {
+    marginRight: 2,
+  },
+  deleteButton: {
+    padding: spacingX._10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   pressed: {
     opacity: 0.8,

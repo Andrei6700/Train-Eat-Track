@@ -83,7 +83,7 @@ For detailed technical information specific to the project, access the pages in 
 *  **[Architecture](docs/ARCHITECTURE.md)** – Directory structure, data flows, and Firestore database schema.
 *  **[DevOps & CI/CD Pipeline](docs/CICD.md)** – Complete step-by-step guide for configuring Jenkins in Docker and automating the pipeline.
 *  **[Developer Guide & API Reference](docs/API_REFERENCE.md)** – Environment variables, external API integrations (USDA, Cloudinary), and services.
-
+*  **[Statistics](docs/STATISTICS.md)**
 ---
 
 ## Running Tests

@@ -414,10 +414,10 @@ export const searchFoods = async (
     offResult.status === "fulfilled" ? offResult.value : [];
 
   if (__DEV__) {
-    if (usdaResult.status === "rejected") {
+    if (usdaResult.status === "rejected" && !isAbortError(usdaResult.reason)) {
       console.error("[NutritionixService] USDA text search failed:", usdaResult.reason);
     }
-    if (offResult.status === "rejected") {
+    if (offResult.status === "rejected" && !isAbortError(offResult.reason)) {
       console.error("[NutritionixService] OFF text search failed:", offResult.reason);
     }
   }

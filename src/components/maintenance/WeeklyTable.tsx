@@ -1,43 +1,45 @@
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View, ViewStyle } from "react-native";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale, scale } from "@/src/utils/styling";
 import Typo from "@/src/components/ui/Typo";
 import { WeeklyData } from "@/src/types/maintenance";
 import { generateWeekDays, parseDateKey } from "@/src/services/maintenanceService";
+import { useLanguage } from "@/src/contexts/languageContext";
+import { WEEK_DAY_SHORT_NAMES, AppLanguage } from "@/src/i18n/translations";
 
 type WeeklyTableProps = {
   weeks: WeeklyData[];
+  style?: ViewStyle;
 };
 
-const formatShortDate = (dateKey: string): string => {
+const formatShortDate = (dateKey: string, language: AppLanguage): string => {
   const [_year, month, day] = dateKey.split("-").map(Number);
-  const monthNames = [
+  const monthNamesRo = [
     "Ian", "Feb", "Mar", "Apr", "Mai", "Iun",
     "Iul", "Aug", "Sep", "Oct", "Noi", "Dec",
   ];
+  const monthNamesEn = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const monthNames = language === "ro" ? monthNamesRo : monthNamesEn;
   return `${day} ${monthNames[month - 1]}`;
 };
 
-const getShortDayName = (dayOfWeek: number): string => {
-  const shortNames: Record<number, string> = {
-    0: "Dum",
-    1: "Lun",
-    2: "Mar",
-    3: "Mie",
-    4: "Joi",
-    5: "Vin",
-    6: "Sâm",
-  };
-  return shortNames[dayOfWeek];
+const getShortDayName = (dayOfWeek: number, language: AppLanguage): string => {
+  const adjustedIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  return WEEK_DAY_SHORT_NAMES[language][adjustedIndex];
 };
 
-const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
+const WeeklyTable = ({ weeks, style }: WeeklyTableProps) => {
+  const { language, t } = useLanguage();
+
   if (weeks.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Typo size={verticalScale(14)} color={colors.textMuted} style={styles.emptyText}>
-          Nu există date încă. Adaugă prima ta înregistrare de greutate.
+          {t("maintenance_table_empty")}
         </Typo>
       </View>
     );
@@ -47,26 +49,22 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
   const reversedWeeks = [...weeks].reverse();
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={[styles.container, style]}>
       {/* Table Header */}
       <View style={styles.tableHeader}>
         <View style={[styles.headerCell, styles.dayColumn]}>
           <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
-            Zi
+            {t("maintenance_table_header_day")}
           </Typo>
         </View>
         <View style={[styles.headerCell, styles.dateColumn]}>
           <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
-            Data
+            {t("maintenance_table_header_date")}
           </Typo>
         </View>
         <View style={[styles.headerCell, styles.weightColumn]}>
           <Typo size={verticalScale(12)} fontWeight="700" color={colors.textMuted}>
-            Greutate (kg)
+            {t("maintenance_table_header_weight")}
           </Typo>
         </View>
       </View>
@@ -81,7 +79,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
             {/* Week Label */}
             <View style={styles.weekLabel}>
               <Typo size={verticalScale(11)} fontWeight="600" color={colors.primary}>
-                Săptămâna {week.weekNumber}
+                {t("maintenance_table_week_label", { count: week.weekNumber })}
               </Typo>
             </View>
 
@@ -104,7 +102,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
                       fontWeight="500"
                       color={hasEntry ? colors.text : colors.textMuted}
                     >
-                      {getShortDayName(day.dayOfWeek)}
+                      {getShortDayName(day.dayOfWeek, language)}
                     </Typo>
                   </View>
                   <View style={[styles.cell, styles.dateColumn]}>
@@ -112,7 +110,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
                       size={verticalScale(13)}
                       color={hasEntry ? colors.text : colors.textMuted}
                     >
-                      {formatShortDate(day.date)}
+                      {formatShortDate(day.date, language)}
                     </Typo>
                   </View>
                   <View style={[styles.cell, styles.weightColumn]}>
@@ -132,12 +130,12 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
             <View style={styles.averageRow}>
               <View style={[styles.cell, styles.dayColumn]}>
                 <Typo size={verticalScale(13)} fontWeight="700" color={colors.primary}>
-                  MEDIE
+                  {t("maintenance_table_average")}
                 </Typo>
               </View>
               <View style={[styles.cell, styles.dateColumn]}>
                 <Typo size={verticalScale(12)} fontWeight="600" color={colors.primary}>
-                  S{week.weekNumber}
+                  {t("maintenance_table_week_short", { count: week.weekNumber })}
                 </Typo>
               </View>
               <View style={[styles.cell, styles.weightColumn]}>
@@ -149,7 +147,7 @@ const WeeklyTable = ({ weeks }: WeeklyTableProps) => {
           </View>
         );
       })}
-    </ScrollView>
+    </View>
   );
 };
 
@@ -157,10 +155,7 @@ export default WeeklyTable;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: spacingX._15,
+    paddingHorizontal: spacingX._15,
     paddingBottom: spacingY._30,
   },
   emptyContainer: {

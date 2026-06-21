@@ -465,6 +465,7 @@ const MealDetail = () => {
       carbs: Math.round(selectedRecentFood.carbs * multiplier * 10) / 10,
       fat: Math.round(selectedRecentFood.fat * multiplier * 10) / 10,
       servingSize: `${qty}g`,
+      image: selectedRecentFood.image,
     };
 
     try {
@@ -507,6 +508,7 @@ const MealDetail = () => {
       carbs: Math.round(selectedFood.carbs * multiplier * 10) / 10,
       fat: Math.round(selectedFood.fat * multiplier * 10) / 10,
       servingSize: `${qty}g`,
+      image: selectedFood.image,
     };
 
     try {
@@ -554,12 +556,20 @@ const MealDetail = () => {
         style={styles.searchResultItem}
         onPress={() => handleFoodPress(food)}
       >
-        {food.image && (
+        {food.image ? (
           <Image
             source={{ uri: food.image }}
             style={styles.foodImage}
             contentFit="cover"
           />
+        ) : (
+          <View style={styles.foodImagePlaceholderSmall}>
+            <Icons.ForkKnife
+              size={verticalScale(24)}
+              color={colors.neutral400}
+              weight="regular"
+            />
+          </View>
         )}
         <View style={styles.foodInfo}>
           <Typo size={16} fontWeight="600" numberOfLines={2}>
@@ -940,7 +950,13 @@ const MealDetail = () => {
                             contentFit="cover"
                           />
                         ) : (
-                          <View style={styles.foodImagePlaceholder} />
+                          <View style={styles.foodImagePlaceholder}>
+                            <Icons.ForkKnife
+                              size={verticalScale(44)}
+                              color={colors.neutral500}
+                              weight="light"
+                            />
+                          </View>
                         )}
                         <Typo
                           size={20}
@@ -1330,7 +1346,8 @@ const styles = StyleSheet.create({
   nutritionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacingX._10,
+    flexWrap: "wrap",
+    gap: spacingX._5,
   },
   actionButtons: {
     flexDirection: "row",
@@ -1402,6 +1419,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderLeftWidth: 1,
     borderLeftColor: colors.neutral700,
+    alignSelf: "stretch",
   },
   modalOverlay: {
     flex: 1,
@@ -1463,6 +1481,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral800,
     borderWidth: 2,
     borderColor: colors.neutral700,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  foodImagePlaceholderSmall: {
+    width: verticalScale(60),
+    height: verticalScale(60),
+    borderRadius: radius._10,
+    backgroundColor: colors.neutral800,
+    borderWidth: 2,
+    borderColor: colors.neutral700,
+    justifyContent: "center",
+    alignItems: "center",
   },
   nutritionPreview: {
     flexDirection: "row",

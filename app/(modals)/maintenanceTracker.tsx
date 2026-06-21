@@ -9,29 +9,30 @@ import BackButton from "@/src/components/navigation/BackButton";
 import Loading from "@/src/components/ui/Loading";
 import Typo from "@/src/components/ui/Typo";
 import { useAuth } from "@/src/contexts/authContext";
+import { useLanguage } from "@/src/contexts/languageContext";
 import {
-    analyzeMaintenanceStatus,
-    getWeightEntries,
-    groupEntriesByWeek,
-    hasSeenOnboarding,
-    saveWeightEntry,
-    setOnboardingSeen,
+  analyzeMaintenanceStatus,
+  getWeightEntries,
+  groupEntriesByWeek,
+  hasSeenOnboarding,
+  saveWeightEntry,
+  setOnboardingSeen,
 } from "@/src/services/maintenanceService";
 import {
-    MaintenanceAnalysisResult,
-    WeeklyData,
-    WeightEntry,
+  MaintenanceAnalysisResult,
+  WeeklyData,
+  WeightEntry,
 } from "@/src/types/maintenance";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { PlusCircle, Table } from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, {
-    Easing,
-    FadeIn,
-    useAnimatedStyle,
-    useSharedValue,
-    withTiming,
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 
 type TabType = "add" | "table";
@@ -39,10 +40,11 @@ type TabType = "add" | "table";
 // Onboarding behavior toggle:
 // - true  => show popup every time this screen opens for testing
 // - false => show popup one time
-const FORCE_SHOW_ONBOARDING = false;
+const FORCE_SHOW_ONBOARDING = true;
 
 const MaintenanceTrackerScreen = () => {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabType>("add");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ const MaintenanceTrackerScreen = () => {
         setWeeks(grouped);
 
         // Analyze if enough data
-        const analysisResult = analyzeMaintenanceStatus(grouped, "ro");
+        const analysisResult = analyzeMaintenanceStatus(grouped, language);
         setAnalysis(analysisResult);
       }
     } catch (error) {
@@ -105,6 +107,12 @@ const MaintenanceTrackerScreen = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Keep tab indicator in sync with screen width/orientation changes
+  useEffect(() => {
+    tabIndicatorPosition.value = activeTab === "add" ? 0 : singleTabWidth;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleTabWidth]);
 
   const handleTabChange = useCallback(
     (tab: TabType) => {
@@ -150,7 +158,7 @@ const MaintenanceTrackerScreen = () => {
   return (
     <ModalWrapper>
       <View style={styles.container}>
-        <Header title="Tracker Mentenanță" leftIcon={<BackButton />} />
+        <Header title={t("maintenance_title")} leftIcon={<BackButton />} />
 
         {/* Tab Bar */}
         <Animated.View entering={FadeIn.delay(100)} style={styles.tabBar}>
@@ -172,7 +180,7 @@ const MaintenanceTrackerScreen = () => {
                 fontWeight={activeTab === "add" ? "700" : "500"}
                 color={activeTab === "add" ? colors.black : colors.textMuted}
               >
-                Adaugă Greutate
+                {t("maintenance_tab_add")}
               </Typo>
             </Pressable>
             <Pressable
@@ -189,7 +197,7 @@ const MaintenanceTrackerScreen = () => {
                 fontWeight={activeTab === "table" ? "700" : "500"}
                 color={activeTab === "table" ? colors.black : colors.textMuted}
               >
-                Tabel Săptămânal
+                {t("maintenance_tab_table")}
               </Typo>
             </Pressable>
           </View>
@@ -207,25 +215,30 @@ const MaintenanceTrackerScreen = () => {
             </Animated.View>
           ) : (
             <Animated.View entering={FadeIn} style={styles.tableContainer}>
-              {/* Show analysis if available */}
-              {analysis && <MaintenanceAnalysis analysis={analysis} />}
+              <ScrollView
+                style={styles.tableScroll}
+                contentContainerStyle={styles.tableScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Show analysis if available */}
+                {analysis && <MaintenanceAnalysis analysis={analysis} />}
 
-              {/* Weekly table */}
-              <WeeklyTable weeks={weeks} />
+                {/* Weekly table */}
+                <WeeklyTable weeks={weeks} />
 
-              {/* Help message if not enough data */}
-              {weeks.length > 0 && weeks.length < 2 && (
-                <View style={styles.helpMessage}>
-                  <Typo
-                    size={verticalScale(12)}
-                    color={colors.textMuted}
-                    style={styles.helpText}
-                  >
-                    Continuă să înregistrezi greutatea pentru cel puțin 2
-                    săptămâni pentru a vedea analiza mentenanței.
-                  </Typo>
-                </View>
-              )}
+                {/* Help message if not enough data */}
+                {weeks.length > 0 && weeks.length < 2 && (
+                  <View style={styles.helpMessage}>
+                    <Typo
+                      size={verticalScale(12)}
+                      color={colors.textMuted}
+                      style={styles.helpText}
+                    >
+                      {t("maintenance_help_min_weeks")}
+                    </Typo>
+                  </View>
+                )}
+              </ScrollView>
             </Animated.View>
           )}
         </View>
@@ -263,13 +276,15 @@ const styles = StyleSheet.create({
     top: scale(4),
     left: scale(4),
     width: "48%",
-    height: verticalScale(40),
+    height: verticalScale(44),
+    minHeight: 44,
     backgroundColor: colors.primary,
     borderRadius: radius._6,
   },
   tab: {
     flex: 1,
-    height: verticalScale(40),
+    height: verticalScale(44),
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -289,6 +304,12 @@ const styles = StyleSheet.create({
   },
   tableContainer: {
     flex: 1,
+  },
+  tableScroll: {
+    flex: 1,
+  },
+  tableScrollContent: {
+    paddingBottom: spacingY._20,
   },
   helpMessage: {
     padding: spacingX._20,

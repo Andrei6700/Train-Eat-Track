@@ -11,6 +11,7 @@ import {
   TrendUp,
 } from "phosphor-react-native";
 import React, { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/src/contexts/languageContext";
 import { Dimensions, Modal, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
@@ -29,8 +30,8 @@ const SLIDE_WIDTH = SCREEN_WIDTH - scale(48);
 
 type OnboardingSlide = {
   icon: React.ReactNode;
-  title: string;
-  text: string;
+  titleKey: string;
+  textKey: string;
 };
 
 const SLIDES: OnboardingSlide[] = [
@@ -42,8 +43,8 @@ const SLIDES: OnboardingSlide[] = [
         weight="duotone"
       />
     ),
-    title: "Ce este mentenanța?",
-    text: "Mentenanța calorică = numărul de calorii la care greutatea ta rămâne stabilă. O găsim urmărind greutatea și caloriile timp de 2 săptămâni fără să schimbi nimic.",
+    titleKey: "maintenance_onboarding_slide1_title",
+    textKey: "maintenance_onboarding_slide1_text",
   },
   {
     icon: (
@@ -53,8 +54,8 @@ const SLIDES: OnboardingSlide[] = [
         weight="duotone"
       />
     ),
-    title: "Cum îți cântărești greutatea corect",
-    text: "Cântărește-te în fiecare dimineață, după baie, înainte de mâncare și băutură. Dacă poți, zilnic — sau minim 3x/săptămână, incluzând o zi de weekend.",
+    titleKey: "maintenance_onboarding_slide2_title",
+    textKey: "maintenance_onboarding_slide2_text",
   },
   {
     icon: (
@@ -64,8 +65,8 @@ const SLIDES: OnboardingSlide[] = [
         weight="duotone"
       />
     ),
-    title: "De ce contează media săptămânală",
-    text: "Greutatea zilnică fluctuează normal cu 1–2%. Media săptămânală este singurul număr care contează — nu greutatea dintr-o zi anume.",
+    titleKey: "maintenance_onboarding_slide3_title",
+    textKey: "maintenance_onboarding_slide3_text",
   },
   {
     icon: (
@@ -75,15 +76,15 @@ const SLIDES: OnboardingSlide[] = [
         weight="duotone"
       />
     ),
-    title: "Cum interpretezi trendurile",
-    text: "Dacă media Săpt. 2 > media Săpt. 1 -> ești peste mentenanță. Dacă e egală -> ești la mentenanță. Dacă e mai mică -> ești sub mentenanță.",
+    titleKey: "maintenance_onboarding_slide4_title",
+    textKey: "maintenance_onboarding_slide4_text",
   },
   {
     icon: (
       <Info size={verticalScale(64)} color={colors.primary} weight="duotone" />
     ),
-    title: "Fluctuațiile nu înseamnă grăsime",
-    text: "Sare în plus, carbohidrați, stres, ciclul menstrual — toate cresc temporar greutatea. Nu intra în panică. Urmărește trendul pe 2 săptămâni.",
+    titleKey: "maintenance_onboarding_slide5_title",
+    textKey: "maintenance_onboarding_slide5_text",
   },
 ];
 
@@ -96,6 +97,7 @@ const OnboardingCarousel = ({
   visible,
   onDismiss,
 }: OnboardingCarouselProps) => {
+  const { t } = useLanguage();
   const reduceMotion = useReduceMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
   const translateX = useSharedValue(0);
@@ -201,14 +203,14 @@ const OnboardingCarousel = ({
                     color={colors.text}
                     style={styles.title}
                   >
-                    {slide.title}
+                    {t(slide.titleKey)}
                   </Typo>
                   <Typo
                     size={verticalScale(14)}
                     color={colors.textMuted}
                     style={styles.text}
                   >
-                    {slide.text}
+                    {t(slide.textKey)}
                   </Typo>
                 </View>
               ))}
@@ -243,7 +245,7 @@ const OnboardingCarousel = ({
                   fontWeight="700"
                   color={colors.black}
                 >
-                  Am înțeles, să începem!
+                  {t("maintenance_onboarding_dismiss")}
                 </Typo>
               </Button>
             ) : (
@@ -253,7 +255,7 @@ const OnboardingCarousel = ({
                   fontWeight="700"
                   color={colors.black}
                 >
-                  Următorul
+                  {t("maintenance_onboarding_next")}
                 </Typo>
               </Button>
             )}
