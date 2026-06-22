@@ -19,6 +19,7 @@ import {
     checkWorkoutExistsToday,
     getUserWorkouts,
 } from "@/src/services/workoutService";
+import { hasWorkoutDraft } from "@/src/services/workoutDraftService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { verticalScale } from "@/src/utils/styling";
@@ -123,6 +124,7 @@ const Workout = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [hasWorkoutToday, setHasWorkoutToday] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
   const [initialIndex, setInitialIndex] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date>(startOfDay(new Date()));
@@ -388,6 +390,9 @@ const Workout = () => {
       setCurrentMonth(nextSelectedDay);
       void loadWorkoutData();
 
+      // Refresh draft status on screen focus
+      hasWorkoutDraft().then(setHasDraft);
+
       return () => {
         requestIdRef.current += 1;
       };
@@ -469,6 +474,14 @@ const Workout = () => {
     }
   }, [router, workoutPlan]);
 
+  const handleEditWorkout = useCallback(() => {
+    if (!selectedWorkout?.id) return;
+    router.push({
+      pathname: "/(modals)/editWorkout",
+      params: { workoutId: selectedWorkout.id },
+    });
+  }, [router, selectedWorkout?.id]);
+
   const onRefresh = useCallback(() => {
     const nextSelectedDay = startOfDay(new Date());
     setRefreshing(true);
@@ -540,6 +553,27 @@ const Workout = () => {
             )}
           </Animated.View>
 
+          {hasDraft && (
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(400)}
+              style={styles.draftBannerContainer}
+            >
+              <TouchableOpacity
+                style={styles.draftBanner}
+                activeOpacity={0.9}
+                onPress={() => router.push("/(modals)/addWorkout")}
+              >
+                <View style={styles.draftBannerLeft}>
+                  <Icons.WarningCircle size={20} color={colors.primary} weight="fill" />
+                  <Typo size={14} fontWeight="600" color={colors.white} style={styles.draftText}>
+                    {t("workout_active_draft_banner")}
+                  </Typo>
+                </View>
+                <Icons.CaretRight size={16} color={colors.neutral400} weight="bold" />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
           <Animated.View
             entering={
               reduceMotion ? undefined : FadeInDown.duration(400).delay(100)
@@ -606,6 +640,7 @@ const Workout = () => {
                 onStartWorkout={handleStartWorkout}
                 onEditPlan={handleEditPlan}
                 onLogWorkout={handleLogWorkout}
+                onEditWorkout={handleEditWorkout}
               />
             </ScrollView>
           </View>
@@ -657,5 +692,28 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: verticalScale(20),
     flexGrow: 1,
+  },
+  draftBannerContainer: {
+    marginBottom: spacingY._15,
+  },
+  draftBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: colors.neutral800,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: radius._12,
+    paddingVertical: spacingY._12,
+    paddingHorizontal: spacingX._15,
+  },
+  draftBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+    flex: 1,
+  },
+  draftText: {
+    flex: 1,
   },
 });

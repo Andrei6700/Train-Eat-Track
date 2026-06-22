@@ -281,6 +281,55 @@ export const deleteWorkout = async (workoutId: string, userID?: string): Promise
   }
 };
 
+export const updateWorkout = async (
+  workout: WorkoutHistory,
+): Promise<ResponseType> => {
+  try {
+    const userID = workout.userID;
+    const workoutId = workout.id;
+    if (!userID) return { success: false, msg: "Missing userID", code: "UNKNOWN_ERROR" };
+    if (!workoutId) return { success: false, msg: "Missing workout id", code: "UNKNOWN_ERROR" };
+
+    const workoutDate = normalizeWorkoutDate(workout.date);
+    const online = await isOnline();
+
+    if (!online) {
+      const dedupeKey = `${userID}:update:${workoutId}`;
+      const queuedAction = await enqueueOrMergeAction({ type: "UPDATE_WORKOUT", data: { ...workout, date: workoutDate }, dedupeKey, mergeStrategy: "replace_latest" });
+      const offlineWorkout: WorkoutHistory = { ...workout, date: workoutDate, isOffline: true, syncStatus: "pending" as const, queuedActionId: queuedAction.id, savedAt: queuedAction.timestamp };
+      await Promise.all([cacheLastWorkout(offlineWorkout), upsertCachedWorkoutHistoryItem(userID, offlineWorkout)]);
+      return { success: true, data: { id: workoutId, offline: true }, code: "SYNC_QUEUED_OFFLINE", msg: "Workout update saved offline. Will sync when online." };
+    }
+
+    if (workoutId.startsWith("offline_")) {
+      // For offline-created workouts, update the queued draft in place
+      const dedupeKey = `${userID}:update:${workoutId}`;
+      const queuedAction = await enqueueOrMergeAction({ type: "UPDATE_WORKOUT", data: { ...workout, date: workoutDate }, dedupeKey, mergeStrategy: "replace_latest" });
+      const offlineWorkout: WorkoutHistory = { ...workout, date: workoutDate, isOffline: true, syncStatus: "pending" as const, queuedActionId: queuedAction.id, savedAt: queuedAction.timestamp };
+      await upsertCachedWorkoutHistoryItem(userID, offlineWorkout);
+      return { success: true, data: { id: workoutId, offline: true }, code: "SYNC_QUEUED_OFFLINE", msg: "Offline workout updated." };
+    }
+
+    try {
+      const docRef = userWorkoutDoc(userID, workoutId);
+      const { userID: _uid, id: _id, isOffline: _off, syncStatus: _ss, queuedActionId: _qa, savedAt: _sa, ...workoutData } = workout;
+      await updateDoc(docRef, { ...workoutData, date: Timestamp.fromDate(workoutDate) });
+      const persisted: WorkoutHistory = { ...workout, date: workoutDate, isOffline: false, syncStatus: undefined, queuedActionId: undefined, savedAt: undefined };
+      await Promise.all([cacheLastWorkout(persisted), upsertCachedWorkoutHistoryItem(userID, persisted)]);
+      return { success: true, data: { id: workoutId } };
+    } catch (remoteError: any) {
+      if (__DEV__) console.error("[workoutService] updateWorkout remote error, falling back to queue:", remoteError);
+      const dedupeKey = `${userID}:update:${workoutId}`;
+      const queuedAction = await enqueueOrMergeAction({ type: "UPDATE_WORKOUT", data: { ...workout, date: workoutDate }, dedupeKey, mergeStrategy: "replace_latest" });
+      await upsertCachedWorkoutHistoryItem(userID, { ...workout, date: workoutDate, isOffline: true, syncStatus: "retry_scheduled", queuedActionId: queuedAction.id, savedAt: queuedAction.timestamp });
+      return { success: true, data: { id: workoutId, offline: true }, code: "SYNC_RETRY_SCHEDULED", msg: "Workout update saved locally due to a temporary sync issue." };
+    }
+  } catch (error: any) {
+    if (__DEV__) console.error("[workoutService] updateWorkout error:", error);
+    return { success: false, msg: error?.message, code: "UNKNOWN_ERROR" };
+  }
+};
+
 export const prefetchWorkoutHistorySnapshot = async (userID: string): Promise<void> => {
   try { await getUserWorkouts(userID); } catch (error) { if (__DEV__) console.error("[workoutService] Prefetch workout history failed:", error); }
 };

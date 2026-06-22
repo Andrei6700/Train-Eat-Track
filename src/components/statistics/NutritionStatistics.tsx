@@ -71,8 +71,14 @@ const CHART_TYPE_CONFIG: Record<NutritionChartType, {
   carbs:   { color: "#7B61FF", badge: "g carbs",   field: "carbs",    suffix: "" },
 };
 
-const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = ""): ChartDataPoint[] => {
+const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = "", hidePointLabels = false): ChartDataPoint[] => {
   return points.map((pt, idx) => {
+    if (hidePointLabels) {
+      return {
+        ...pt,
+        // Don't show dataPointText for yearly — too many labels
+      };
+    }
     const shiftY = idx % 2 === 0 ? 12 : -12;
 
     return {
@@ -347,19 +353,13 @@ function NutritionStatistics({
     return result;
   }, [nutritionHistory, waterHistory, dataPeriod]);
 
-  // downsample to weekly averages for Yearly view (max ~52 points instead of 365)
+  // Downsample to monthly averages for Yearly view (max ~12 points)
   const nutritionDayStats = useMemo((): NutritionDayStats[] => {
-    const start = Date.now();
     if (dataPeriod !== "Yearly") {
-      const result = rawNutritionDayStats;
-      const duration = Date.now() - start;
-      if (__DEV__) {
-        console.log(`[STATS] NutritionStatistics - filtered data memo (Yearly bypass): ${duration}ms`);
-      }
-      return result;
+      return rawNutritionDayStats;
     }
 
-    const weeklyGroups = new Map<
+    const monthlyGroups = new Map<
       string,
       {
         caloriesList: number[];
@@ -372,9 +372,8 @@ function NutritionStatistics({
     >();
 
     rawNutritionDayStats.forEach((day) => {
-      const startOfWeek = getStartOfWeek(day.date);
-      const key = startOfWeek.toISOString();
-      const existing = weeklyGroups.get(key);
+      const monthKey = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, "0")}`;
+      const existing = monthlyGroups.get(monthKey);
       if (existing) {
         if (day.calories > 0) existing.caloriesList.push(day.calories);
         if (day.protein > 0) existing.proteinList.push(day.protein);
@@ -382,38 +381,33 @@ function NutritionStatistics({
         if (day.fat > 0) existing.fatList.push(day.fat);
         if (day.water > 0) existing.waterList.push(day.water);
       } else {
-        weeklyGroups.set(key, {
+        monthlyGroups.set(monthKey, {
           caloriesList: day.calories > 0 ? [day.calories] : [],
           proteinList: day.protein > 0 ? [day.protein] : [],
           carbsList: day.carbs > 0 ? [day.carbs] : [],
           fatList: day.fat > 0 ? [day.fat] : [],
           waterList: day.water > 0 ? [day.water] : [],
-          date: startOfWeek,
+          date: new Date(day.date.getFullYear(), day.date.getMonth(), 1),
         });
       }
     });
 
-    const sortedWeeks = Array.from(weeklyGroups.values()).sort(
+    const sortedMonths = Array.from(monthlyGroups.values()).sort(
       (a, b) => a.date.getTime() - b.date.getTime()
     );
 
-    const result = sortedWeeks.map((w) => {
+    return sortedMonths.map((m) => {
       const avg = (list: number[]) =>
         list.length > 0 ? Math.round(list.reduce((s, v) => s + v, 0) / list.length) : 0;
       return {
-        date: w.date,
-        calories: avg(w.caloriesList),
-        protein: avg(w.proteinList),
-        carbs: avg(w.carbsList),
-        fat: avg(w.fatList),
-        water: avg(w.waterList),
+        date: m.date,
+        calories: avg(m.caloriesList),
+        protein: avg(m.proteinList),
+        carbs: avg(m.carbsList),
+        fat: avg(m.fatList),
+        water: avg(m.waterList),
       };
     });
-    const duration = Date.now() - start;
-    if (__DEV__) {
-      console.log(`[STATS] NutritionStatistics - filtered data memo (Yearly downsample): ${duration}ms`);
-    }
-    return result;
   }, [rawNutritionDayStats, dataPeriod]);
 
   // Memoized: full averages including protein/carbs/fat for macros dashboard
@@ -457,16 +451,16 @@ function NutritionStatistics({
   const nutritionChartData = useMemo((): ChartDataPoint[] => {
     const start = Date.now();
     const field = activeChartConfig.field;
+    const labelFormat = dataPeriod === "Yearly"
+      ? { month: "short" as const }
+      : { month: "short" as const, day: "numeric" as const };
     const rawPoints = nutritionDayStats
       .filter((d) => (d[field] as number) > 0)
       .map((d) => ({
         value: d[field] as number,
-        label: d.date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
-          month: "short",
-          day: "numeric",
-        }),
+        label: d.date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], labelFormat),
       }));
-    const result = applyLabelFiltering(rawPoints, activeChartConfig.suffix);
+    const result = applyLabelFiltering(rawPoints, activeChartConfig.suffix, false);
     const duration = Date.now() - start;
     if (__DEV__) {
       console.log(`[STATS] NutritionStatistics - chartData memo: ${duration}ms`);
@@ -476,16 +470,16 @@ function NutritionStatistics({
 
   const waterChartData = useMemo((): ChartDataPoint[] => {
     const start = Date.now();
+    const waterLabelFormat = dataPeriod === "Yearly"
+      ? { month: "short" as const }
+      : { month: "short" as const, day: "numeric" as const };
     const rawPoints = nutritionDayStats
       .filter((d) => d.water > 0)
       .map((d) => ({
         value: d.water,
-        label: d.date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
-          month: "short",
-          day: "numeric",
-        }),
+        label: d.date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], waterLabelFormat),
       }));
-    const result = applyLabelFiltering(rawPoints, "");
+    const result = applyLabelFiltering(rawPoints, "", false);
     const duration = Date.now() - start;
     if (__DEV__) {
       console.log(`[STATS] NutritionStatistics - water chartData memo: ${duration}ms`);
@@ -729,8 +723,8 @@ function NutritionStatistics({
                     dataPointsColor={activeChartConfig.color}
                     dataPointsRadius={4}
                     textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
+                    rotateLabel={dataPeriod !== "Yearly"}
+                    xAxisLabelsHeight={dataPeriod === "Yearly" ? verticalScale(20) : verticalScale(30)}
                     xAxisLabelsVerticalShift={5}
                     overflowTop={35}
                   />
@@ -786,8 +780,8 @@ function NutritionStatistics({
                     dataPointsColor={colors.waterAccent}
                     dataPointsRadius={4}
                     textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
+                    rotateLabel={dataPeriod !== "Yearly"}
+                    xAxisLabelsHeight={dataPeriod === "Yearly" ? verticalScale(20) : verticalScale(30)}
                     xAxisLabelsVerticalShift={5}
                     overflowTop={35}
                   />

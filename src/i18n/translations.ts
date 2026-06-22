@@ -72,6 +72,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     common_success: "Success",
     common_error: "Error",
     common_save: "Save",
+    common_discard: "Discard",
+    common_resume: "Resume",
     common_workout_singular: "workout",
     common_workout_plural: "workouts",
     common_more_count: "+{count} more",
@@ -108,6 +110,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_first_cycle_empty_warning:
       "If you don't add exercises today, this day will become a rest day in future cycles",
     workout_start_workout: "Start Workout",
+    workout_active_draft_indicator: "Unsaved Workout",
+    workout_active_draft_banner: "You have an unsaved workout in progress. Tap to resume.",
     workout_no_workout_logged: "No workout logged",
     workout_forgot_log: "Forgot to log your workout that day?",
     workout_log_for_day: "Log Workout for This Day",
@@ -342,6 +346,10 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     add_workout_modal_logged_success_for_date:
       "Workout logged successfully for {date}!",
     add_workout_modal_saved_success_message: "Workout saved successfully!",
+    add_workout_modal_draft_resume_title: "Resume Workout?",
+    add_workout_modal_draft_resume_message: "You have an unsaved workout from earlier. Do you want to resume it?",
+    add_workout_modal_exit_confirm_title: "Exit Workout?",
+    add_workout_modal_exit_confirm_message: "Are you sure you want to leave? Your progress will be discarded.",
     add_workout_modal_sync_conflict_title: "Sync Conflict",
     add_workout_modal_sync_conflict_message:
       "A workout already exists for this date. Please review your history before saving another entry.",
@@ -574,6 +582,12 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     maintenance_onboarding_slide4_text: "If Week 2 average > Week 1 average -> you are above maintenance. If equal -> you are at maintenance. If lower -> you are below maintenance.",
     maintenance_onboarding_slide5_title: "Fluctuations don't mean fat",
     maintenance_onboarding_slide5_text: "Extra salt, carbs, stress, menstrual cycle — all temporarily increase weight. Don't panic. Track the trend over 2 weeks.",
+    edit_workout_modal_title: "Edit Workout",
+    edit_workout_modal_save: "Save Changes",
+    edit_workout_modal_success: "Workout updated successfully!",
+    edit_workout_modal_error_save: "Could not update workout",
+    edit_workout_modal_error_load: "Could not load workout for editing",
+    workout_edit_button: "Edit",
   },
   ro: {
     common_today: "Azi",
@@ -588,6 +602,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     common_success: "Succes",
     common_error: "Eroare",
     common_save: "Salveaza",
+    common_discard: "Renunta",
+    common_resume: "Reia",
     common_workout_singular: "antrenament",
     common_workout_plural: "antrenamente",
     common_more_count: "+{count} mai multe",
@@ -624,6 +640,8 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     workout_first_cycle_empty_warning:
       "Daca nu adaugi exercitii astazi, aceasta zi va deveni zi de pauza in ciclurile viitoare",
     workout_start_workout: "Incepe antrenamentul",
+    workout_active_draft_indicator: "Antrenament nesalvat",
+    workout_active_draft_banner: "Ai un antrenament nesalvat in desfasurare. Atinge pentru a continua.",
     workout_no_workout_logged: "Niciun antrenament inregistrat",
     workout_forgot_log: "Ai uitat sa inregistrezi antrenamentul in ziua respectiva?",
     workout_log_for_day: "Inregistreaza antrenamentul pentru aceasta zi",
@@ -871,6 +889,10 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
       "Antrenamentul a fost inregistrat cu succes pentru {date}!",
     add_workout_modal_saved_success_message:
       "Antrenamentul a fost salvat cu succes!",
+    add_workout_modal_draft_resume_title: "Reia antrenamentul?",
+    add_workout_modal_draft_resume_message: "Ai un antrenament nesalvat de mai devreme. Vrei sa-l reiei?",
+    add_workout_modal_exit_confirm_title: "Ieși din antrenament?",
+    add_workout_modal_exit_confirm_message: "Ești sigur că vrei să părăsești ecranul? Progresul tău va fi șters.",
     add_workout_modal_sync_conflict_title: "Conflict de sincronizare",
     add_workout_modal_sync_conflict_message:
       "Exista deja un antrenament pentru aceasta data. Verifica istoricul inainte de a salva alta inregistrare.",
@@ -1119,6 +1141,12 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     maintenance_onboarding_slide4_text: "Dacă media Săpt. 2 > media Săpt. 1 -> ești peste mentenanță. Dacă e egală -> ești la mentenanță. Dacă e mai mică -> ești sub mentenanță.",
     maintenance_onboarding_slide5_title: "Fluctuațiile nu înseamnă grăsime",
     maintenance_onboarding_slide5_text: "Sare în plus, carbohidrați, stres, ciclul menstrual — toate cresc temporar greutatea. Nu intra în panică. Urmărește trendul pe 2 săptămâni.",
+    edit_workout_modal_title: "Editează antrenamentul",
+    edit_workout_modal_save: "Salvează modificările",
+    edit_workout_modal_success: "Antrenamentul a fost actualizat cu succes!",
+    edit_workout_modal_error_save: "Nu s-a putut actualiza antrenamentul",
+    edit_workout_modal_error_load: "Nu s-a putut încărca antrenamentul pentru editare",
+    workout_edit_button: "Editează",
   },
 };
 

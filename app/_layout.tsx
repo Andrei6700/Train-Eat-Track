@@ -230,6 +230,10 @@ const StackLayout = () => {
             options={{ presentation: "modal" }}
           />
           <Stack.Screen
+            name="(modals)/editWorkout"
+            options={{ presentation: "modal" }}
+          />
+          <Stack.Screen
             name="(modals)/mealDetail"
             options={{ presentation: "modal" }}
           />

@@ -60,8 +60,14 @@ interface WorkoutStatisticsProps {
 
 const PERIODS: PeriodType[] = ["Weekly", "Monthly", "Yearly"];
 
-const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = ""): ChartDataPoint[] => {
+const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = "", hidePointLabels = false): ChartDataPoint[] => {
   return points.map((pt, idx) => {
+    if (hidePointLabels) {
+      return {
+        ...pt,
+        // Don't show dataPointText for yearly — too many labels
+      };
+    }
     const shiftY = idx % 2 === 0 ? 12 : -12;
 
     return {
@@ -313,11 +319,7 @@ function WorkoutStatistics({
   // Memoized: available exercises list
   const availableExercises = useMemo(() => {
     const exerciseSet = new Set<string>();
-    // For Weekly, only show exercises from that period; otherwise show all time
-    const sourceWorkouts =
-      dataPeriod === "Weekly"
-        ? filteredWorkouts
-        : workoutsHistory.filter((w) => !w.isRestDay);
+    const sourceWorkouts = workoutsHistory.filter((w) => !w.isRestDay);
 
     sourceWorkouts.forEach((workout) => {
       workout.exercises?.forEach((exercise) => {
@@ -328,7 +330,7 @@ function WorkoutStatistics({
     });
 
     return Array.from(exerciseSet).sort();
-  }, [workoutsHistory, filteredWorkouts, dataPeriod]);
+  }, [workoutsHistory]);
 
   // Set default/fallback exercise selection
   useEffect(() => {
@@ -425,57 +427,54 @@ function WorkoutStatistics({
     let chartReps = reps;
 
     if (dataPeriod === "Yearly") {
-      const weeklyGroups = new Map<string, { weights: number[]; reps: number[]; date: Date }>();
+      const monthlyGroups = new Map<string, { weights: number[]; reps: number[]; date: Date }>();
 
       dates.forEach((date, idx) => {
-        const startOfWeek = getStartOfWeek(date);
-        const key = startOfWeek.toISOString();
-        const existing = weeklyGroups.get(key);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const existing = monthlyGroups.get(monthKey);
         if (existing) {
           existing.weights.push(weights[idx]);
           existing.reps.push(reps[idx]);
         } else {
-          weeklyGroups.set(key, {
+          monthlyGroups.set(monthKey, {
             weights: [weights[idx]],
             reps: [reps[idx]],
-            date: startOfWeek,
+            date: new Date(date.getFullYear(), date.getMonth(), 1),
           });
         }
       });
 
-      const sortedWeeks = Array.from(weeklyGroups.values()).sort(
+      const sortedMonths = Array.from(monthlyGroups.values()).sort(
         (a, b) => a.date.getTime() - b.date.getTime()
       );
 
-      chartDates = sortedWeeks.map((w) => w.date);
-      chartWeights = sortedWeeks.map((w) => {
-        const sum = w.weights.reduce((s, val) => s + val, 0);
-        return Math.round((sum / w.weights.length) * 10) / 10;
+      chartDates = sortedMonths.map((m) => m.date);
+      chartWeights = sortedMonths.map((m) => {
+        const sum = m.weights.reduce((s, val) => s + val, 0);
+        return Math.round((sum / m.weights.length) * 10) / 10;
       });
-      chartReps = sortedWeeks.map((w) => {
-        const sum = w.reps.reduce((s, val) => s + val, 0);
-        return Math.round(sum / w.reps.length);
+      chartReps = sortedMonths.map((m) => {
+        const sum = m.reps.reduce((s, val) => s + val, 0);
+        return Math.round(sum / m.reps.length);
       });
     }
 
+    const labelFormat = dataPeriod === "Yearly"
+      ? { month: "short" as const }
+      : { month: "short" as const, day: "numeric" as const };
+
     const rawWeightChartPoints: ChartDataPoint[] = chartDates.map((date, idx) => ({
       value: chartWeights[idx],
-      label: date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
-        month: "short",
-        day: "numeric",
-      }),
+      label: date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], labelFormat),
     }));
 
     const rawRepsChartPoints: ChartDataPoint[] = chartDates.map((date, idx) => ({
       value: chartReps[idx],
-      label: date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], {
-        month: "short",
-        day: "numeric",
-      }),
+      label: date.toLocaleDateString(LOCALE_BY_LANGUAGE[language], labelFormat),
     }));
 
-    const weightChartPoints = applyLabelFiltering(rawWeightChartPoints, "kg");
-    const repsChartPoints = applyLabelFiltering(rawRepsChartPoints, "");
+    const weightChartPoints = applyLabelFiltering(rawWeightChartPoints, "kg", false);
+    const repsChartPoints = applyLabelFiltering(rawRepsChartPoints, "", false);
 
     const stats: ExerciseStats = {
       exerciseName: selectedExercise,
@@ -791,8 +790,8 @@ function WorkoutStatistics({
                     dataPointsColor={colors.primary}
                     dataPointsRadius={4}
                     textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
+                    rotateLabel={dataPeriod !== "Yearly"}
+                    xAxisLabelsHeight={dataPeriod === "Yearly" ? verticalScale(20) : verticalScale(30)}
                     xAxisLabelsVerticalShift={5}
                     overflowTop={35}
                   />
@@ -849,8 +848,8 @@ function WorkoutStatistics({
                     dataPointsColor={colors.green}
                     dataPointsRadius={4}
                     textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
+                    rotateLabel={dataPeriod !== "Yearly"}
+                    xAxisLabelsHeight={dataPeriod === "Yearly" ? verticalScale(20) : verticalScale(30)}
                     xAxisLabelsVerticalShift={5}
                     overflowTop={35}
                   />
@@ -861,7 +860,7 @@ function WorkoutStatistics({
         </>
       )}
 
-      {exerciseStats && exerciseStats.workoutCount === 0 && (
+      {(!exerciseStats || exerciseStats.workoutCount === 0) && selectedExercise && (
         <View style={styles.emptyState}>
           <Icons.ChartLineIcon
             size={48}

@@ -120,7 +120,7 @@ export type UserDataType = {
 
 export type AuthContextType = {
   user: UserType;
-  setUser: Function;
+  setUser: (user: UserType) => void;
   login: (
     email: string,
     password: string

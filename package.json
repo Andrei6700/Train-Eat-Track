@@ -43,7 +43,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@shopify/flash-list": "2.0.2",
-    "@types/jest": "29.5.14",
+
     "axios": "^1.12.2",
     "expo": "~54.0.34",
     "expo-camera": "~17.0.9",
@@ -83,6 +83,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@types/jest": "29.5.14",
     "@types/react": "~19.1.0",
     "baseline-browser-mapping": "^2.9.11",
     "eslint": "^9.25.0",
