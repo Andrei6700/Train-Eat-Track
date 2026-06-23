@@ -76,25 +76,7 @@ export const trackRender = (componentName: string, durationMs: number) => {
 
 // DEV performance monitoring overlay React component
 export const PerfOverlay = () => {
-  const [perfEvents, setPerfEvents] = useState<string[]>([]);
-
-  useEffect(() => {
-    return subscribeToPerfEvents(setPerfEvents);
-  }, []);
-
-  if (!isDev || perfEvents.length === 0) return null;
-
-  return React.createElement(
-    View,
-    { style: styles.overlay, pointerEvents: "none" },
-    perfEvents.map((evt, idx) =>
-      React.createElement(
-        Text,
-        { key: idx, style: styles.text },
-        evt
-      )
-    )
-  );
+  return null;
 };
 
 const styles = StyleSheet.create({
