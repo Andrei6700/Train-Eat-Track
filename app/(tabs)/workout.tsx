@@ -319,6 +319,8 @@ const Workout = () => {
       const userId = user?.uid;
       requestIdRef.current += 1;
       const requestId = requestIdRef.current;
+      const startMs = Date.now();
+      const triggerReason = isPullToRefresh ? "pull_to_refresh" : "screen_focus";
 
       if (!userId) {
         clearWorkoutHistoryMemoryCache();
@@ -329,26 +331,35 @@ const Workout = () => {
         return;
       }
 
+      console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Starting load...`);
+
       const cachedHistory = getWorkoutHistoryMemoryCache(
         userId,
         CACHE_MAX_AGE_MS,
       );
       if (cachedHistory) {
+        console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Cache HIT. Loaded ${cachedHistory.length} workouts in ${Date.now() - startMs}ms.`);
         setWorkoutsHistory(cachedHistory);
         setHasWorkoutToday(hasWorkoutForDate(cachedHistory, todayKey));
         setLoading(false);
       } else if (!isPullToRefresh) {
+        console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Cache MISS. Triggering loading state.`);
         setLoading(true);
       }
 
       try {
+        const remoteStart = Date.now();
         const [historyResult, existsResult] = await Promise.allSettled([
           getUserWorkouts(userId),
           checkWorkoutExistsToday(userId),
         ]);
 
-        if (requestId !== requestIdRef.current) return;
+        if (requestId !== requestIdRef.current) {
+          console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Request superseded. Ignoring remote result.`);
+          return;
+        }
 
+        const remoteDuration = Date.now() - remoteStart;
         let nextHistory = cachedHistory ?? [];
 
         if (
@@ -356,19 +367,24 @@ const Workout = () => {
           historyResult.value.success
         ) {
           nextHistory = normalizeWorkoutHistory(historyResult.value.data);
+          console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Remote LOAD successful. Fetched ${nextHistory.length} workouts from Firebase in ${remoteDuration}ms.`);
           setWorkoutsHistory(nextHistory);
           setWorkoutHistoryMemoryCache(userId, nextHistory);
-        } else if (!cachedHistory) {
-          nextHistory = [];
-          setWorkoutsHistory([]);
+        } else {
+          console.error(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Remote LOAD failed in ${remoteDuration}ms.`, historyResult.status === "rejected" ? historyResult.reason : (historyResult.value as any)?.msg);
+          if (!cachedHistory) {
+            nextHistory = [];
+            setWorkoutsHistory([]);
+          }
         }
 
         if (existsResult.status === "fulfilled") {
-          setHasWorkoutToday(Boolean(existsResult.value.data?.exists));
+          setHasWorkoutToday(Boolean((existsResult.value as any).value?.data?.exists || (existsResult.value as any).value?.data));
         } else {
           setHasWorkoutToday(hasWorkoutForDate(nextHistory, todayKey));
         }
-      } catch {
+      } catch (error) {
+        console.error(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Error loading workout data:`, error);
         if (!cachedHistory && requestId === requestIdRef.current) {
           setWorkoutsHistory([]);
           setHasWorkoutToday(false);
@@ -377,6 +393,7 @@ const Workout = () => {
         if (requestId === requestIdRef.current) {
           setLoading(false);
           setRefreshing(false);
+          console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Total load operation completed in ${Date.now() - startMs}ms.`);
         }
       }
     },
@@ -388,6 +405,7 @@ const Workout = () => {
       const nextSelectedDay = startOfDay(new Date());
       setSelectedDay(nextSelectedDay);
       setCurrentMonth(nextSelectedDay);
+      console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: screen_mount/focus] Screen focused. Initializing load...`);
       void loadWorkoutData();
 
       // Refresh draft status on screen focus
@@ -400,21 +418,27 @@ const Workout = () => {
   );
 
   useEffect(() => {
+    const buildStart = Date.now();
     const { days, safeIndex } = buildCalendarDays(workoutsHistory);
     setCalendarDays(days);
     setInitialIndex(safeIndex);
 
-    if (days.length === 0) return;
+    if (days.length === 0) {
+      console.log(`[CALENDAR_LOG] [Screen: Workout] Compiled 0 calendar days in ${Date.now() - buildStart}ms.`);
+      return;
+    }
 
     const safeDay = days[safeIndex] || startOfDay(new Date());
     setSelectedDay(safeDay);
     setCurrentMonth(safeDay);
+    console.log(`[CALENDAR_LOG] [Screen: Workout] Compiled ${days.length} calendar days in ${Date.now() - buildStart}ms. Selected: ${toDateKey(safeDay)}.`);
   }, [workoutsHistory]);
 
   const handleDayPress = useCallback((day: Date) => {
     const todayDate = startOfDay(new Date());
     if (day > todayDate) return;
 
+    console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: user_click_day] User selected day ${toDateKey(day)}.`);
     setSelectedDay(day);
     setCurrentMonth((prev) => {
       const isSameMonth =
@@ -425,6 +449,8 @@ const Workout = () => {
   }, []);
 
   const handleVisibleMonthChange = useCallback((day: Date) => {
+    const monthStr = `${day.getFullYear()}-${day.getMonth() + 1}`;
+    console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: swipe_scroll] Visible month changed to ${monthStr}.`);
     setCurrentMonth((prev) => {
       const isSameMonth =
         prev.getFullYear() === day.getFullYear() &&
