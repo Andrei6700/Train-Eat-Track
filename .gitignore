@@ -71,3 +71,11 @@ Development/
 scripts/
 
 coverage/
+
+# Graphify
+graphify-out/
+.graphifyignore
+
+# Agents / IDE local files
+.agents/
+skills-lock.json
