@@ -8,41 +8,27 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
   orderBy,
   query,
-  startAfter,
   Timestamp,
   updateDoc,
   where,
-  type DocumentData,
-  type QueryConstraint,
-  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { cacheLastWorkout, getCachedLastWorkout } from "./cacheService";
-import {
-  enqueueOrMergeAction,
-  getQueuedWorkoutDrafts,
-  removeFromSyncQueue,
-  toDateKey,
-} from "./syncQueueService";
 import {
   getCachedWorkoutHistory,
   removeCachedWorkoutHistoryItem,
   setCachedWorkoutHistory,
   upsertCachedWorkoutHistoryItem,
 } from "./workoutHistoryCacheService";
+import {
+  enqueueOrMergeAction,
+  getQueuedWorkoutDrafts,
+  removeFromSyncQueue,
+  toDateKey,
+} from "./syncQueueService";
 
 const COLLECTION_NAME = "workoutsHistory";
-
-/**
- * #11 — Pagination bounds for getUserWorkouts.
- * Every underlying Firestore query is capped by `limit(PAGE_SIZE)` and fetched
- * in cursor-paginated batches (startAfter), so we NEVER issue a single unbounded
- * getDocs(). MAX_WORKOUTS is a hard ceiling to protect against runaway reads.
- */
-const DEFAULT_WORKOUT_PAGE_SIZE = 50;
-const DEFAULT_MAX_WORKOUTS = 2000;
 
 const isOnline = async (): Promise<boolean> => {
   try {
@@ -160,114 +146,11 @@ export const addWorkoutRemote = async (
   }
 };
 
-export type WorkoutQueryOptions = {
-  /** Underlying Firestore page size — each query is bounded by limit(pageSize). Default: 50. */
-  pageSize?: number;
-  /** Hard ceiling on total workouts fetched when fetchAll=true. Default: 2000. */
-  maxItems?: number;
-  /**
-   * Cursor for cursor-based pagination.
-   * - Omit/null with fetchAll=true (default): fetch the FULL history in bounded batches.
-   * - Provide a cursor with fetchAll=false: fetch a single bounded page after the cursor.
-   */
-  startAfter?: QueryDocumentSnapshot<DocumentData> | null;
-  /** When true (default), fetch the full history in bounded batches. */
-  fetchAll?: boolean;
-};
-
-export type WorkoutQueryResult = ResponseType & {
-  /** Cursor of the last fetched doc (pass to options.startAfter for the next page). Null when no more docs. */
-  nextCursor?: QueryDocumentSnapshot<DocumentData> | null;
-  /** True when more docs exist on the server. */
-  hasMore?: boolean;
-};
-
-/**
- * #11 — Fetches the user's full workoutsHistory in bounded, cursor-paginated
- * batches. Each underlying Firestore query is capped by `limit(pageSize)` so we
- * never issue a single unbounded getDocs(). A hard `maxItems` ceiling protects
- * against runaway reads for pathological accounts.
- */
-const fetchAllWorkoutDocsBatched = async (
-  userID: string,
-  pageSize: number,
-  maxItems: number,
-): Promise<WorkoutHistory[]> => {
-  const workouts: WorkoutHistory[] = [];
-  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
-  while (workouts.length < maxItems) {
-    const constraints: QueryConstraint[] = [
-      orderBy("date", "desc"),
-      limit(Math.min(pageSize, maxItems - workouts.length)),
-    ];
-    if (cursor) constraints.push(startAfter(cursor));
-    const snap = await getDocs(query(userWorkoutCol(userID), ...constraints));
-    if (snap.empty) break;
-    snap.forEach((d) => workouts.push(parseWorkoutDoc(d.id, d.data())));
-    if (snap.docs.length < pageSize) break; // reached the last page
-    cursor = snap.docs[snap.docs.length - 1];
-  }
-  if (workouts.length > maxItems) workouts.length = maxItems;
-  return workouts;
-};
-
-/**
- * #11 — Fetches a single bounded page of workouts (cursor-based pagination)
- * for future UI pagination (e.g. infinite scroll in history).
- */
-const fetchWorkoutDocsPage = async (
-  userID: string,
-  pageSize: number,
-  cursor: QueryDocumentSnapshot<DocumentData> | null,
-): Promise<{
-  workouts: WorkoutHistory[];
-  nextCursor: QueryDocumentSnapshot<DocumentData> | null;
-  hasMore: boolean;
-}> => {
-  const constraints: QueryConstraint[] = [orderBy("date", "desc"), limit(pageSize)];
-  if (cursor) constraints.push(startAfter(cursor));
-  const snap = await getDocs(query(userWorkoutCol(userID), ...constraints));
-  const workouts = snap.docs.map((d) => parseWorkoutDoc(d.id, d.data()));
-  const nextCursor = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-  const hasMore = snap.docs.length === pageSize;
-  return { workouts, nextCursor, hasMore };
-};
-
-export const getUserWorkouts = async (
-  userID: string,
-  options?: WorkoutQueryOptions,
-): Promise<WorkoutQueryResult> => {
-  const fetchAll = options?.fetchAll ?? true;
-  const pageSize = Math.max(1, options?.pageSize ?? DEFAULT_WORKOUT_PAGE_SIZE);
-  const maxItems = Math.max(pageSize, options?.maxItems ?? DEFAULT_MAX_WORKOUTS);
-  const cursor = options?.startAfter ?? null;
-
+export const getUserWorkouts = async (userID: string): Promise<ResponseType> => {
   let queuedWorkouts: WorkoutHistory[] = [];
   let cachedHistory: WorkoutHistory[] = [];
   try {
     queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
-
-    // ---- Single-page (cursor) mode: requires online; offline falls back to a cached slice. ----
-    if (!fetchAll) {
-      const online = await isOnline();
-      if (!online) {
-        const cachedResult = await getCachedWorkoutHistory(userID, { allowStale: true });
-        const cached = cachedResult.data || [];
-        const page = cached.slice(0, pageSize);
-        return {
-          success: true,
-          data: mergeQueuedAndRemoteWorkouts(queuedWorkouts, page),
-          nextCursor: null,
-          hasMore: false,
-        };
-      }
-      const { workouts, nextCursor, hasMore } = await fetchWorkoutDocsPage(userID, pageSize, cursor);
-      const merged = mergeQueuedAndRemoteWorkouts(queuedWorkouts, workouts);
-      // Do NOT overwrite the full-history cache with a single page.
-      return { success: true, data: merged, nextCursor, hasMore };
-    }
-
-    // ---- Full (batched) mode — the default used by all existing callers. ----
     const cachedHistoryResult = await getCachedWorkoutHistory(userID, { allowStale: true });
     cachedHistory = cachedHistoryResult.data || [];
     const online = await isOnline();
@@ -277,13 +160,14 @@ export const getUserWorkouts = async (
       await setCachedWorkoutHistory(userID, localCollection);
       return { success: true, data: localCollection };
     }
-    const remoteWorkouts = await fetchAllWorkoutDocsBatched(userID, pageSize, maxItems);
+    const q = query(userWorkoutCol(userID), orderBy("date", "desc"));
+    const querySnapshot = await getDocs(q);
+    const remoteWorkouts: WorkoutHistory[] = [];
+    querySnapshot.forEach((docSnap) => { remoteWorkouts.push(parseWorkoutDoc(docSnap.id, docSnap.data())); });
     const mergedWorkouts = mergeQueuedAndRemoteWorkouts(queuedWorkouts, remoteWorkouts);
     if (mergedWorkouts.length > 0) {
       await Promise.all([cacheLastWorkout(mergedWorkouts[0]), setCachedWorkoutHistory(userID, mergedWorkouts)]);
-    } else {
-      await setCachedWorkoutHistory(userID, []);
-    }
+    } else { await setCachedWorkoutHistory(userID, []); }
     return { success: true, data: mergedWorkouts };
   } catch (error: any) {
     if (__DEV__) console.error("[workoutService] Error fetching workouts:", error);
@@ -299,7 +183,7 @@ export const checkWorkoutExistsToday = async (userID: string): Promise<ResponseT
   try {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const queuedWorkouts = (await getQueuedWorkoutDrafts(userID)) as WorkoutHistory[];
-    const hasQueuedToday = queuedWorkouts.some((w) => { const d = new Date(w.date); d.setHours(0, 0, 0, 0); return d.getTime() === today.getTime(); });
+    const hasQueuedToday = queuedWorkouts.some((w) => { const d = new Date(w.date); d.setHours(0,0,0,0); return d.getTime() === today.getTime(); });
     if (hasQueuedToday) return { success: false, msg: "You already have a workout logged for today.", data: { exists: true } };
     const online = await isOnline();
     if (!online) return { success: true, data: { exists: false } };
@@ -318,8 +202,8 @@ export const getLastWeekWorkout = async (userID: string, _dayName: string): Prom
     const online = await isOnline();
     if (!online) { const c = await getCachedLastWorkout(); return c ? { success: true, data: c } : { success: true, data: null }; }
     const today = new Date(); const lastWeek = new Date(today); lastWeek.setDate(today.getDate() - 7);
-    const startOfDay = new Date(lastWeek); startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(lastWeek); endOfDay.setHours(23, 59, 59, 999);
+    const startOfDay = new Date(lastWeek); startOfDay.setHours(0,0,0,0);
+    const endOfDay = new Date(lastWeek); endOfDay.setHours(23,59,59,999);
     const q = query(userWorkoutCol(userID), where("date", ">=", startOfDay), where("date", "<=", endOfDay), orderBy("date", "desc"));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) { const firstDoc = querySnapshot.docs[0]; return { success: true, data: parseWorkoutDoc(firstDoc.id, firstDoc.data()) }; }

@@ -15,10 +15,7 @@ import {
   getWorkoutHistoryMemoryCache,
   setWorkoutHistoryMemoryCache,
 } from "@/src/services/workoutHistoryMemoryCache";
-import {
-  getUserWorkouts,
-  type WorkoutQueryResult,
-} from "@/src/services/workoutService";
+import { getUserWorkouts } from "@/src/services/workoutService";
 import { DayWorkout, WorkoutHistory } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { verticalScale } from "@/src/utils/styling";
@@ -28,75 +25,14 @@ import {
   shouldAutoConvertToRestDay,
 } from "@/src/utils/workoutPlanCycle";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 const CACHE_MAX_AGE_MS = 60_000;
-
-/**
- * #11 — cursor page size for incremental history loading.
- * The first open fetches only this many workouts (bounded query), then older
- * pages are loaded on-demand as the user scrolls back through the calendar.
- */
-const HISTORY_PAGE_SIZE = 50;
 
 const normalizeWorkoutHistory = (data: unknown): WorkoutHistory[] => {
   if (!Array.isArray(data)) return [];
   return data as WorkoutHistory[];
-};
-
-/**
- * #11 — dedupe accumulated pages by dateKey, preferring offline/queued drafts.
- * The service merges queued drafts into every page result; a queued draft with
- * no remote counterpart would otherwise be duplicated across pages on append.
- */
-const dedupeByDateKeyPreferOffline = (
-  items: WorkoutHistory[],
-): WorkoutHistory[] => {
-  const byKey = new Map<string, WorkoutHistory>();
-  for (const item of items) {
-    const d = toValidDate(item.date);
-    if (!d) continue;
-    const key = toDateKey(d);
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, item);
-      continue;
-    }
-    if (item.isOffline && !existing.isOffline) byKey.set(key, item);
-  }
-  return Array.from(byKey.values()).sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-  );
-};
-
-/**
- * #11 — merge a fresh page-1 into a seeded (cached) full history.
- * Page 1 is authoritative for its date range (freshest remote); older cached
- * items outside that range are preserved. Avoids re-paginating the full history
- * on a quick re-focus within the cache TTL.
- */
-const mergeFreshPage = (
-  seeded: WorkoutHistory[],
-  page: WorkoutHistory[],
-): WorkoutHistory[] => {
-  const pageKeys = new Set<string>();
-  for (const p of page) {
-    const d = toValidDate(p.date);
-    if (d) pageKeys.add(toDateKey(d));
-  }
-  const older = seeded.filter((s) => {
-    const d = toValidDate(s.date);
-    if (!d) return true;
-    return !pageKeys.has(toDateKey(d));
-  });
-  return dedupeByDateKeyPreferOffline([...page, ...older]);
 };
 
 const getSafeParamDate = (
@@ -139,98 +75,27 @@ const History = () => {
   const [workoutsHistory, setWorkoutsHistory] = useState<WorkoutHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(
     startOfDay(new Date()),
   );
   const [currentMonth, setCurrentMonth] = useState<Date>(
     startOfDay(new Date()),
   );
-  /**
-   * #11 — bumped on every load entry (focus/refresh). Passed to the calendar
-   * strip so it only re-anchors the scroll on a new session, NOT when older
-   * pages are prepended within the same session (which would yank the view).
-   */
-  const [sessionToken, setSessionToken] = useState(0);
 
   const requestIdRef = useRef(0);
   const lastVisibleIndexRef = useRef<number | null>(null);
   const initialDateKeyRef = useRef(toDateKey(startOfDay(new Date())));
-
-  /** #11 — cursor + pagination state for incremental (fetchAll: false) loads. */
-  const cursorRef = useRef<WorkoutQueryResult["nextCursor"]>(null);
-  const hasMoreRef = useRef<boolean>(false);
-  const accumulatingRef = useRef<boolean>(false);
-  const seededFromCacheRef = useRef<boolean>(false);
-  const earliestWorkoutDateRef = useRef<Date | null>(null);
 
   const { refresh, selectedDate: paramDate } = useLocalSearchParams();
   const isRefreshRequested = Array.isArray(refresh)
     ? refresh[0] === "true"
     : refresh === "true";
 
-  /**
-   * #11 — Loads ONE bounded page of older workouts using the cursor from #11.
-   * Called from handleVisibleMonthChange when the user scrolls back to the
-   * oldest loaded month. Guarded by accumulatingRef + requestId for cancellation.
-   */
-  const loadMorePages = useCallback(
-    async (userId: string, requestId: number): Promise<void> => {
-      if (accumulatingRef.current) return;
-      accumulatingRef.current = true;
-      try {
-        while (
-          hasMoreRef.current &&
-          cursorRef.current &&
-          requestId === requestIdRef.current
-        ) {
-          const result = await getUserWorkouts(userId, {
-            fetchAll: false,
-            startAfter: cursorRef.current,
-            pageSize: HISTORY_PAGE_SIZE,
-          });
-          if (requestId !== requestIdRef.current) return;
-
-          if (!result.success || !Array.isArray(result.data)) {
-            hasMoreRef.current = false;
-            break;
-          }
-
-          const page = normalizeWorkoutHistory(result.data);
-          cursorRef.current = result.nextCursor ?? null;
-          hasMoreRef.current = Boolean(result.hasMore);
-
-          if (page.length === 0) {
-            hasMoreRef.current = false;
-            break;
-          }
-
-          setWorkoutsHistory((prev) => {
-            const next = dedupeByDateKeyPreferOffline([...prev, ...page]);
-            setWorkoutHistoryMemoryCache(userId, next);
-            return next;
-          });
-        }
-      } finally {
-        if (requestId === requestIdRef.current) {
-          accumulatingRef.current = false;
-        }
-      }
-    },
-    [],
-  );
-
   const loadHistory = useCallback(
     async ({ isPullToRefresh = false }: { isPullToRefresh?: boolean } = {}) => {
       const userId = user?.uid;
       requestIdRef.current += 1;
       const requestId = requestIdRef.current;
-
-      // Reset any in-flight incremental pagination.
-      accumulatingRef.current = false;
-      cursorRef.current = null;
-      hasMoreRef.current = false;
-      setSessionToken((token) => token + 1);
 
       if (!userId) {
         clearWorkoutHistoryMemoryCache();
@@ -244,57 +109,32 @@ const History = () => {
         userId,
         CACHE_MAX_AGE_MS,
       );
-      const canSeed =
-        !isPullToRefresh && cachedHistory && cachedHistory.length > 0;
-      if (canSeed) {
+      if (cachedHistory) {
         setWorkoutsHistory(cachedHistory);
         setIsLoading(false);
-        seededFromCacheRef.current = true;
-      } else {
-        seededFromCacheRef.current = false;
-        if (!isPullToRefresh) setIsLoading(true);
+      } else if (!isPullToRefresh) {
+        setIsLoading(true);
       }
 
       try {
-        // #11 — first paint fetches ONLY one bounded page (no unbounded getDocs).
-        const firstPage = await getUserWorkouts(userId, {
-          fetchAll: false,
-          pageSize: HISTORY_PAGE_SIZE,
-        });
+        const result = await getUserWorkouts(userId);
         if (requestId !== requestIdRef.current) return;
 
-        if (!firstPage.success || !Array.isArray(firstPage.data)) {
-          if (!canSeed && requestId === requestIdRef.current) {
-            setWorkoutsHistory([]);
+        if (result.success) {
+          const nextHistory = normalizeWorkoutHistory(result.data);
+          setWorkoutsHistory(nextHistory);
+          setWorkoutHistoryMemoryCache(userId, nextHistory);
+        } else if (!cachedHistory) {
+          setWorkoutsHistory([]);
+          if (__DEV__) {
+            console.error("Error fetching workouts:", result.msg);
           }
-          if (__DEV__ && !firstPage.success) {
-            console.error("Error fetching workouts:", firstPage.msg);
-          }
-          return;
-        }
-
-        const pageItems = normalizeWorkoutHistory(firstPage.data);
-
-        if (seededFromCacheRef.current && cachedHistory) {
-          // Quick re-focus within cache TTL: refresh recent items only,
-          // don't re-paginate the full history.
-          const merged = mergeFreshPage(cachedHistory, pageItems);
-          setWorkoutsHistory(merged);
-          setWorkoutHistoryMemoryCache(userId, merged);
-          cursorRef.current = null;
-          hasMoreRef.current = false;
-        } else {
-          // Fresh open: show page 1 immediately; older pages load on scroll.
-          setWorkoutsHistory(pageItems);
-          setWorkoutHistoryMemoryCache(userId, pageItems);
-          cursorRef.current = firstPage.nextCursor ?? null;
-          hasMoreRef.current = Boolean(firstPage.hasMore);
         }
       } catch (error) {
         if (__DEV__) {
           console.error("Error fetching workouts history:", error);
         }
-        if (!canSeed && requestId === requestIdRef.current) {
+        if (!cachedHistory && requestId === requestIdRef.current) {
           setWorkoutsHistory([]);
         }
       } finally {
@@ -387,11 +227,6 @@ const History = () => {
       historySignature: `${sortedKeys.length}-${keyHash}`,
     };
   }, [workoutsHistory]);
-
-  // #11 — keep a ref of the earliest loaded date for the load-on-scroll trigger.
-  useEffect(() => {
-    earliestWorkoutDateRef.current = earliestWorkoutDate;
-  }, [earliestWorkoutDate]);
 
   const calendarDays = useMemo(() => {
     const today = startOfDay(new Date());
@@ -532,33 +367,8 @@ const History = () => {
 
         return isSameMonth ? previousMonth : visibleDay;
       });
-
-      // #11 — load-on-scroll: when the user scrolls back to the oldest loaded
-      // month, fetch the next bounded page (cursor pagination) to extend the
-      // calendar backwards. Self-corrects the cycle/auto-rest logic for the
-      // newly visible range.
-      const userId = user?.uid;
-      const earliest = earliestWorkoutDateRef.current;
-      const nearEarliest =
-        earliest != null &&
-        visibleDay.getFullYear() === earliest.getFullYear() &&
-        visibleDay.getMonth() === earliest.getMonth();
-
-      if (
-        userId &&
-        nearEarliest &&
-        hasMoreRef.current &&
-        !accumulatingRef.current &&
-        cursorRef.current
-      ) {
-        const requestId = requestIdRef.current;
-        setIsLoadingMore(true);
-        void loadMorePages(userId, requestId).finally(() => {
-          if (requestId === requestIdRef.current) setIsLoadingMore(false);
-        });
-      }
     },
-    [calendarIndexByDateKey, user?.uid, loadMorePages],
+    [calendarIndexByDateKey],
   );
 
   const hasAnyWorkouts = workoutsHistory.length > 0;
@@ -621,9 +431,6 @@ const History = () => {
                   ? t("common_workout_singular")
                   : t("common_workout_plural")}
               </Typo>
-              {isLoadingMore && (
-                <ActivityIndicator size="small" color={colors.primary} />
-              )}
             </View>
           </View>
 
@@ -637,7 +444,6 @@ const History = () => {
               extraDataToken={calendarExtraDataToken}
               onDayPress={handleDayPress}
               onVisibleMonthChange={handleVisibleMonthChange}
-              sessionToken={sessionToken}
             />
           )}
 
