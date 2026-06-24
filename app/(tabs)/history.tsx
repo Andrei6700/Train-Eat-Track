@@ -25,6 +25,7 @@ import {
   shouldAutoConvertToRestDay,
 } from "@/src/utils/workoutPlanCycle";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
@@ -114,10 +115,12 @@ const History = () => {
         CACHE_MAX_AGE_MS,
       );
       if (cachedHistory) {
+        logEvent("Cache", "History Sync Hit", { count: cachedHistory.length, durationMs: Date.now() - startMs });
         console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Cache HIT. Loaded ${cachedHistory.length} workouts in ${Date.now() - startMs}ms.`);
         setWorkoutsHistory(cachedHistory);
         setIsLoading(false);
       } else if (!isPullToRefresh) {
+        logEvent("Cache", "History Sync Miss");
         console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Cache MISS. Triggering loading state.`);
         setIsLoading(true);
       }
@@ -134,16 +137,19 @@ const History = () => {
 
         if (result.success) {
           const nextHistory = normalizeWorkoutHistory(result.data);
+          logEvent("Firestore", "History Sync Success", { count: nextHistory.length, durationMs: remoteDuration });
           console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Remote LOAD successful. Fetched ${nextHistory.length} workouts from Firebase in ${remoteDuration}ms.`);
           setWorkoutsHistory(nextHistory);
           setWorkoutHistoryMemoryCache(userId, nextHistory);
         } else {
+          logError("History Sync", result.msg, { durationMs: remoteDuration });
           console.error(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Remote LOAD failed in ${remoteDuration}ms.`, result.msg);
           if (!cachedHistory) {
             setWorkoutsHistory([]);
           }
         }
       } catch (error) {
+        logError("History Data Lifecycle", error);
         console.error(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Error loading workout history:`, error);
         if (!cachedHistory && requestId === requestIdRef.current) {
           setWorkoutsHistory([]);
@@ -152,6 +158,7 @@ const History = () => {
         if (requestId === requestIdRef.current) {
           setIsLoading(false);
           setIsRefreshing(false);
+          logEvent("Data Lifecycle", "History Load Operation End", { durationMs: Date.now() - startMs });
           console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: ${triggerReason}] Total load operation completed in ${Date.now() - startMs}ms.`);
         }
       }
@@ -318,6 +325,7 @@ const History = () => {
   ]);
 
   const onRefresh = useCallback(() => {
+    logPress("Pull to Refresh History");
     const today = startOfDay(new Date());
     initialDateKeyRef.current = toDateKey(today);
     setSelectedDate(today);
@@ -377,6 +385,7 @@ const History = () => {
       lastVisibleIndexRef.current = nextIndex;
 
       const monthStr = `${visibleDay.getFullYear()}-${visibleDay.getMonth() + 1}`;
+      logEvent("Swipe Gesture", "History Month Swiped", { month: monthStr });
       console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: swipe_scroll] Calendar visible month changed to ${monthStr}.`);
 
       setCurrentMonth((previousMonth) => {
@@ -396,6 +405,7 @@ const History = () => {
     const today = startOfDay(new Date());
     if (day > today) return;
 
+    logPress("History Calendar Day Select", { date: toDateKey(day) });
     console.log(`[CALENDAR_LOG] [Screen: History] [Trigger: user_click_day] User selected day ${toDateKey(day)}.`);
     setSelectedDate(day);
 

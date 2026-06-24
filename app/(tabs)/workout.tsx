@@ -33,6 +33,7 @@ import {
 } from "@/src/utils/workoutPlanCycle";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
+import { logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import React, {
     useCallback,
     useEffect,
@@ -338,11 +339,13 @@ const Workout = () => {
         CACHE_MAX_AGE_MS,
       );
       if (cachedHistory) {
+        logEvent("Cache", "Workout History Cache Hit", { count: cachedHistory.length, durationMs: Date.now() - startMs });
         console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Cache HIT. Loaded ${cachedHistory.length} workouts in ${Date.now() - startMs}ms.`);
         setWorkoutsHistory(cachedHistory);
         setHasWorkoutToday(hasWorkoutForDate(cachedHistory, todayKey));
         setLoading(false);
       } else if (!isPullToRefresh) {
+        logEvent("Cache", "Workout History Cache Miss");
         console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Cache MISS. Triggering loading state.`);
         setLoading(true);
       }
@@ -367,11 +370,14 @@ const Workout = () => {
           historyResult.value.success
         ) {
           nextHistory = normalizeWorkoutHistory(historyResult.value.data);
+          logEvent("Firestore", "Workout History Sync Success", { count: nextHistory.length, durationMs: remoteDuration });
           console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Remote LOAD successful. Fetched ${nextHistory.length} workouts from Firebase in ${remoteDuration}ms.`);
           setWorkoutsHistory(nextHistory);
           setWorkoutHistoryMemoryCache(userId, nextHistory);
         } else {
-          console.error(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Remote LOAD failed in ${remoteDuration}ms.`, historyResult.status === "rejected" ? historyResult.reason : (historyResult.value as any)?.msg);
+          const reason = historyResult.status === "rejected" ? historyResult.reason : (historyResult.value as any)?.msg;
+          logError("Workout History Sync", reason, { durationMs: remoteDuration });
+          console.error(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Remote LOAD failed in ${remoteDuration}ms.`, reason);
           if (!cachedHistory) {
             nextHistory = [];
             setWorkoutsHistory([]);
@@ -384,6 +390,7 @@ const Workout = () => {
           setHasWorkoutToday(hasWorkoutForDate(nextHistory, todayKey));
         }
       } catch (error) {
+        logError("Workout Data Lifecycle", error);
         console.error(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Error loading workout data:`, error);
         if (!cachedHistory && requestId === requestIdRef.current) {
           setWorkoutsHistory([]);
@@ -393,6 +400,7 @@ const Workout = () => {
         if (requestId === requestIdRef.current) {
           setLoading(false);
           setRefreshing(false);
+          logEvent("Data Lifecycle", "Workout Load Operation End", { durationMs: Date.now() - startMs });
           console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: ${triggerReason}] Total load operation completed in ${Date.now() - startMs}ms.`);
         }
       }
@@ -443,6 +451,7 @@ const Workout = () => {
     const todayDate = startOfDay(new Date());
     if (day > todayDate) return;
 
+    logPress("Workout Calendar Day Select", { date: toDateKey(day) });
     console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: user_click_day] User selected day ${toDateKey(day)}.`);
     setSelectedDay(day);
     setCurrentMonth((prev) => {
@@ -455,6 +464,7 @@ const Workout = () => {
 
   const handleVisibleMonthChange = useCallback((day: Date) => {
     const monthStr = `${day.getFullYear()}-${day.getMonth() + 1}`;
+    logEvent("Swipe Gesture", "Calendar Month Change", { month: monthStr });
     console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: swipe_scroll] Visible month changed to ${monthStr}.`);
     setCurrentMonth((prev) => {
       const isSameMonth =
@@ -469,6 +479,7 @@ const Workout = () => {
       ? selectedDay
       : new Date();
 
+    logPress("Log Historical Workout Button", { date: safeSelectedDate.toISOString() });
     router.push({
       pathname: "/(modals)/addWorkout",
       params: {
@@ -479,6 +490,7 @@ const Workout = () => {
   }, [isSelectedDayToday, router, selectedDay]);
 
   const handleStartWorkout = useCallback(() => {
+    logPress("Start Workout Button", { isToday: isSelectedDayToday, hasWorkoutToday });
     if (!isSelectedDayToday) return;
 
     const todayDate = new Date();
@@ -497,6 +509,7 @@ const Workout = () => {
   }, [hasWorkoutToday, isSelectedDayToday, router]);
 
   const handleEditPlan = useCallback(() => {
+    logPress("Edit Workout Plan Button", { hasPlan: !!workoutPlan });
     // Open editor when a saved plan or local draft exists; otherwise open creation flow
     if (workoutPlan) {
       router.push("/(modals)/workoutPlan");
@@ -506,6 +519,7 @@ const Workout = () => {
   }, [router, workoutPlan]);
 
   const handleEditWorkout = useCallback(() => {
+    logPress("Edit Logged Workout Button", { workoutId: selectedWorkout?.id });
     if (!selectedWorkout?.id) return;
     router.push({
       pathname: "/(modals)/editWorkout",
@@ -514,6 +528,7 @@ const Workout = () => {
   }, [router, selectedWorkout?.id]);
 
   const onRefresh = useCallback(() => {
+    logPress("Pull to Refresh Workout Calendar");
     const nextSelectedDay = startOfDay(new Date());
     setRefreshing(true);
     setSelectedDay(nextSelectedDay);
@@ -591,8 +606,11 @@ const Workout = () => {
             >
               <TouchableOpacity
                 style={styles.draftBanner}
-                activeOpacity={0.9}
-                onPress={() => router.push("/(modals)/addWorkout")}
+                activeOpacity={0.95}
+                onPress={() => {
+                  logPress("Active Draft Banner Press");
+                  router.push("/(modals)/addWorkout");
+                }}
               >
                 <View style={styles.draftBannerLeft}>
                   <Icons.WarningCircle size={20} color={colors.primary} weight="fill" />

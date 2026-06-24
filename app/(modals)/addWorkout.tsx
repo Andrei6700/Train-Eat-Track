@@ -22,6 +22,7 @@ import { findLastSuccessfulWorkoutForCycleDay } from "@/src/utils/workoutPlanCyc
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import * as Icons from "phosphor-react-native";
+import { logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -538,6 +539,7 @@ const AddWorkout = () => {
   }, [activePage]);
 
   const goToPage = (page: number) => {
+    logPress("Add Workout Modal Page Switch", { page });
     setActivePage(page);
     Keyboard.dismiss();
   };
@@ -590,12 +592,14 @@ const AddWorkout = () => {
   };
 
   const handleLap = () => {
+    logPress("Add Workout Modal Lap/Rest Button");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     restStartTimeRef.current = Date.now();
     setCurrentTime(0);
   };
 
   const addExercise = () => {
+    logPress("Add Workout Modal Add Exercise Button");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setExercises([
       ...exercises,
@@ -607,6 +611,7 @@ const AddWorkout = () => {
   };
 
   const removeExercise = (index: number) => {
+    logPress("Add Workout Modal Remove Exercise Button", { index });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (exercises.length === 1) {
       Alert.alert(t("common_error"), t("common_validation_need_one_exercise"));
@@ -623,6 +628,7 @@ const AddWorkout = () => {
   };
 
   const addSet = (exerciseIndex: number) => {
+    logPress("Add Workout Modal Add Set Button", { exerciseIndex });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newExercises = [...exercises];
     const lastSet =
@@ -638,6 +644,7 @@ const AddWorkout = () => {
   };
 
   const removeSet = (exerciseIndex: number, setIndex: number) => {
+    logPress("Add Workout Modal Remove Set Button", { exerciseIndex, setIndex });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (exercises[exerciseIndex].sets.length === 1) {
       Alert.alert(t("common_error"), t("common_validation_need_one_set"));
@@ -669,6 +676,7 @@ const AddWorkout = () => {
   };
 
   const handleSave = async () => {
+    logPress("Add Workout Modal Save Workout Button");
     const hasEmptyExerciseName = exercises.some(
       (ex) => !ex.exerciseName.trim(),
     );
@@ -719,6 +727,7 @@ const AddWorkout = () => {
       setLoading(false);
 
       if (result.success) {
+        logEvent("Firestore", "Add Workout Sync Success", { isOffline: !!result.data?.offline, durationSeconds: totalTime });
         isSavingRef.current = true;
         void clearWorkoutDraft();
         const isOffline = result.data?.offline;
@@ -746,11 +755,13 @@ const AddWorkout = () => {
         );
       } else {
         if (result.code === "SYNC_CONFLICT") {
+          logError("Add Workout Save", "Sync Conflict");
           Alert.alert(
             t("add_workout_modal_sync_conflict_title"),
             t("add_workout_modal_sync_conflict_message"),
           );
         } else {
+          logError("Add Workout Save", result.msg || "Save Error", { code: result.code });
           Alert.alert(
             t("common_error"),
             result.msg || t("add_workout_modal_error_save"),
@@ -758,6 +769,7 @@ const AddWorkout = () => {
         }
       }
     } catch (err: any) {
+      logError("Add Workout Catch Save", err);
       setLoading(false);
       Alert.alert(
         t("common_error"),

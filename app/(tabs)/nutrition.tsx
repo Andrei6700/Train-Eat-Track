@@ -45,7 +45,7 @@ import {
 import { DailyNutrition, Food } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { measureAsync } from "@/src/utils/perf";
-import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss } from "@/src/utils/perfMonitor";
+import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss, logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -1265,6 +1265,7 @@ const Nutrition = () => {
   }, []);
 
   const onRefresh = useCallback(() => {
+    logPress("Pull to Refresh Nutrition");
     calendarBootStartedAtRef.current = Date.now();
     loadedDayKeysRef.current.clear();
     pendingDayKeysRef.current.clear();
@@ -1311,6 +1312,7 @@ const Nutrition = () => {
       const normalizedDay = normalizeDate(day);
       if (normalizedDay > maxPlannableDate) return;
 
+      logPress("Nutrition Calendar Day Select", { date: toDateKey(normalizedDay) });
       console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: user_click_day] User selected day ${toDateKey(normalizedDay)}.`);
 
       setCalendarScrollRequest(null);
@@ -1327,18 +1329,22 @@ const Nutrition = () => {
   );
 
   const handleOpenSettings = useCallback(() => {
+    logPress("Nutrition Settings Button");
     router.push("/(modals)/nutritionSettings");
   }, [router]);
 
   const handleOpenMaintenance = useCallback(() => {
+    logPress("Nutrition Maintenance Button");
     router.push("/(modals)/maintenanceTracker");
   }, [router]);
 
   const handleOpenCalendarLog = useCallback(() => {
+    logPress("Nutrition Open Calendar Log Modal");
     setShowCalendarLogModal(true);
   }, []);
 
   const handleCloseCalendarLog = useCallback(() => {
+    logPress("Nutrition Close Calendar Log Modal");
     setShowCalendarLogModal(false);
   }, []);
 
@@ -1347,6 +1353,7 @@ const Nutrition = () => {
       const normalizedDate = startOfDay(day);
       if (normalizedDate > maxPlannableDate) return;
 
+      logPress("Nutrition Calendar Modal Day Select", { date: toDateKey(normalizedDate) });
       console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: user_click_calendar_modal] User selected day ${toDateKey(normalizedDate)}.`);
 
       lastVisibleCalendarDayRef.current = normalizedDate;
@@ -1381,6 +1388,7 @@ const Nutrition = () => {
         return;
       }
 
+      logEvent("Swipe Gesture", "Nutrition Calendar Visible Day Changed", { date: toDateKey(normalizedDay) });
       console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: swipe_scroll] Calendar visible day changed to ${toDateKey(normalizedDay)}.`);
 
       lastVisibleCalendarDayRef.current = normalizedDay;
@@ -1403,6 +1411,7 @@ const Nutrition = () => {
 
   const handleMealPress = useCallback(
     (mealName: string) => {
+      logPress("Nutrition Meal Press", { mealName });
       router.push({
         pathname: "/(modals)/mealDetail",
         params: {
@@ -1416,12 +1425,14 @@ const Nutrition = () => {
 
   const handleAddWater = useCallback(
     async (amount: number) => {
+      logPress("Nutrition Add Water", { amount });
       await addWaterIntake(amount);
     },
     [addWaterIntake],
   );
 
   const handleResetWater = useCallback(() => {
+    logPress("Nutrition Reset Water Click");
     Alert.alert(
       t("nutrition_reset_water_title"),
       t("nutrition_reset_water_message"),
@@ -1431,6 +1442,7 @@ const Nutrition = () => {
           text: t("nutrition_reset"),
           style: "destructive",
           onPress: async () => {
+            logEvent("Nutrition", "Water Intake Reset");
             await resetWaterIntake();
           },
         },
@@ -1440,9 +1452,11 @@ const Nutrition = () => {
 
   const handleRemoveWater = useCallback(
     async (index: number) => {
+      logPress("Nutrition Remove Water Entry", { index });
       try {
         await removeWaterIntake(index);
       } catch (error: any) {
+        logError("Nutrition Remove Water", error);
         Alert.alert(t("common_error"), error?.message || "Error deleting water entry");
       }
     },
@@ -1451,6 +1465,7 @@ const Nutrition = () => {
 
   const handleFoodPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      logPress("Nutrition Food Edit Press", { mealName, food: food.name });
       const currentQuantity = Number.parseFloat(food.servingSize) || 100;
       setEditingFood({ mealName, foodIndex, food });
       setEditQuantity(currentQuantity.toString());
@@ -1461,6 +1476,7 @@ const Nutrition = () => {
 
   const handleFoodLongPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      logPress("Nutrition Food Actions Long Press", { mealName, food: food.name });
       setActionFood({ mealName, foodIndex, food });
       setShowActionsModal(true);
     },
@@ -1474,10 +1490,12 @@ const Nutrition = () => {
       !Number.isFinite(parsedQuantity) ||
       parsedQuantity <= 0
     ) {
+      logError("Nutrition Save Food Quantity", "Invalid Quantity Value", { input: editQuantity });
       Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
+    logPress("Nutrition Save Food Quantity", { meal: editingFood.mealName, food: editingFood.food.name, quantity: parsedQuantity });
     await updateFoodQuantity(
       editingFood.mealName,
       editingFood.foodIndex,
@@ -1501,6 +1519,7 @@ const Nutrition = () => {
   const handleCopyFood = useCallback(
     async (toMeal: string) => {
       if (!actionFood) return;
+      logPress("Nutrition Copy Food", { fromMeal: actionFood.mealName, toMeal, food: actionFood.food.name });
       await copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
       Alert.alert(
@@ -1517,6 +1536,7 @@ const Nutrition = () => {
   const handleMoveFood = useCallback(
     async (toMeal: string) => {
       if (!actionFood) return;
+      logPress("Nutrition Move Food", { fromMeal: actionFood.mealName, toMeal, food: actionFood.food.name });
       await moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
       Alert.alert(
@@ -1533,6 +1553,7 @@ const Nutrition = () => {
   const handleDeleteFood = useCallback(() => {
     if (!actionFood) return;
 
+    logPress("Nutrition Delete Food Click", { meal: actionFood.mealName, food: actionFood.food.name });
     Alert.alert(
       t("nutrition_delete_food_title"),
       t("nutrition_delete_food_message", {
@@ -1544,6 +1565,7 @@ const Nutrition = () => {
           text: t("nutrition_delete_food"),
           style: "destructive",
           onPress: async () => {
+            logEvent("Nutrition", "Food Deleted", { meal: actionFood.mealName, food: actionFood.food.name });
             await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
             setShowActionsModal(false);
             Alert.alert(t("common_success"), t("nutrition_food_deleted"));

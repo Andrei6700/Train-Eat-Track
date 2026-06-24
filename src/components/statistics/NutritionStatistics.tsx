@@ -10,6 +10,7 @@ import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toValidDate, getWeekRange, getMonthRange, getYearRange } from "@/src/utils/dateKey";
 import {
   ActivityIndicator,
   GestureResponderEvent,
@@ -22,6 +23,7 @@ import {
   useWindowDimensions
 } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
+import { logPress, logEvent } from "@/src/utils/perfMonitor";
 
 const MemoizedLineChart = React.memo(LineChart);
 
@@ -85,19 +87,10 @@ const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = ""): Cha
   });
 };
 
-const getPeriodStartDate = (period: PeriodType): Date => {
-  const periodStart = new Date();
-  periodStart.setHours(0, 0, 0, 0);
-
-  if (period === "Weekly") {
-    periodStart.setDate(periodStart.getDate() - 7);
-  } else if (period === "Monthly") {
-    periodStart.setMonth(periodStart.getMonth() - 1);
-  } else {
-    periodStart.setFullYear(periodStart.getFullYear() - 1);
-  }
-
-  return periodStart;
+const getPeriodRange = (period: PeriodType) => {
+  if (period === "Weekly") return getWeekRange();
+  if (period === "Monthly") return getMonthRange();
+  return getYearRange();
 };
 
 const getStartOfWeek = (date: Date): Date => {
@@ -107,6 +100,35 @@ const getStartOfWeek = (date: Date): Date => {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
   return new Date(d.setDate(diff));
 };
+
+interface EmptyStateProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}
+
+const EmptyState = React.memo(({ icon, title, subtitle }: EmptyStateProps) => {
+  return (
+    <View style={styles.emptyState}>
+      {icon}
+      <Typo
+        size={18}
+        fontWeight="600"
+        color={colors.neutral200}
+        style={styles.emptyStateTitle}
+      >
+        {title}
+      </Typo>
+      <Typo
+        size={14}
+        color={colors.neutral400}
+        style={styles.emptyStateSubtitle}
+      >
+        {subtitle}
+      </Typo>
+    </View>
+  );
+});
 
 function NutritionStatistics({
   selectedPeriod,
@@ -160,6 +182,7 @@ function NutritionStatistics({
         nextPeriod = PERIODS[currentIdx - 1];
       }
       if (nextPeriod) {
+        logEvent("Swipe Gesture", "Period Change", { from: selectedPeriod, to: nextPeriod });
         periodChangeRef.current = {
           from: selectedPeriod,
           to: nextPeriod,
@@ -279,13 +302,14 @@ function NutritionStatistics({
   // daily aggregated stats within current period
   const rawNutritionDayStats = useMemo((): NutritionDayStats[] => {
     const start = Date.now();
-    const periodStart = getPeriodStartDate(dataPeriod);
+    const range = getPeriodRange(dataPeriod);
     const dayMap = new Map<string, NutritionDayStats>();
 
     for (const day of nutritionHistory) {
-      const dayDate = new Date(day.date);
+      const dayDate = toValidDate(day.date);
+      if (!dayDate) continue;
       dayDate.setHours(0, 0, 0, 0);
-      if (dayDate < periodStart) continue;
+      if (dayDate < range.start || dayDate > range.end) continue;
 
       const key = dayDate.toISOString();
       const meals = Array.isArray(day.meals) ? day.meals : [];
@@ -317,9 +341,10 @@ function NutritionStatistics({
     }
 
     for (const day of waterHistory) {
-      const dayDate = new Date(day.date);
+      const dayDate = toValidDate(day.date);
+      if (!dayDate) continue;
       dayDate.setHours(0, 0, 0, 0);
-      if (dayDate < periodStart) continue;
+      if (dayDate < range.start || dayDate > range.end) continue;
 
       const key = dayDate.toISOString();
       const existing = dayMap.get(key);
@@ -686,6 +711,7 @@ function NutritionStatistics({
                       <TouchableOpacity
                         key={type}
                         onPress={() => {
+                          logPress("Nutrition Statistics Macro Selector", { macro: type });
                           setNutritionChartType(type);
                         }}
                         style={[
@@ -805,32 +831,19 @@ function NutritionStatistics({
             <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <Icons.ForkKnifeIcon
-              size={48}
-              color={colors.neutral500}
-              weight="fill"
-            />
-            <Typo
-              size={18}
-              fontWeight="600"
-              color={colors.neutral200}
-              style={styles.emptyStateTitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyNutritionHistory
+          <EmptyState
+            icon={<Icons.ForkKnifeIcon size={48} color={colors.neutral500} weight="fill" />}
+            title={
+              dataPeriod === "Weekly" && hasAnyNutritionHistory
                 ? t("statistics_no_nutrition_this_week")
-                : t("statistics_no_nutrition_yet")}
-            </Typo>
-            <Typo
-              size={14}
-              color={colors.neutral400}
-              style={styles.emptyStateSubtitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyNutritionHistory
+                : t("statistics_no_nutrition_yet")
+            }
+            subtitle={
+              dataPeriod === "Weekly" && hasAnyNutritionHistory
                 ? t("statistics_log_nutrition_weekly")
-                : t("statistics_start_logging_nutrition")}
-            </Typo>
-          </View>
+                : t("statistics_start_logging_nutrition")
+            }
+          />
         )
       )}
     </View>

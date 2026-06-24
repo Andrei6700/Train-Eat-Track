@@ -79,6 +79,37 @@ export const PerfOverlay = () => {
   return null;
 };
 
+export const logPress = (elementName: string, metadata?: Record<string, unknown>) => {
+  if (isDev) {
+    const metaStr = metadata ? ` ${JSON.stringify(metadata)}` : "";
+    console.log(`[UI_PRESS] Clicked: ${elementName}${metaStr}`);
+  }
+};
+
+export const logEvent = (category: string, eventName: string, metadata?: Record<string, unknown>) => {
+  if (isDev) {
+    const metaStr = metadata ? ` ${JSON.stringify(metadata)}` : "";
+    console.log(`[UI_EVENT] [${category}] ${eventName}${metaStr}`);
+  }
+};
+
+export const logError = (context: string, error: unknown, metadata?: Record<string, unknown>) => {
+  if (isDev) {
+    let errorMsg = "unknown_error";
+    if (error instanceof Error) errorMsg = error.message;
+    else if (typeof error === "string") errorMsg = error;
+    else if (error && typeof error === "object") {
+      try {
+        errorMsg = JSON.stringify(error);
+      } catch {
+        errorMsg = "unserializable_error";
+      }
+    }
+    const metaStr = metadata ? ` ${JSON.stringify(metadata)}` : "";
+    console.warn(`[UI_ERROR] [${context}] Failure: ${errorMsg}${metaStr}`);
+  }
+};
+
 const styles = StyleSheet.create({
   overlay: {
     position: "absolute",

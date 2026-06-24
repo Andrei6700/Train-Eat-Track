@@ -5,7 +5,7 @@ import NutritionStatistics from "@/src/components/statistics/NutritionStatistics
 import WorkoutStatistics from "@/src/components/statistics/WorkoutStatistics";
 import Typo from "@/src/components/ui/Typo";
 import { useLanguage } from "@/src/contexts/languageContext";
-import { trackScreen } from "@/src/utils/perfMonitor";
+import { logPress, trackScreen } from "@/src/utils/perfMonitor";
 import { verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import React, { useCallback, useEffect, useRef, useState, useTransition } from "react";
@@ -32,6 +32,7 @@ const Statistics = React.memo(() => {
   const debounceTimerRef = useRef<any>(null);
 
   const handlePeriodChange = useCallback((period: PeriodType) => {
+    logPress("Statistics Period Selector", { period });
     setSelectedPeriod(period);
     clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
@@ -40,7 +41,9 @@ const Statistics = React.memo(() => {
   }, []);
 
   const handleTabChange = useCallback((index: number) => {
-    setActiveTab(index === 0 ? "workouts" : "nutrition");
+    const nextTab = index === 0 ? "workouts" : "nutrition";
+    logPress("Statistics Tab Switch", { tab: nextTab });
+    setActiveTab(nextTab);
   }, []);
 
   return (
