@@ -402,9 +402,6 @@ const Workout = () => {
 
   useFocusEffect(
     useCallback(() => {
-      const nextSelectedDay = startOfDay(new Date());
-      setSelectedDay(nextSelectedDay);
-      setCurrentMonth(nextSelectedDay);
       console.log(`[CALENDAR_LOG] [Screen: Workout] [Trigger: screen_mount/focus] Screen focused. Initializing load...`);
       void loadWorkoutData();
 
@@ -429,9 +426,17 @@ const Workout = () => {
     }
 
     const safeDay = days[safeIndex] || startOfDay(new Date());
-    setSelectedDay(safeDay);
-    setCurrentMonth(safeDay);
-    console.log(`[CALENDAR_LOG] [Screen: Workout] Compiled ${days.length} calendar days in ${Date.now() - buildStart}ms. Selected: ${toDateKey(safeDay)}.`);
+
+    // Check if the current selectedDay is already inside the compiled calendar days range.
+    // If it is, preserve the user's manual selection instead of resetting it back to today.
+    const isSelectedInDays = days.some((d) => toDateKey(d) === toDateKey(selectedDay));
+    if (!isSelectedInDays) {
+      setSelectedDay(safeDay);
+      setCurrentMonth(safeDay);
+      console.log(`[CALENDAR_LOG] [Screen: Workout] Compiled ${days.length} calendar days in ${Date.now() - buildStart}ms. Selected (fallback): ${toDateKey(safeDay)}.`);
+    } else {
+      console.log(`[CALENDAR_LOG] [Screen: Workout] Compiled ${days.length} calendar days in ${Date.now() - buildStart}ms. Preserved selected day: ${toDateKey(selectedDay)}.`);
+    }
   }, [workoutsHistory]);
 
   const handleDayPress = useCallback((day: Date) => {
