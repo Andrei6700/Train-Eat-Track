@@ -21,6 +21,7 @@ type StatisticsTab = "workouts" | "nutrition";
 const Statistics = React.memo(() => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<StatisticsTab>("workouts");
+  const [mountedTabs, setMountedTabs] = useState<Set<StatisticsTab>>(new Set(["workouts"]));
   const mountStartRef = useRef(Date.now());
 
   useEffect(() => {
@@ -43,6 +44,12 @@ const Statistics = React.memo(() => {
   const handleTabChange = useCallback((index: number) => {
     const nextTab = index === 0 ? "workouts" : "nutrition";
     logPress("Statistics Tab Switch", { tab: nextTab });
+    setMountedTabs((prev) => {
+      if (prev.has(nextTab)) return prev;
+      const nextSet = new Set(prev);
+      nextSet.add(nextTab);
+      return nextSet;
+    });
     setActiveTab(nextTab);
   }, []);
 
@@ -89,24 +96,29 @@ const Statistics = React.memo(() => {
           </View>
 
           <View style={styles.tabContainer}>
-            <View style={[styles.tabContent, activeTab !== "workouts" && styles.hidden]}>
-              <WorkoutStatistics
-                selectedPeriod={selectedPeriod}
-                dataPeriod={dataPeriod}
-                onPeriodChange={handlePeriodChange}
-                active={activeTab === "workouts"}
-              />
-            </View>
+            {mountedTabs.has("workouts") && (
+              <View style={[styles.tabContent, activeTab !== "workouts" && styles.hidden]}>
+                <WorkoutStatistics
+                  selectedPeriod={selectedPeriod}
+                  dataPeriod={dataPeriod}
+                  onPeriodChange={handlePeriodChange}
+                  active={activeTab === "workouts"}
+                />
+              </View>
+            )}
 
-            <View style={[styles.tabContent, activeTab !== "nutrition" && styles.hidden]}>
-              <NutritionStatistics
-                selectedPeriod={selectedPeriod}
-                dataPeriod={dataPeriod}
-                onPeriodChange={handlePeriodChange}
-                active={activeTab === "nutrition"}
-              />
-            </View>
+            {mountedTabs.has("nutrition") && (
+              <View style={[styles.tabContent, activeTab !== "nutrition" && styles.hidden]}>
+                <NutritionStatistics
+                  selectedPeriod={selectedPeriod}
+                  dataPeriod={dataPeriod}
+                  onPeriodChange={handlePeriodChange}
+                  active={activeTab === "nutrition"}
+                />
+              </View>
+            )}
           </View>
+
         </ScrollView>
       </ScreenWrapper>
     </SwipeableScreen>

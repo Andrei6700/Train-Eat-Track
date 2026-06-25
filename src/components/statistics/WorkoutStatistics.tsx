@@ -10,11 +10,12 @@ import { measureAsync } from "@/src/utils/perf";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { toValidDate, getWeekRange, getMonthRange, getYearRange } from "@/src/utils/dateKey";
 import {
   ActivityIndicator,
   GestureResponderEvent,
+  InteractionManager,
   PanResponder,
   PanResponderGestureState,
   ScrollView,
@@ -134,6 +135,7 @@ function WorkoutStatistics({
   const periodChangeRef = useRef<{ from: PeriodType; to: PeriodType; startTime: number } | null>(null);
 
   useEffect(() => {
+    if (!active) return;
     const renderDuration = Date.now() - renderStartTime;
     if (__DEV__) {
       console.log(`[STATS] WorkoutStatistics - render: ${renderDuration}ms`);
@@ -280,9 +282,13 @@ function WorkoutStatistics({
       if (requestId !== requestIdRef.current) return;
 
       if (result.success) {
-        setWorkoutsHistory(result.data || []);
+        startTransition(() => {
+          setWorkoutsHistory(result.data || []);
+        });
       } else if (!hydratedFromCache) {
-        setWorkoutsHistory([]);
+        startTransition(() => {
+          setWorkoutsHistory([]);
+        });
       }
     } catch (error) {
       if (__DEV__) {
@@ -312,6 +318,7 @@ function WorkoutStatistics({
 
   // Memoized: filtered and sorted workouts for current period
   const filteredWorkouts = useMemo(() => {
+    if (!active) return [];
     const start = Date.now();
     const range = getPeriodRange(dataPeriod);
     const result = workoutsHistory
@@ -333,8 +340,12 @@ function WorkoutStatistics({
   }, [workoutsHistory, dataPeriod]);
 
   // Memoized: overall stats calculations (derive directly from filteredWorkouts)
-  const totalWorkoutsCount = useMemo(() => filteredWorkouts.length, [filteredWorkouts]);
+  const totalWorkoutsCount = useMemo(() => {
+    if (!active) return 0;
+    return filteredWorkouts.length;
+  }, [filteredWorkouts]);
   const totalDurationMinutes = useMemo(() => {
+    if (!active) return 0;
     return filteredWorkouts.reduce(
       (sum, workout) => sum + Math.floor(workout.duration / 60),
       0
@@ -343,6 +354,7 @@ function WorkoutStatistics({
 
   // Memoized: available exercises list
   const availableExercises = useMemo(() => {
+    if (!active) return [];
     const exerciseSet = new Set<string>();
     // Show all-time exercises across all periods to allow selecting any exercise and showing its empty state
     const sourceWorkouts = workoutsHistory.filter((w) => !w.isRestDay);
@@ -374,6 +386,9 @@ function WorkoutStatistics({
 
   // Memoized: stats and chart data for selected exercise — downsamples to weekly averages for Yearly
   const exerciseStatsData = useMemo(() => {
+    if (!active) {
+      return { exerciseStats: null, weightChartData: [], repsChartData: [] };
+    }
     const start = Date.now();
     if (!selectedExercise) {
       const result = { exerciseStats: null, weightChartData: [], repsChartData: [] };
@@ -565,6 +580,7 @@ function WorkoutStatistics({
   const { exerciseStats, weightChartData, repsChartData } = exerciseStatsData;
 
   const chartSpacing = useMemo(() => {
+    if (!active) return scale(60);
     const pointCount = weightChartData.length;
     if (pointCount <= 1) return scale(60);
 
@@ -590,10 +606,22 @@ function WorkoutStatistics({
   );
 
   const hasAnyWorkoutHistory = useMemo(() => {
+    if (!active) return false;
     return workoutsHistory.some((workout) => !workout.isRestDay);
   }, [workoutsHistory]);
 
+  const [isReadyForCharts, setIsReadyForCharts] = useState(false);
 
+  useEffect(() => {
+    if (!active) return;
+    if (isReadyForCharts) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReadyForCharts(true);
+    });
+    return () => task.cancel();
+  }, [active, isReadyForCharts]);
+
+  if (!active) return null;
 
   return (
     // Wrap in a swipeable container for period switching gestures
@@ -829,35 +857,39 @@ function WorkoutStatistics({
                   </View>
                 </View>
 
-                <View>
-                  <MemoizedLineChart
-                    data={weightChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={chartSpacing}
-                    thickness={3}
-                    color={colors.primary}
-                    startFillColor={colors.primary}
-                    endFillColor={colors.primary}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={weightChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={colors.primary}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={weightChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={chartSpacing}
+                      thickness={3}
+                      color={colors.primary}
+                      startFillColor={colors.primary}
+                      endFillColor={colors.primary}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={weightChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={colors.primary}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  )}
                 </View>
               </View>
             </View>
@@ -887,35 +919,39 @@ function WorkoutStatistics({
                   </View>
                 </View>
 
-                <View>
-                  <MemoizedLineChart
-                    data={repsChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={chartSpacing}
-                    thickness={3}
-                    color={colors.green}
-                    startFillColor={colors.green}
-                    endFillColor={colors.green}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={repsChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={colors.green}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={repsChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={chartSpacing}
+                      thickness={3}
+                      color={colors.green}
+                      startFillColor={colors.green}
+                      endFillColor={colors.green}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={repsChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={colors.green}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.green} />
+                  )}
                 </View>
               </View>
             </View>
@@ -1153,6 +1189,7 @@ const styles = StyleSheet.create({
     marginTop: spacingY._7,
     textAlign: "center",
   },
+
 });
 
 const areEqual = (prevProps: WorkoutStatisticsProps, nextProps: WorkoutStatisticsProps) => {

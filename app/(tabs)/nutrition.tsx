@@ -349,6 +349,7 @@ const Nutrition = () => {
   const initialLoadUserIdRef = useRef<string | null>(null);
   const previousCalendarUserIdRef = useRef<string | null>(null);
   const calendarBootStartedAtRef = useRef(Date.now());
+  const calendarReadyLoggedRef = useRef(false);
   const lastVisibleCalendarDayRef = useRef<Date | null>(null);
   const lastVisibleCalendarMonthKeyRef = useRef<string | null>(
     toMonthLookupKey(startOfDay(new Date())),
@@ -531,7 +532,9 @@ const Nutrition = () => {
 
   useEffect(() => {
     if (calendarDays.length === 0) return;
+    if (calendarReadyLoggedRef.current) return;
 
+    calendarReadyLoggedRef.current = true;
     devLog("calendar_ready", {
       latencyMs: Date.now() - calendarBootStartedAtRef.current,
       dayCount: calendarDays.length,
@@ -988,11 +991,8 @@ const Nutrition = () => {
     [maxPlannableDate, preloadCalendarDates],
   );
 
-  // Keep nearby weeks warm so rings are already filled when the user swipes.
-  useEffect(() => {
-    if (!user?.uid) return;
-    requestCalendarWindowLoad(selectedDate, { force: true });
-  }, [requestCalendarWindowLoad, selectedDate, user?.uid]);
+  // The calendar page window is preloaded on mount/visible date change,
+  // so we do not need to query cache/Firebase on every day click.
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -1152,6 +1152,7 @@ const Nutrition = () => {
   useEffect(() => {
     if (user?.uid && previousCalendarUserIdRef.current !== user.uid) {
       calendarBootStartedAtRef.current = Date.now();
+      calendarReadyLoggedRef.current = false;
       lastDaysDataChangeReasonRef.current = "user_switch_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
@@ -1166,6 +1167,7 @@ const Nutrition = () => {
 
     if (!user?.uid) {
       calendarBootStartedAtRef.current = Date.now();
+      calendarReadyLoggedRef.current = false;
       lastDaysDataChangeReasonRef.current = "user_signed_out_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
