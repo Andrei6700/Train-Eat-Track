@@ -10,10 +10,12 @@ import { measureAsync } from "@/src/utils/perf";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { toValidDate, getWeekRange, getMonthRange, getYearRange } from "@/src/utils/dateKey";
 import {
   ActivityIndicator,
   GestureResponderEvent,
+  InteractionManager,
   PanResponder,
   PanResponderGestureState,
   ScrollView,
@@ -23,6 +25,7 @@ import {
   useWindowDimensions
 } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
+import { logPress, logEvent } from "@/src/utils/perfMonitor";
 
 const MemoizedLineChart = React.memo(LineChart);
 
@@ -74,19 +77,10 @@ const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = ""): Cha
   });
 };
 
-const getPeriodStartDate = (period: PeriodType): Date => {
-  const periodStart = new Date();
-  periodStart.setHours(0, 0, 0, 0);
-
-  if (period === "Weekly") {
-    periodStart.setDate(periodStart.getDate() - 7);
-  } else if (period === "Monthly") {
-    periodStart.setMonth(periodStart.getMonth() - 1);
-  } else {
-    periodStart.setFullYear(periodStart.getFullYear() - 1);
-  }
-
-  return periodStart;
+const getPeriodRange = (period: PeriodType) => {
+  if (period === "Weekly") return getWeekRange();
+  if (period === "Monthly") return getMonthRange();
+  return getYearRange();
 };
 
 const getStartOfWeek = (date: Date): Date => {
@@ -96,6 +90,35 @@ const getStartOfWeek = (date: Date): Date => {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
   return new Date(d.setDate(diff));
 };
+
+interface EmptyStateProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}
+
+const EmptyState = React.memo(({ icon, title, subtitle }: EmptyStateProps) => {
+  return (
+    <View style={styles.emptyState}>
+      {icon}
+      <Typo
+        size={18}
+        fontWeight="600"
+        color={colors.neutral200}
+        style={styles.emptyStateTitle}
+      >
+        {title}
+      </Typo>
+      <Typo
+        size={14}
+        color={colors.neutral400}
+        style={styles.emptyStateSubtitle}
+      >
+        {subtitle}
+      </Typo>
+    </View>
+  );
+});
 
 function WorkoutStatistics({
   selectedPeriod,
@@ -112,6 +135,7 @@ function WorkoutStatistics({
   const periodChangeRef = useRef<{ from: PeriodType; to: PeriodType; startTime: number } | null>(null);
 
   useEffect(() => {
+    if (!active) return;
     const renderDuration = Date.now() - renderStartTime;
     if (__DEV__) {
       console.log(`[STATS] WorkoutStatistics - render: ${renderDuration}ms`);
@@ -149,6 +173,7 @@ function WorkoutStatistics({
         nextPeriod = PERIODS[currentIdx - 1];
       }
       if (nextPeriod) {
+        logEvent("Swipe Gesture", "Period Change", { from: selectedPeriod, to: nextPeriod });
         periodChangeRef.current = {
           from: selectedPeriod,
           to: nextPeriod,
@@ -257,9 +282,13 @@ function WorkoutStatistics({
       if (requestId !== requestIdRef.current) return;
 
       if (result.success) {
-        setWorkoutsHistory(result.data || []);
+        startTransition(() => {
+          setWorkoutsHistory(result.data || []);
+        });
       } else if (!hydratedFromCache) {
-        setWorkoutsHistory([]);
+        startTransition(() => {
+          setWorkoutsHistory([]);
+        });
       }
     } catch (error) {
       if (__DEV__) {
@@ -289,11 +318,20 @@ function WorkoutStatistics({
 
   // Memoized: filtered and sorted workouts for current period
   const filteredWorkouts = useMemo(() => {
+    if (!active) return [];
     const start = Date.now();
-    const periodStart = getPeriodStartDate(dataPeriod);
+    const range = getPeriodRange(dataPeriod);
     const result = workoutsHistory
-      .filter((workout) => !workout.isRestDay && new Date(workout.date) >= periodStart)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .filter((workout) => {
+        if (workout.isRestDay) return false;
+        const workoutDate = toValidDate(workout.date);
+        return workoutDate !== null && workoutDate >= range.start && workoutDate <= range.end;
+      })
+      .sort((a, b) => {
+        const dateA = toValidDate(a.date);
+        const dateB = toValidDate(b.date);
+        return (dateA?.getTime() ?? 0) - (dateB?.getTime() ?? 0);
+      });
     const duration = Date.now() - start;
     if (__DEV__) {
       console.log(`[STATS] WorkoutStatistics - filtered data memo: ${duration}ms`);
@@ -302,8 +340,12 @@ function WorkoutStatistics({
   }, [workoutsHistory, dataPeriod]);
 
   // Memoized: overall stats calculations (derive directly from filteredWorkouts)
-  const totalWorkoutsCount = useMemo(() => filteredWorkouts.length, [filteredWorkouts]);
+  const totalWorkoutsCount = useMemo(() => {
+    if (!active) return 0;
+    return filteredWorkouts.length;
+  }, [filteredWorkouts]);
   const totalDurationMinutes = useMemo(() => {
+    if (!active) return 0;
     return filteredWorkouts.reduce(
       (sum, workout) => sum + Math.floor(workout.duration / 60),
       0
@@ -312,12 +354,10 @@ function WorkoutStatistics({
 
   // Memoized: available exercises list
   const availableExercises = useMemo(() => {
+    if (!active) return [];
     const exerciseSet = new Set<string>();
-    // For Weekly, only show exercises from that period; otherwise show all time
-    const sourceWorkouts =
-      dataPeriod === "Weekly"
-        ? filteredWorkouts
-        : workoutsHistory.filter((w) => !w.isRestDay);
+    // Show all-time exercises across all periods to allow selecting any exercise and showing its empty state
+    const sourceWorkouts = workoutsHistory.filter((w) => !w.isRestDay);
 
     sourceWorkouts.forEach((workout) => {
       workout.exercises?.forEach((exercise) => {
@@ -328,7 +368,7 @@ function WorkoutStatistics({
     });
 
     return Array.from(exerciseSet).sort();
-  }, [workoutsHistory, filteredWorkouts, dataPeriod]);
+  }, [workoutsHistory]);
 
   // Set default/fallback exercise selection
   useEffect(() => {
@@ -346,9 +386,33 @@ function WorkoutStatistics({
 
   // Memoized: stats and chart data for selected exercise — downsamples to weekly averages for Yearly
   const exerciseStatsData = useMemo(() => {
+    if (!active) {
+      return { exerciseStats: null, weightChartData: [], repsChartData: [] };
+    }
     const start = Date.now();
-    if (!selectedExercise || filteredWorkouts.length === 0) {
+    if (!selectedExercise) {
       const result = { exerciseStats: null, weightChartData: [], repsChartData: [] };
+      const duration = Date.now() - start;
+      if (__DEV__) {
+        console.log(`[STATS] WorkoutStatistics - chartData memo: ${duration}ms`);
+        console.log(`[STATS] WorkoutStatistics - averages memo: ${duration}ms`);
+      }
+      return result;
+    }
+
+    if (filteredWorkouts.length === 0) {
+      const stats: ExerciseStats = {
+        exerciseName: selectedExercise,
+        totalWeight: 0,
+        maxWeight: 0,
+        totalReps: 0,
+        averageTopSetReps: 0,
+        workoutCount: 0,
+        dates: [],
+        weights: [],
+        reps: [],
+      };
+      const result = { exerciseStats: stats, weightChartData: [], repsChartData: [] };
       const duration = Date.now() - start;
       if (__DEV__) {
         console.log(`[STATS] WorkoutStatistics - chartData memo: ${duration}ms`);
@@ -373,7 +437,7 @@ function WorkoutStatistics({
 
       if (exercise) {
         workoutCount++;
-        const workoutDate = new Date(workout.date);
+        const workoutDate = toValidDate(workout.date) || new Date(workout.date);
 
         let maxWeightThisWorkout = 0;
         let repsAtMaxWeightThisWorkout = 0;
@@ -410,7 +474,18 @@ function WorkoutStatistics({
     });
 
     if (workoutCount === 0) {
-      const result = { exerciseStats: null, weightChartData: [], repsChartData: [] };
+      const stats: ExerciseStats = {
+        exerciseName: selectedExercise,
+        totalWeight: 0,
+        maxWeight: 0,
+        totalReps: 0,
+        averageTopSetReps: 0,
+        workoutCount: 0,
+        dates: [],
+        weights: [],
+        reps: [],
+      };
+      const result = { exerciseStats: stats, weightChartData: [], repsChartData: [] };
       const duration = Date.now() - start;
       if (__DEV__) {
         console.log(`[STATS] WorkoutStatistics - chartData memo: ${duration}ms`);
@@ -505,6 +580,7 @@ function WorkoutStatistics({
   const { exerciseStats, weightChartData, repsChartData } = exerciseStatsData;
 
   const chartSpacing = useMemo(() => {
+    if (!active) return scale(60);
     const pointCount = weightChartData.length;
     if (pointCount <= 1) return scale(60);
 
@@ -530,10 +606,22 @@ function WorkoutStatistics({
   );
 
   const hasAnyWorkoutHistory = useMemo(() => {
+    if (!active) return false;
     return workoutsHistory.some((workout) => !workout.isRestDay);
   }, [workoutsHistory]);
 
+  const [isReadyForCharts, setIsReadyForCharts] = useState(false);
 
+  useEffect(() => {
+    if (!active) return;
+    if (isReadyForCharts) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReadyForCharts(true);
+    });
+    return () => task.cancel();
+  }, [active, isReadyForCharts]);
+
+  if (!active) return null;
 
   return (
     // Wrap in a swipeable container for period switching gestures
@@ -619,6 +707,7 @@ function WorkoutStatistics({
             <TouchableOpacity
               style={styles.exerciseSelectorButton}
               onPress={() => {
+                logPress("Workout Statistics Exercise Selector Toggle", { showSelector: !showExerciseSelector });
                 setShowExerciseSelector(!showExerciseSelector);
               }}
             >
@@ -662,6 +751,7 @@ function WorkoutStatistics({
                           styles.exerciseItemSelected,
                       ]}
                       onPress={() => {
+                        logPress("Workout Statistics Exercise Selected", { exercise });
                         setSelectedExercise(exercise);
                         setShowExerciseSelector(false);
                       }}
@@ -767,35 +857,39 @@ function WorkoutStatistics({
                   </View>
                 </View>
 
-                <View>
-                  <MemoizedLineChart
-                    data={weightChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={chartSpacing}
-                    thickness={3}
-                    color={colors.primary}
-                    startFillColor={colors.primary}
-                    endFillColor={colors.primary}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={weightChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={colors.primary}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={weightChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={chartSpacing}
+                      thickness={3}
+                      color={colors.primary}
+                      startFillColor={colors.primary}
+                      endFillColor={colors.primary}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={weightChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={colors.primary}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  )}
                 </View>
               </View>
             </View>
@@ -825,35 +919,39 @@ function WorkoutStatistics({
                   </View>
                 </View>
 
-                <View>
-                  <MemoizedLineChart
-                    data={repsChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={chartSpacing}
-                    thickness={3}
-                    color={colors.green}
-                    startFillColor={colors.green}
-                    endFillColor={colors.green}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={repsChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={colors.green}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={repsChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={chartSpacing}
+                      thickness={3}
+                      color={colors.green}
+                      startFillColor={colors.green}
+                      endFillColor={colors.green}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={repsChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={colors.green}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.green} />
+                  )}
                 </View>
               </View>
             </View>
@@ -862,28 +960,11 @@ function WorkoutStatistics({
       )}
 
       {exerciseStats && exerciseStats.workoutCount === 0 && (
-        <View style={styles.emptyState}>
-          <Icons.ChartLineIcon
-            size={48}
-            color={colors.neutral500}
-            weight="fill"
-          />
-          <Typo
-            size={18}
-            fontWeight="600"
-            color={colors.neutral200}
-            style={styles.emptyStateTitle}
-          >
-            {t("statistics_no_data_period")}
-          </Typo>
-          <Typo
-            size={14}
-            color={colors.neutral400}
-            style={styles.emptyStateSubtitle}
-          >
-            {t("statistics_train_exercise", { exercise: selectedExercise })}
-          </Typo>
-        </View>
+        <EmptyState
+          icon={<Icons.ChartLineIcon size={48} color={colors.neutral500} weight="fill" />}
+          title={t("statistics_no_data_period")}
+          subtitle={t("statistics_train_exercise", { exercise: selectedExercise })}
+        />
       )}
 
       {availableExercises.length === 0 && (
@@ -892,32 +973,19 @@ function WorkoutStatistics({
             <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <Icons.BarbellIcon
-              size={48}
-              color={colors.neutral500}
-              weight="fill"
-            />
-            <Typo
-              size={18}
-              fontWeight="600"
-              color={colors.neutral200}
-              style={styles.emptyStateTitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyWorkoutHistory
+          <EmptyState
+            icon={<Icons.BarbellIcon size={48} color={colors.neutral500} weight="fill" />}
+            title={
+              dataPeriod === "Weekly" && hasAnyWorkoutHistory
                 ? t("statistics_no_workouts_this_week")
-                : t("statistics_no_workouts_yet")}
-            </Typo>
-            <Typo
-              size={14}
-              color={colors.neutral400}
-              style={styles.emptyStateSubtitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyWorkoutHistory
+                : t("statistics_no_workouts_yet")
+            }
+            subtitle={
+              dataPeriod === "Weekly" && hasAnyWorkoutHistory
                 ? t("statistics_log_weekly")
-                : t("statistics_start_training")}
-            </Typo>
-          </View>
+                : t("statistics_start_training")
+            }
+          />
         )
       )}
     </View>
@@ -1121,6 +1189,7 @@ const styles = StyleSheet.create({
     marginTop: spacingY._7,
     textAlign: "center",
   },
+
 });
 
 const areEqual = (prevProps: WorkoutStatisticsProps, nextProps: WorkoutStatisticsProps) => {

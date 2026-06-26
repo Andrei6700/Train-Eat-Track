@@ -11,6 +11,7 @@ import {
   where,
 } from "firebase/firestore";
 import NetInfo from "@react-native-community/netinfo";
+import { sanitizeForFirestore } from "@/src/utils/sanitizeForFirestore";
 import {
   enqueueOrMergeAction,
   getOfflineRecentFoodsByMeal,
@@ -38,10 +39,11 @@ export const addRecentFoodRemote = async (
   food: Food,
 ): Promise<ResponseType> => {
   try {
+    const sanitizedFood = sanitizeForFirestore(food);
     // No userID in the document — path encodes ownership
     await addDoc(userRecentFoodsCol(userID), {
       mealName,
-      food,
+      food: sanitizedFood,
       timestamp: serverTimestamp(),
     });
 

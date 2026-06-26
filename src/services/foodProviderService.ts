@@ -1,3 +1,16 @@
+/**
+ * foodProviderService.ts
+ *
+ * Multi-provider food search service.
+ * Searches USDA FoodData Central + Open Food Facts in parallel.
+ *
+ * Previously named nutritionixService.ts — renamed to reflect
+ * the actual providers used (USDA + OFF, not Nutritionix).
+ *
+ * NOTE: To fully protect the USDA API key, deploy the Cloud Function
+ * in /functions/src/index.js and route USDA calls through it.
+ */
+
 const USDA_SEARCH_ENDPOINT = "https://api.nal.usda.gov/fdc/v1/foods/search";
 const OFF_PRODUCT_ENDPOINT = "https://world.openfoodfacts.net/api/v2/product";
 
@@ -264,7 +277,7 @@ const fetchUsdaFoods = async (
   if (!USDA_API_KEY) {
     if (__DEV__) {
       console.warn(
-        "[NutritionixService] Missing EXPO_PUBLIC_USDA_API_KEY. USDA lookups are disabled.",
+        "[FoodProvider] Missing EXPO_PUBLIC_USDA_API_KEY. USDA lookups are disabled.",
       );
     }
     return [];
@@ -285,7 +298,7 @@ const fetchUsdaFoods = async (
   if (!response.ok) {
     if (__DEV__) {
       console.warn(
-        `[NutritionixService] USDA request failed: ${response.status} ${response.statusText}`,
+        `[FoodProvider] USDA request failed: ${response.status} ${response.statusText}`,
       );
     }
     return [];
@@ -356,7 +369,7 @@ const fetchOFFTextSearch = async (
     if (!response.ok) {
       if (__DEV__) {
         console.warn(
-          `[NutritionixService] OFF search failed: ${response.status} ${response.statusText}`,
+          `[FoodProvider] OFF search failed: ${response.status} ${response.statusText}`,
         );
       }
       return [];
@@ -370,7 +383,7 @@ const fetchOFFTextSearch = async (
       .filter((f): f is NutritionBarcodeFood => f !== null);
 
     if (__DEV__) {
-      console.log(`[NutritionixService] OFF text search found ${mapped.length} products for "${query}"`);
+      console.log(`[FoodProvider] OFF text search found ${mapped.length} products for "${query}"`);
     }
 
     return mapped;
@@ -380,7 +393,7 @@ const fetchOFFTextSearch = async (
     }
 
     if (__DEV__) {
-      console.error("[NutritionixService] OFF text search failed:", error);
+      console.error("[FoodProvider] OFF text search failed:", error);
     }
     return [];
   }
@@ -415,10 +428,10 @@ export const searchFoods = async (
 
   if (__DEV__) {
     if (usdaResult.status === "rejected" && !isAbortError(usdaResult.reason)) {
-      console.error("[NutritionixService] USDA text search failed:", usdaResult.reason);
+      console.error("[FoodProvider] USDA text search failed:", usdaResult.reason);
     }
     if (offResult.status === "rejected" && !isAbortError(offResult.reason)) {
-      console.error("[NutritionixService] OFF text search failed:", offResult.reason);
+      console.error("[FoodProvider] OFF text search failed:", offResult.reason);
     }
   }
 
@@ -500,7 +513,7 @@ const fetchOFFProduct = async (
     if (!response.ok) {
       if (__DEV__) {
         console.warn(
-          `[NutritionixService] OFF request failed: ${response.status} ${response.statusText}`,
+          `[FoodProvider] OFF request failed: ${response.status} ${response.statusText}`,
         );
       }
       return null;
@@ -511,7 +524,7 @@ const fetchOFFProduct = async (
     // OFF returns status 0 when product is not found
     if (!data.product || data.status === 0) {
       if (__DEV__) {
-        console.log(`[NutritionixService] OFF: product not found for barcode ${barcode}`);
+        console.log(`[FoodProvider] OFF: product not found for barcode ${barcode}`);
       }
       return null;
     }
@@ -519,7 +532,7 @@ const fetchOFFProduct = async (
     const mapped = mapOFFToFood(data.product, barcode);
 
     if (mapped && __DEV__) {
-      console.log(`[NutritionixService] OFF: found "${mapped.name}" for barcode ${barcode}`);
+      console.log(`[FoodProvider] OFF: found "${mapped.name}" for barcode ${barcode}`);
     }
 
     return mapped;
@@ -529,7 +542,7 @@ const fetchOFFProduct = async (
     }
 
     if (__DEV__) {
-      console.error("[NutritionixService] OFF barcode lookup failed:", error);
+      console.error("[FoodProvider] OFF barcode lookup failed:", error);
     }
     return null;
   }
@@ -583,11 +596,10 @@ export const searchByBarcode = async (
       }
 
       if (__DEV__) {
-        console.error("[NutritionixService] USDA barcode lookup failed:", error);
+        console.error("[FoodProvider] USDA barcode lookup failed:", error);
       }
     }
   }
 
   return null;
 };
-

@@ -6,8 +6,5 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ['dist/*'],
-    rules: {
-      'import/no-unresolved': 'off',
-    },
   },
 ]);

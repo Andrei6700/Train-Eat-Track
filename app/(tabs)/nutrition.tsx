@@ -45,7 +45,7 @@ import {
 import { DailyNutrition, Food } from "@/src/types/index";
 import { startOfDay, toDateKey, toValidDate } from "@/src/utils/dateKey";
 import { measureAsync } from "@/src/utils/perf";
-import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss } from "@/src/utils/perfMonitor";
+import { trackScreen, trackDataLoad, trackCacheHit, trackCacheMiss, logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -349,6 +349,7 @@ const Nutrition = () => {
   const initialLoadUserIdRef = useRef<string | null>(null);
   const previousCalendarUserIdRef = useRef<string | null>(null);
   const calendarBootStartedAtRef = useRef(Date.now());
+  const calendarReadyLoggedRef = useRef(false);
   const lastVisibleCalendarDayRef = useRef<Date | null>(null);
   const lastVisibleCalendarMonthKeyRef = useRef<string | null>(
     toMonthLookupKey(startOfDay(new Date())),
@@ -531,7 +532,9 @@ const Nutrition = () => {
 
   useEffect(() => {
     if (calendarDays.length === 0) return;
+    if (calendarReadyLoggedRef.current) return;
 
+    calendarReadyLoggedRef.current = true;
     devLog("calendar_ready", {
       latencyMs: Date.now() - calendarBootStartedAtRef.current,
       dayCount: calendarDays.length,
@@ -749,6 +752,8 @@ const Nutrition = () => {
 
       const force = options?.force ?? false;
       const forceRemote = options?.forceRemote ?? false;
+      const triggerReason = forceRemote ? "pull_to_refresh" : "lazy_load_window";
+      const startMs = Date.now();
 
       // Deduplicate and filter out already-loaded / out-of-range dates
       const uniqueDays = new Map<string, Date>();
@@ -764,13 +769,16 @@ const Nutrition = () => {
       if (uniqueDays.size === 0) return;
 
       const datesToLoad = [...uniqueDays.values()];
+      console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Starting batch load for ${datesToLoad.length} days...`);
       for (const d of datesToLoad) {
         pendingDayKeysRef.current.add(toDateKey(d));
       }
 
       try {
         // --- Phase A: batch cache read (single multiGet) ---
+        const cacheStart = Date.now();
         const cacheMap = await batchGetCachedNutritionDays(datesToLoad);
+        const cacheDuration = Date.now() - cacheStart;
 
         const cacheHits: DayData[] = [];
         const cacheMissDates: Date[] = [];
@@ -790,6 +798,8 @@ const Nutrition = () => {
             cacheMissDates.push(date);
           }
         }
+
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Cache query finished in ${cacheDuration}ms. Hits: ${cacheHits.length}, Misses: ${cacheMissDates.length}.`);
 
         // Single state update for all cache hits
         if (cacheHits.length > 0) {
@@ -849,7 +859,10 @@ const Nutrition = () => {
         }
 
         // If no remote needed, mark cache misses as loaded (empty) and return
-        if (!forceRemote && cacheMissDates.length === 0) return;
+        if (!forceRemote && cacheMissDates.length === 0) {
+          console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] All data loaded from cache in ${Date.now() - startMs}ms.`);
+          return;
+        }
 
         // --- Phase B: single batch remote fetch for cache misses ---
         const remoteDates = forceRemote ? datesToLoad : cacheMissDates;
@@ -859,12 +872,15 @@ const Nutrition = () => {
         const maxDate = new Date(Math.max(...remoteDates.map((d) => d.getTime())));
         maxDate.setHours(23, 59, 59, 999);
 
-        const start = Date.now();
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Fetching remote data for range ${toDateKey(minDate)} to ${toDateKey(maxDate)}...`);
+        const remoteStart = Date.now();
         const batchResult = await getNutritionForDateRange(userId, minDate, maxDate);
+        const remoteDuration = Date.now() - remoteStart;
+        
         trackDataLoad(
           "nutrition_range",
           "firebase",
-          Date.now() - start,
+          remoteDuration,
           batchResult.success && Array.isArray(batchResult.data) ? batchResult.data.length : 0,
         );
 
@@ -889,7 +905,9 @@ const Nutrition = () => {
               remoteResults.push(null);
             }
           }
+          console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Remote LOAD successful. Fetched ${batchResult.data.length} records in ${remoteDuration}ms.`);
         } else {
+          console.error(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Remote LOAD failed in ${remoteDuration}ms.`, batchResult.msg);
           for (const date of remoteDates) {
             remoteResults.push(null);
           }
@@ -930,13 +948,12 @@ const Nutrition = () => {
           loadedDayKeysRef.current.add(toDateKey(date));
         }
       } catch (error) {
-        if (__DEV__) {
-          console.error("[Nutrition] Error in batch calendar load:", error);
-        }
+        console.error(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Error in batch load:`, error);
       } finally {
         for (const date of datesToLoad) {
           pendingDayKeysRef.current.delete(toDateKey(date));
         }
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Total load operation completed in ${Date.now() - startMs}ms.`);
       }
     },
     [logCalendarWeekLoaded, maxPlannableDate, user?.uid],
@@ -974,11 +991,8 @@ const Nutrition = () => {
     [maxPlannableDate, preloadCalendarDates],
   );
 
-  // Keep nearby weeks warm so rings are already filled when the user swipes.
-  useEffect(() => {
-    if (!user?.uid) return;
-    requestCalendarWindowLoad(selectedDate, { force: true });
-  }, [requestCalendarWindowLoad, selectedDate, user?.uid]);
+  // The calendar page window is preloaded on mount/visible date change,
+  // so we do not need to query cache/Firebase on every day click.
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -999,11 +1013,12 @@ const Nutrition = () => {
     },
     [refreshNutrition, user?.uid],
   );
-
   const loadCalendarHistory = useCallback(
     async (options?: { forceRemote?: boolean }) => {
       const userId = user?.uid;
       const forceRemote = options?.forceRemote ?? false;
+      const startMs = Date.now();
+      const triggerReason = forceRemote ? "pull_to_refresh" : "screen_focus";
       calendarRequestIdRef.current += 1;
       const requestId = calendarRequestIdRef.current;
       let cachedSummary: NutritionCalendarSummary | null = null;
@@ -1015,6 +1030,8 @@ const Nutrition = () => {
         setCalendarLoading(false);
         return;
       }
+
+      console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Loading calendar metadata summary...`);
 
       const memEarliest = getMemoryEarliestDate(userId);
       if (memEarliest !== undefined && memEarliest) {
@@ -1050,10 +1067,12 @@ const Nutrition = () => {
       if (requestId !== calendarRequestIdRef.current) return;
 
       if (cacheResult.data) {
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Cache HIT. Loaded metadata summary (${cacheResult.data.days.length} days) in ${Date.now() - startMs}ms.`);
         trackCacheHit("nutrition_calendar_summary", cacheResult.ageMs ?? 0);
         cachedSummary = cacheResult.data;
         applyCalendarSummary(cacheResult.data, "hydrate_cache");
       } else {
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Cache MISS. Metadata summary cache empty.`);
         trackCacheMiss("nutrition_calendar_summary");
       }
 
@@ -1063,11 +1082,12 @@ const Nutrition = () => {
       const cachedEarliest = cachedSummary?.earliestDate ?? null;
       if (cachedEarliest && !forceRemote) {
         setCalendarLoading(false);
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Summary metadata loaded from cache. Stopping load.`);
         return;
       }
 
       try {
-        const start = Date.now();
+        const remoteStart = Date.now();
         const earliestDate = await measureAsync(
           "nutrition_calendar_seed_remote_ms",
           () => getUserNutritionEarliestDate(userId),
@@ -1078,7 +1098,9 @@ const Nutrition = () => {
             success: Boolean(result),
           }),
         );
-        trackDataLoad("nutrition_earliest_date", "firebase", Date.now() - start, earliestDate ? 1 : 0);
+        const remoteDuration = Date.now() - remoteStart;
+        console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Remote LOAD successful. Earliest date: ${earliestDate ? toDateKey(earliestDate) : "none"} (fetched in ${remoteDuration}ms).`);
+        trackDataLoad("nutrition_earliest_date", "firebase", remoteDuration, earliestDate ? 1 : 0);
 
         if (requestId !== calendarRequestIdRef.current) return;
 
@@ -1109,9 +1131,7 @@ const Nutrition = () => {
           setCalendarEarliestDate(null);
         }
       } catch (error) {
-        if (__DEV__) {
-          console.error("[Nutrition] Error loading calendar seed:", error);
-        }
+        console.error(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Error loading calendar seed:`, error);
         if (requestId !== calendarRequestIdRef.current) return;
 
         if (!cachedSummary) {
@@ -1122,6 +1142,7 @@ const Nutrition = () => {
       } finally {
         if (requestId === calendarRequestIdRef.current) {
           setCalendarLoading(false);
+          console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: ${triggerReason}] Total calendar summary load operation completed in ${Date.now() - startMs}ms.`);
         }
       }
     },
@@ -1131,6 +1152,7 @@ const Nutrition = () => {
   useEffect(() => {
     if (user?.uid && previousCalendarUserIdRef.current !== user.uid) {
       calendarBootStartedAtRef.current = Date.now();
+      calendarReadyLoggedRef.current = false;
       lastDaysDataChangeReasonRef.current = "user_switch_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
@@ -1145,6 +1167,7 @@ const Nutrition = () => {
 
     if (!user?.uid) {
       calendarBootStartedAtRef.current = Date.now();
+      calendarReadyLoggedRef.current = false;
       lastDaysDataChangeReasonRef.current = "user_signed_out_reset";
       setDaysData([]);
       setCalendarEarliestDate(null);
@@ -1244,6 +1267,7 @@ const Nutrition = () => {
   }, []);
 
   const onRefresh = useCallback(() => {
+    logPress("Pull to Refresh Nutrition");
     calendarBootStartedAtRef.current = Date.now();
     loadedDayKeysRef.current.clear();
     pendingDayKeysRef.current.clear();
@@ -1290,6 +1314,9 @@ const Nutrition = () => {
       const normalizedDay = normalizeDate(day);
       if (normalizedDay > maxPlannableDate) return;
 
+      logPress("Nutrition Calendar Day Select", { date: toDateKey(normalizedDay) });
+      console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: user_click_day] User selected day ${toDateKey(normalizedDay)}.`);
+
       setCalendarScrollRequest(null);
       lastVisibleCalendarDayRef.current = normalizedDay;
       updateVisibleCalendarMonth(normalizedDay);
@@ -1304,18 +1331,22 @@ const Nutrition = () => {
   );
 
   const handleOpenSettings = useCallback(() => {
+    logPress("Nutrition Settings Button");
     router.push("/(modals)/nutritionSettings");
   }, [router]);
 
   const handleOpenMaintenance = useCallback(() => {
+    logPress("Nutrition Maintenance Button");
     router.push("/(modals)/maintenanceTracker");
   }, [router]);
 
   const handleOpenCalendarLog = useCallback(() => {
+    logPress("Nutrition Open Calendar Log Modal");
     setShowCalendarLogModal(true);
   }, []);
 
   const handleCloseCalendarLog = useCallback(() => {
+    logPress("Nutrition Close Calendar Log Modal");
     setShowCalendarLogModal(false);
   }, []);
 
@@ -1323,6 +1354,9 @@ const Nutrition = () => {
     (day: Date, _index?: number) => {
       const normalizedDate = startOfDay(day);
       if (normalizedDate > maxPlannableDate) return;
+
+      logPress("Nutrition Calendar Modal Day Select", { date: toDateKey(normalizedDate) });
+      console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: user_click_calendar_modal] User selected day ${toDateKey(normalizedDate)}.`);
 
       lastVisibleCalendarDayRef.current = normalizedDate;
       updateVisibleCalendarMonth(normalizedDate);
@@ -1356,6 +1390,9 @@ const Nutrition = () => {
         return;
       }
 
+      logEvent("Swipe Gesture", "Nutrition Calendar Visible Day Changed", { date: toDateKey(normalizedDay) });
+      console.log(`[CALENDAR_LOG] [Screen: Nutrition] [Trigger: swipe_scroll] Calendar visible day changed to ${toDateKey(normalizedDay)}.`);
+
       lastVisibleCalendarDayRef.current = normalizedDay;
       requestCalendarWindowLoad(normalizedDay);
 
@@ -1376,6 +1413,7 @@ const Nutrition = () => {
 
   const handleMealPress = useCallback(
     (mealName: string) => {
+      logPress("Nutrition Meal Press", { mealName });
       router.push({
         pathname: "/(modals)/mealDetail",
         params: {
@@ -1389,12 +1427,14 @@ const Nutrition = () => {
 
   const handleAddWater = useCallback(
     async (amount: number) => {
+      logPress("Nutrition Add Water", { amount });
       await addWaterIntake(amount);
     },
     [addWaterIntake],
   );
 
   const handleResetWater = useCallback(() => {
+    logPress("Nutrition Reset Water Click");
     Alert.alert(
       t("nutrition_reset_water_title"),
       t("nutrition_reset_water_message"),
@@ -1404,6 +1444,7 @@ const Nutrition = () => {
           text: t("nutrition_reset"),
           style: "destructive",
           onPress: async () => {
+            logEvent("Nutrition", "Water Intake Reset");
             await resetWaterIntake();
           },
         },
@@ -1413,9 +1454,11 @@ const Nutrition = () => {
 
   const handleRemoveWater = useCallback(
     async (index: number) => {
+      logPress("Nutrition Remove Water Entry", { index });
       try {
         await removeWaterIntake(index);
       } catch (error: any) {
+        logError("Nutrition Remove Water", error);
         Alert.alert(t("common_error"), error?.message || "Error deleting water entry");
       }
     },
@@ -1424,6 +1467,7 @@ const Nutrition = () => {
 
   const handleFoodPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      logPress("Nutrition Food Edit Press", { mealName, food: food.name });
       const currentQuantity = Number.parseFloat(food.servingSize) || 100;
       setEditingFood({ mealName, foodIndex, food });
       setEditQuantity(currentQuantity.toString());
@@ -1434,6 +1478,7 @@ const Nutrition = () => {
 
   const handleFoodLongPress = useCallback(
     (mealName: string, foodIndex: number, food: FoodWithOptionalBrand) => {
+      logPress("Nutrition Food Actions Long Press", { mealName, food: food.name });
       setActionFood({ mealName, foodIndex, food });
       setShowActionsModal(true);
     },
@@ -1447,10 +1492,12 @@ const Nutrition = () => {
       !Number.isFinite(parsedQuantity) ||
       parsedQuantity <= 0
     ) {
+      logError("Nutrition Save Food Quantity", "Invalid Quantity Value", { input: editQuantity });
       Alert.alert(t("common_error"), t("nutrition_invalid_quantity"));
       return;
     }
 
+    logPress("Nutrition Save Food Quantity", { meal: editingFood.mealName, food: editingFood.food.name, quantity: parsedQuantity });
     await updateFoodQuantity(
       editingFood.mealName,
       editingFood.foodIndex,
@@ -1474,6 +1521,7 @@ const Nutrition = () => {
   const handleCopyFood = useCallback(
     async (toMeal: string) => {
       if (!actionFood) return;
+      logPress("Nutrition Copy Food", { fromMeal: actionFood.mealName, toMeal, food: actionFood.food.name });
       await copyFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
       Alert.alert(
@@ -1490,6 +1538,7 @@ const Nutrition = () => {
   const handleMoveFood = useCallback(
     async (toMeal: string) => {
       if (!actionFood) return;
+      logPress("Nutrition Move Food", { fromMeal: actionFood.mealName, toMeal, food: actionFood.food.name });
       await moveFoodToMeal(actionFood.mealName, actionFood.foodIndex, toMeal);
       setShowActionsModal(false);
       Alert.alert(
@@ -1506,6 +1555,7 @@ const Nutrition = () => {
   const handleDeleteFood = useCallback(() => {
     if (!actionFood) return;
 
+    logPress("Nutrition Delete Food Click", { meal: actionFood.mealName, food: actionFood.food.name });
     Alert.alert(
       t("nutrition_delete_food_title"),
       t("nutrition_delete_food_message", {
@@ -1517,6 +1567,7 @@ const Nutrition = () => {
           text: t("nutrition_delete_food"),
           style: "destructive",
           onPress: async () => {
+            logEvent("Nutrition", "Food Deleted", { meal: actionFood.mealName, food: actionFood.food.name });
             await removeFoodFromMeal(actionFood.mealName, actionFood.foodIndex);
             setShowActionsModal(false);
             Alert.alert(t("common_success"), t("nutrition_food_deleted"));

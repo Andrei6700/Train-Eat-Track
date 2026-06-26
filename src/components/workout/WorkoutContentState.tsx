@@ -23,6 +23,7 @@ export type WorkoutContentStateProps = {
   onStartWorkout: () => void;
   onEditPlan: () => void;
   onLogWorkout: () => void;
+  onEditWorkout?: () => void;
 };
 
 const WorkoutContentState = ({
@@ -39,10 +40,80 @@ const WorkoutContentState = ({
   onStartWorkout,
   onEditPlan,
   onLogWorkout,
+  onEditWorkout,
 }: WorkoutContentStateProps) => {
   const { t } = useLanguage();
   const reduceMotion = useReduceMotion();
   if (selectedWorkout) {
+    const isEditable = isSelectedDayToday && !!onEditWorkout;
+
+    const renderWorkoutCardContent = () => (
+      <>
+        {selectedWorkout.exercises?.map((exercise, exIdx) => (
+          <View key={exIdx} style={styles.exerciseItem}>
+            <View style={styles.exerciseHeader}>
+              <View style={styles.exerciseTitleRow}>
+                <View style={styles.exerciseIcon}>
+                  <Icons.Barbell
+                    size={20}
+                    color={colors.primary}
+                    weight="bold"
+                  />
+                </View>
+                <Typo size={16} fontWeight="600" style={{ flex: 1 }}>
+                  {exercise.exerciseName}
+                </Typo>
+              </View>
+              <View style={styles.setCountBadge}>
+                <Typo size={12} fontWeight="600" color={colors.white}>
+                  {exercise.sets?.length || 0} {t("common_sets")}
+                </Typo>
+              </View>
+            </View>
+
+            <View style={styles.setsContainer}>
+              {exercise.sets?.map((set, setIdx) => (
+                <View key={setIdx} style={styles.setRow}>
+                  <View style={styles.setNumber}>
+                    <Typo
+                      size={12}
+                      fontWeight="600"
+                      color={colors.neutral400}
+                    >
+                      {setIdx + 1}
+                    </Typo>
+                  </View>
+                  <View style={styles.setInfo}>
+                    <View style={styles.setDetail}>
+                      <Icons.Barbell size={14} color={colors.neutral400} />
+                      <Typo size={14} color={colors.white}>
+                        {set.weight} {set.weightUnit}
+                      </Typo>
+                    </View>
+                    <View style={styles.setDetail}>
+                      <Icons.Repeat size={14} color={colors.neutral400} />
+                      <Typo size={14} color={colors.white}>
+                        {set.reps} {t("common_reps")}
+                      </Typo>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {isEditable && (
+          <View style={styles.editFooter}>
+            <Icons.PencilSimple size={16} color={colors.primary} weight="bold" />
+            <Typo size={14} fontWeight="600" color={colors.primary}>
+              {t("workout_edit_button")}
+            </Typo>
+          </View>
+        )}
+      </>
+    );
+
     return (
       <Animated.View
         entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(200)}
@@ -54,68 +125,30 @@ const WorkoutContentState = ({
               ? t("workout_today_workout")
               : t("workout_logged_workout")}
           </Typo>
-          <View style={styles.exerciseCountBadge}>
-            <Typo size={14} color={colors.neutral300}>
-              {selectedWorkout.exercises?.length || 0} {t("common_exercises")}
-            </Typo>
+          <View style={styles.sectionHeaderRight}>
+            <View style={styles.exerciseCountBadge}>
+              <Typo size={14} color={colors.neutral300}>
+                {selectedWorkout.exercises?.length || 0} {t("common_exercises")}
+              </Typo>
+            </View>
           </View>
         </View>
 
-        <View style={styles.workoutCard}>
-          {selectedWorkout.exercises?.map((exercise, exIdx) => (
-            <View key={exIdx} style={styles.exerciseItem}>
-              <View style={styles.exerciseHeader}>
-                <View style={styles.exerciseTitleRow}>
-                  <View style={styles.exerciseIcon}>
-                    <Icons.Barbell
-                      size={20}
-                      color={colors.primary}
-                      weight="bold"
-                    />
-                  </View>
-                  <Typo size={16} fontWeight="600">
-                    {exercise.exerciseName}
-                  </Typo>
-                </View>
-                <View style={styles.setCountBadge}>
-                  <Typo size={12} fontWeight="600" color={colors.white}>
-                    {exercise.sets?.length || 0} {t("common_sets")}
-                  </Typo>
-                </View>
-              </View>
-
-              <View style={styles.setsContainer}>
-                {exercise.sets?.map((set, setIdx) => (
-                  <View key={setIdx} style={styles.setRow}>
-                    <View style={styles.setNumber}>
-                      <Typo
-                        size={12}
-                        fontWeight="600"
-                        color={colors.neutral400}
-                      >
-                        {setIdx + 1}
-                      </Typo>
-                    </View>
-                    <View style={styles.setInfo}>
-                      <View style={styles.setDetail}>
-                        <Icons.Barbell size={14} color={colors.neutral400} />
-                        <Typo size={14} color={colors.white}>
-                          {set.weight} {set.weightUnit}
-                        </Typo>
-                      </View>
-                      <View style={styles.setDetail}>
-                        <Icons.Repeat size={14} color={colors.neutral400} />
-                        <Typo size={14} color={colors.white}>
-                          {set.reps} {t("common_reps")}
-                        </Typo>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ))}
-        </View>
+        {isEditable ? (
+          <TouchableOpacity
+            style={styles.workoutCard}
+            onPress={onEditWorkout}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={t("workout_edit_button")}
+          >
+            {renderWorkoutCardContent()}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.workoutCard}>
+            {renderWorkoutCardContent()}
+          </View>
+        )}
       </Animated.View>
     );
   }
@@ -183,7 +216,7 @@ const WorkoutContentState = ({
               {selectedPlanDay?.exercises.map((exercise, idx) => (
                 <View key={idx} style={styles.exerciseListItem}>
                   <View style={styles.exerciseDot} />
-                  <Typo size={15} color={colors.neutral200}>
+                  <Typo size={15} color={colors.neutral200} style={{ flex: 1 }}>
                     {exercise.exerciseName}
                   </Typo>
                   <Typo size={13} color={colors.neutral500}>
@@ -350,6 +383,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacingY._15,
+  },
+  sectionHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+  },
+  editFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacingX._8,
+    borderTopWidth: 1,
+    borderColor: colors.neutral700,
+    paddingTop: spacingY._15,
+    marginTop: spacingY._5,
   },
   exerciseCountBadge: {
     backgroundColor: colors.neutral800,

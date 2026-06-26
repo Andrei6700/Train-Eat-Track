@@ -9,10 +9,12 @@ import { DailyNutrition, DailyWater } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as Icons from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { toValidDate, getWeekRange, getMonthRange, getYearRange } from "@/src/utils/dateKey";
 import {
   ActivityIndicator,
   GestureResponderEvent,
+  InteractionManager,
   PanResponder,
   PanResponderGestureState,
   ScrollView,
@@ -22,6 +24,7 @@ import {
   useWindowDimensions
 } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
+import { logPress, logEvent } from "@/src/utils/perfMonitor";
 
 const MemoizedLineChart = React.memo(LineChart);
 
@@ -85,19 +88,10 @@ const applyLabelFiltering = (points: ChartDataPoint[], suffix: string = ""): Cha
   });
 };
 
-const getPeriodStartDate = (period: PeriodType): Date => {
-  const periodStart = new Date();
-  periodStart.setHours(0, 0, 0, 0);
-
-  if (period === "Weekly") {
-    periodStart.setDate(periodStart.getDate() - 7);
-  } else if (period === "Monthly") {
-    periodStart.setMonth(periodStart.getMonth() - 1);
-  } else {
-    periodStart.setFullYear(periodStart.getFullYear() - 1);
-  }
-
-  return periodStart;
+const getPeriodRange = (period: PeriodType) => {
+  if (period === "Weekly") return getWeekRange();
+  if (period === "Monthly") return getMonthRange();
+  return getYearRange();
 };
 
 const getStartOfWeek = (date: Date): Date => {
@@ -107,6 +101,35 @@ const getStartOfWeek = (date: Date): Date => {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
   return new Date(d.setDate(diff));
 };
+
+interface EmptyStateProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}
+
+const EmptyState = React.memo(({ icon, title, subtitle }: EmptyStateProps) => {
+  return (
+    <View style={styles.emptyState}>
+      {icon}
+      <Typo
+        size={18}
+        fontWeight="600"
+        color={colors.neutral200}
+        style={styles.emptyStateTitle}
+      >
+        {title}
+      </Typo>
+      <Typo
+        size={14}
+        color={colors.neutral400}
+        style={styles.emptyStateSubtitle}
+      >
+        {subtitle}
+      </Typo>
+    </View>
+  );
+});
 
 function NutritionStatistics({
   selectedPeriod,
@@ -133,6 +156,7 @@ function NutritionStatistics({
   const periodChangeRef = useRef<{ from: PeriodType; to: PeriodType; startTime: number } | null>(null);
 
   useEffect(() => {
+    if (!active) return;
     const renderDuration = Date.now() - renderStartTime;
     if (__DEV__) {
       console.log(`[STATS] NutritionStatistics - render: ${renderDuration}ms`);
@@ -160,6 +184,7 @@ function NutritionStatistics({
         nextPeriod = PERIODS[currentIdx - 1];
       }
       if (nextPeriod) {
+        logEvent("Swipe Gesture", "Period Change", { from: selectedPeriod, to: nextPeriod });
         periodChangeRef.current = {
           from: selectedPeriod,
           to: nextPeriod,
@@ -247,12 +272,14 @@ function NutritionStatistics({
       ]);
       if (requestId !== requestIdRef.current) return;
 
-      if (nutritionResult.success && Array.isArray(nutritionResult.data)) {
-        setNutritionHistory(nutritionResult.data);
-      }
-      if (waterResult.success && Array.isArray(waterResult.data)) {
-        setWaterHistory(waterResult.data);
-      }
+      startTransition(() => {
+        if (nutritionResult.success && Array.isArray(nutritionResult.data)) {
+          setNutritionHistory(nutritionResult.data);
+        }
+        if (waterResult.success && Array.isArray(waterResult.data)) {
+          setWaterHistory(waterResult.data);
+        }
+      });
     } catch (error) {
       if (__DEV__) {
         console.error("Error fetching nutrition/water history:", error);
@@ -278,14 +305,16 @@ function NutritionStatistics({
 
   // daily aggregated stats within current period
   const rawNutritionDayStats = useMemo((): NutritionDayStats[] => {
+    if (!active) return [];
     const start = Date.now();
-    const periodStart = getPeriodStartDate(dataPeriod);
+    const range = getPeriodRange(dataPeriod);
     const dayMap = new Map<string, NutritionDayStats>();
 
     for (const day of nutritionHistory) {
-      const dayDate = new Date(day.date);
+      const dayDate = toValidDate(day.date);
+      if (!dayDate) continue;
       dayDate.setHours(0, 0, 0, 0);
-      if (dayDate < periodStart) continue;
+      if (dayDate < range.start || dayDate > range.end) continue;
 
       const key = dayDate.toISOString();
       const meals = Array.isArray(day.meals) ? day.meals : [];
@@ -317,9 +346,10 @@ function NutritionStatistics({
     }
 
     for (const day of waterHistory) {
-      const dayDate = new Date(day.date);
+      const dayDate = toValidDate(day.date);
+      if (!dayDate) continue;
       dayDate.setHours(0, 0, 0, 0);
-      if (dayDate < periodStart) continue;
+      if (dayDate < range.start || dayDate > range.end) continue;
 
       const key = dayDate.toISOString();
       const existing = dayMap.get(key);
@@ -349,6 +379,7 @@ function NutritionStatistics({
 
   // downsample to weekly averages for Yearly view (max ~52 points instead of 365)
   const nutritionDayStats = useMemo((): NutritionDayStats[] => {
+    if (!active) return [];
     const start = Date.now();
     if (dataPeriod !== "Yearly") {
       const result = rawNutritionDayStats;
@@ -418,6 +449,9 @@ function NutritionStatistics({
 
   // Memoized: full averages including protein/carbs/fat for macros dashboard
   const nutritionAverages = useMemo(() => {
+    if (!active) {
+      return { avgCalories: 0, avgProtein: 0, avgCarbs: 0, avgFat: 0, avgWater: 0 };
+    }
     const start = Date.now();
     if (nutritionDayStats.length === 0) {
       const result = { avgCalories: 0, avgProtein: 0, avgCarbs: 0, avgFat: 0, avgWater: 0 };
@@ -455,6 +489,7 @@ function NutritionStatistics({
 
   // Memoized: chart data for current macro type
   const nutritionChartData = useMemo((): ChartDataPoint[] => {
+    if (!active) return [];
     const start = Date.now();
     const field = activeChartConfig.field;
     const rawPoints = nutritionDayStats
@@ -475,6 +510,7 @@ function NutritionStatistics({
   }, [nutritionDayStats, language, activeChartConfig]);
 
   const waterChartData = useMemo((): ChartDataPoint[] => {
+    if (!active) return [];
     const start = Date.now();
     const rawPoints = nutritionDayStats
       .filter((d) => d.water > 0)
@@ -494,6 +530,7 @@ function NutritionStatistics({
   }, [nutritionDayStats, language]);
 
   const nutritionChartSpacing = useMemo(() => {
+    if (!active) return scale(60);
     const pointCount = nutritionChartData.length;
     if (pointCount <= 1) return scale(60);
 
@@ -504,6 +541,7 @@ function NutritionStatistics({
   }, [chartWidth, nutritionChartData.length]);
 
   const waterChartSpacing = useMemo(() => {
+    if (!active) return scale(60);
     const pointCount = waterChartData.length;
     if (pointCount <= 1) return scale(60);
 
@@ -529,10 +567,24 @@ function NutritionStatistics({
   );
 
   const hasAnyNutritionHistory = useMemo(() => {
+    if (!active) return false;
     return nutritionHistory.length > 0 || waterHistory.length > 0;
   }, [nutritionHistory, waterHistory]);
 
+  const [isReadyForCharts, setIsReadyForCharts] = useState(false);
 
+  useEffect(() => {
+    if (!active) return;
+    if (isReadyForCharts) return;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReadyForCharts(true);
+    });
+
+    return () => task.cancel();
+  }, [active, isReadyForCharts]);
+
+  if (!active) return null;
 
   return (
     // Wrap in swipeable container for period switching
@@ -686,6 +738,7 @@ function NutritionStatistics({
                       <TouchableOpacity
                         key={type}
                         onPress={() => {
+                          logPress("Nutrition Statistics Macro Selector", { macro: type });
                           setNutritionChartType(type);
                         }}
                         style={[
@@ -705,35 +758,39 @@ function NutritionStatistics({
                   })}
                 </ScrollView>
 
-                <View>
-                  <MemoizedLineChart
-                    data={nutritionChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={nutritionChartSpacing}
-                    thickness={3}
-                    color={activeChartConfig.color}
-                    startFillColor={activeChartConfig.color}
-                    endFillColor={activeChartConfig.color}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={nutritionChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={activeChartConfig.color}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={nutritionChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={nutritionChartSpacing}
+                      thickness={3}
+                      color={activeChartConfig.color}
+                      startFillColor={activeChartConfig.color}
+                      endFillColor={activeChartConfig.color}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={nutritionChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={activeChartConfig.color}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  )}
                 </View>
               </View>
             </View>
@@ -762,35 +819,39 @@ function NutritionStatistics({
                   </View>
                 </View>
 
-                <View>
-                  <MemoizedLineChart
-                    data={waterChartData}
-                    width={chartWidth}
-                    height={verticalScale(200)}
-                    spacing={waterChartSpacing}
-                    thickness={3}
-                    color={colors.waterAccent}
-                    startFillColor={colors.waterAccent}
-                    endFillColor={colors.waterAccent}
-                    startOpacity={0.3}
-                    endOpacity={0.1}
-                    initialSpacing={scale(14)}
-                    endSpacing={scale(14)}
-                    noOfSections={4}
-                    yAxisTextStyle={styles.chartYAxisText}
-                    xAxisLabelTextStyle={styles.chartXAxisText}
-                    hideRules
-                    curved
-                    areaChart={waterChartData.length > 1}
-                    hideDataPoints={false}
-                    dataPointsColor={colors.waterAccent}
-                    dataPointsRadius={4}
-                    textShiftX={-5}
-                    rotateLabel={true}
-                    xAxisLabelsHeight={verticalScale(30)}
-                    xAxisLabelsVerticalShift={5}
-                    overflowTop={35}
-                  />
+                <View style={{ height: verticalScale(200), justifyContent: 'center', alignItems: 'center' }}>
+                  {isReadyForCharts ? (
+                    <MemoizedLineChart
+                      data={waterChartData}
+                      width={chartWidth}
+                      height={verticalScale(200)}
+                      spacing={waterChartSpacing}
+                      thickness={3}
+                      color={colors.waterAccent}
+                      startFillColor={colors.waterAccent}
+                      endFillColor={colors.waterAccent}
+                      startOpacity={0.3}
+                      endOpacity={0.1}
+                      initialSpacing={scale(14)}
+                      endSpacing={scale(14)}
+                      noOfSections={4}
+                      yAxisTextStyle={styles.chartYAxisText}
+                      xAxisLabelTextStyle={styles.chartXAxisText}
+                      hideRules
+                      curved
+                      areaChart={waterChartData.length > 1}
+                      hideDataPoints={false}
+                      dataPointsColor={colors.waterAccent}
+                      dataPointsRadius={4}
+                      textShiftX={-5}
+                      rotateLabel={true}
+                      xAxisLabelsHeight={verticalScale(30)}
+                      xAxisLabelsVerticalShift={5}
+                      overflowTop={35}
+                    />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.waterAccent} />
+                  )}
                 </View>
               </View>
             </View>
@@ -805,32 +866,19 @@ function NutritionStatistics({
             <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <Icons.ForkKnifeIcon
-              size={48}
-              color={colors.neutral500}
-              weight="fill"
-            />
-            <Typo
-              size={18}
-              fontWeight="600"
-              color={colors.neutral200}
-              style={styles.emptyStateTitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyNutritionHistory
+          <EmptyState
+            icon={<Icons.ForkKnifeIcon size={48} color={colors.neutral500} weight="fill" />}
+            title={
+              dataPeriod === "Weekly" && hasAnyNutritionHistory
                 ? t("statistics_no_nutrition_this_week")
-                : t("statistics_no_nutrition_yet")}
-            </Typo>
-            <Typo
-              size={14}
-              color={colors.neutral400}
-              style={styles.emptyStateSubtitle}
-            >
-              {dataPeriod === "Weekly" && hasAnyNutritionHistory
+                : t("statistics_no_nutrition_yet")
+            }
+            subtitle={
+              dataPeriod === "Weekly" && hasAnyNutritionHistory
                 ? t("statistics_log_nutrition_weekly")
-                : t("statistics_start_logging_nutrition")}
-            </Typo>
-          </View>
+                : t("statistics_start_logging_nutrition")
+            }
+          />
         )
       )}
     </View>

@@ -3,6 +3,7 @@ import {
   getCachedNutritionCalendarSummary,
   setCachedNutritionCalendarSummary,
 } from "@/src/services/nutritionCalendarCacheService";
+import { sanitizeForFirestore } from "@/src/utils/sanitizeForFirestore";
 import { DailyNutrition, ResponseType } from "@/src/types/index";
 import {
   addDoc,
@@ -191,10 +192,11 @@ export const saveDailyNutrition = async (
 
     const date = new Date(nutrition.date);
     const dateKey = getDateKey(date);
+    const sanitizedNutrition = sanitizeForFirestore(nutrition);
 
-    if (nutrition.id) {
-      const docRef = userNutritionDoc(userID, nutrition.id);
-      const { id, userID: _uid, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+    if (sanitizedNutrition.id) {
+      const docRef = userNutritionDoc(userID, sanitizedNutrition.id);
+      const { id, userID: _uid, localUpdatedAt, ...updateData } = sanitizedNutrition as DailyNutrition & {
         localUpdatedAt?: number;
       };
 
@@ -208,7 +210,7 @@ export const saveDailyNutrition = async (
         "saveDailyNutrition.updateDoc",
       );
 
-      return { success: true, data: { id: nutrition.id } };
+      return { success: true, data: { id: sanitizedNutrition.id } };
     }
 
     const q = query(
@@ -223,7 +225,7 @@ export const saveDailyNutrition = async (
     if (!querySnapshot.empty) {
       const latestDoc = pickLatestNutritionDoc(querySnapshot.docs, date);
       const docRef = userNutritionDoc(userID, latestDoc.id);
-      const { id, userID: _uid, localUpdatedAt, ...updateData } = nutrition as DailyNutrition & {
+      const { id, userID: _uid, localUpdatedAt, ...updateData } = sanitizedNutrition as DailyNutrition & {
         localUpdatedAt?: number;
       };
 
@@ -241,7 +243,7 @@ export const saveDailyNutrition = async (
     }
 
     // Strip userID before writing to Firestore
-    const { userID: _uid, ...nutritionWithoutUser } = nutrition;
+    const { userID: _uid, ...nutritionWithoutUser } = sanitizedNutrition;
 
     const docRef = await withTimeout(
       addDoc(userNutritionCol(userID), {
@@ -435,9 +437,10 @@ export const updateNutritionGoals = async (
 
     if (!querySnapshot.empty) {
       const docRef = userNutritionDoc(userID, querySnapshot.docs[0].id);
+      const sanitizedGoals = sanitizeForFirestore(goals);
       await withTimeout(
         updateDoc(docRef, {
-          ...goals,
+          ...sanitizedGoals,
           updatedAt: serverTimestamp(),
         }),
         "updateNutritionGoals.updateDoc",

@@ -9,7 +9,7 @@ import {
 import {
   searchByBarcode as searchFoodByBarcodeInProvider,
   searchFoods as searchFoodsInProvider,
-} from "@/src/services/nutritionixService";
+} from "@/src/services/foodProviderService";
 import { Food, ResponseType } from "@/src/types/index";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 

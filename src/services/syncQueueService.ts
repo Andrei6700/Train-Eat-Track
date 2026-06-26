@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { sanitizeForFirestore } from "@/src/utils/sanitizeForFirestore";
 
 const SYNC_QUEUE_KEY = "offline_sync_queue_v2";
 const LEGACY_SYNC_QUEUE_KEY = "offline_sync_queue";
@@ -14,6 +15,7 @@ type QueueMergeStrategy = "append" | "replace_latest";
 
 export type SyncActionType =
   | "ADD_WORKOUT"
+  | "UPDATE_WORKOUT"
   | "ADD_RECENT_FOOD"
   | "UPSERT_NUTRITION"
   | "UPSERT_WATER"
@@ -49,7 +51,7 @@ export type SyncAction<T = any> = {
   attempt: number;
   maxAttempts: number;
   nextRetryAt: number | null;
-  lastError?: string;
+  lastError?: string | null;
   dedupeKey?: string;
   baseUpdatedAt?: number | null;
   forceOverwriteOnce?: boolean;
@@ -321,12 +323,57 @@ const migrateLegacyQueueIfNeeded = async (): Promise<void> => {
   }
 };
 
+const readQueueRaw = async (): Promise<SyncAction[]> => {
+  const raw = await AsyncStorage.getItem(SYNC_QUEUE_KEY);
+  if (!raw) return [];
+  return sanitizeQueue(JSON.parse(raw));
+};
+
+const sanitizeExistingQueueOnStartup = async (): Promise<void> => {
+  try {
+    const migrated = await AsyncStorage.getItem("queue_sanitized_v1");
+    if (migrated) return;
+
+    const queue = await readQueueRaw();
+    let changed = false;
+    const cleanedQueue: SyncAction[] = [];
+
+    for (const action of queue) {
+      try {
+        if (action.data && typeof action.data === "object") {
+          const sanitized = sanitizeForFirestore(action.data);
+          action.data = sanitized;
+          changed = true;
+        }
+        cleanedQueue.push(action);
+      } catch (err) {
+        console.warn(`[SyncQueue] Removing unsanitizable queue item ${action.id}:`, err);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await AsyncStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(cleanedQueue));
+    }
+    await AsyncStorage.setItem("queue_sanitized_v1", "true");
+  } catch (error) {
+    if (__DEV__) {
+      console.error("[SyncQueueV2] Startup sanitization error:", error);
+    }
+  }
+};
+
+let startupSanitizationPromise: Promise<void> | null = null;
+
 const readQueue = async (): Promise<SyncAction[]> => {
   try {
     await migrateLegacyQueueIfNeeded();
-    const raw = await AsyncStorage.getItem(SYNC_QUEUE_KEY);
-    if (!raw) return [];
-    return sanitizeQueue(JSON.parse(raw));
+    if (!startupSanitizationPromise) {
+      startupSanitizationPromise = sanitizeExistingQueueOnStartup();
+    }
+    await startupSanitizationPromise;
+
+    return await readQueueRaw();
   } catch (error) {
     if (__DEV__) {
       console.error("[SyncQueueV2] Error reading queue:", error);
@@ -834,4 +881,36 @@ export const getPendingActionsCount = async (): Promise<number> => {
     summary.failed +
     summary.conflicts
   );
+};
+
+export const getFailedSyncActions = async (): Promise<SyncAction[]> => {
+  const queue = await readQueue();
+  return queue.filter((action) => action.status === "failed");
+};
+
+export const retryFailedAction = async (actionId: string): Promise<boolean> => {
+  const queue = await readQueue();
+  const index = queue.findIndex((action) => action.id === actionId);
+  if (index < 0) return false;
+
+  const target = queue[index];
+  if (target.status !== "failed") return false;
+
+  const sanitizedData = target.data && typeof target.data === "object"
+    ? sanitizeForFirestore(target.data)
+    : target.data;
+
+  const { lastError: _, ...restTarget } = target;
+
+  queue[index] = {
+    ...restTarget,
+    data: sanitizedData,
+    status: "pending",
+    attempt: 0,
+    nextRetryAt: null,
+    lastError: null,
+  };
+
+  await writeQueue(queue);
+  return true;
 };

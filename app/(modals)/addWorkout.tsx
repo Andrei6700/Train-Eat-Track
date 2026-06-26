@@ -10,15 +10,24 @@ import { useLanguage } from "@/src/contexts/languageContext";
 import { useWorkoutPlan } from "@/src/contexts/workoutPlanContext";
 import { LOCALE_BY_LANGUAGE } from "@/src/i18n/translations";
 import { addWorkout, getUserWorkouts } from "@/src/services/workoutService";
+import {
+  saveWorkoutDraft,
+  loadWorkoutDraft,
+  clearWorkoutDraft,
+  type WorkoutDraft,
+} from "@/src/services/workoutDraftService";
 import { WorkoutExercise, WorkoutHistory, WorkoutSet } from "@/src/types/index";
 import { scale, verticalScale } from "@/src/utils/styling";
 import { findLastSuccessfulWorkoutForCycleDay } from "@/src/utils/workoutPlanCycle";
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import * as Icons from "phosphor-react-native";
+import { logPress, logEvent, logError } from "@/src/utils/perfMonitor";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
+  AppStateStatus,
   Keyboard,
   KeyboardAvoidingView,
   PanResponder,
@@ -34,6 +43,7 @@ const AddWorkout = () => {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const router = useRouter();
+  const navigation = useNavigation();
   const { workoutPlan } = useWorkoutPlan();
   const { selectedDate, isHistorical } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
@@ -60,10 +70,66 @@ const AddWorkout = () => {
 
   const isHistoricalWorkout = isHistorical === "true";
 
+  // ─── Workout Draft: load on mount ────────────────────────────────
+  const [draftChecked, setDraftChecked] = useState(false);
+
+  useEffect(() => {
+    if (isHistoricalWorkout) {
+      setDraftChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const draft = await loadWorkoutDraft();
+      if (cancelled || !draft) {
+        setDraftChecked(true);
+        return;
+      }
+
+      Alert.alert(
+        t("add_workout_modal_draft_resume_title") || "Resume Workout?",
+        t("add_workout_modal_draft_resume_message") || "You have an unsaved workout. Resume it?",
+        [
+          {
+            text: t("common_discard") || "Discard",
+            style: "destructive",
+            onPress: () => {
+              void clearWorkoutDraft();
+              setDraftChecked(true);
+            },
+          },
+          {
+            text: t("common_resume") || "Resume",
+            onPress: () => {
+              if (draft.exercises?.length > 0) {
+                setExercises(draft.exercises);
+              }
+              const draftTime = draft.totalTime || 0;
+              workoutStartTimeRef.current = Date.now() - draftTime * 1000;
+              restStartTimeRef.current = Date.now();
+              setTotalTime(draftTime);
+              setCurrentTime(0);
+              if (typeof draft.activePage === "number") {
+                setActivePage(draft.activePage);
+              }
+              setDraftChecked(true);
+            },
+          },
+        ],
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [isHistoricalWorkout]);
+
   // Timer states
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const workoutStartTimeRef = useRef<number>(Date.now());
+  const restStartTimeRef = useRef<number>(Date.now());
+  const isSavingRef = useRef(false);
 
   // Keep history of exercises to show previous workout data
   const [historyExercises, setHistoryExercises] = useState<
@@ -76,6 +142,31 @@ const AddWorkout = () => {
       sets: [{ reps: 0, weight: 0, weightUnit: "kg" }],
     },
   ]);
+
+  // ─── Workout Draft: auto-save on changes (debounced) ────────────
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveDraftDebounced = () => {
+    if (isHistoricalWorkout) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      const draft: WorkoutDraft = {
+        savedAt: Date.now(),
+        totalTime,
+        activePage: activePageRef.current,
+        targetDate: targetDate.toISOString(),
+        exercises: exercises.filter((ex) => ex.exerciseName.trim()),
+      };
+      void saveWorkoutDraft(draft);
+    }, 1000);
+  };
+
+  useEffect(() => {
+    saveDraftDebounced();
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [exercises, activePage]);
 
   // Calculate which day index in the split cycle the target date corresponds to
   const getTodayDayIndex = (): number => {
@@ -371,8 +462,9 @@ const AddWorkout = () => {
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
-      setCurrentTime((prev) => prev + 1);
-      setTotalTime((prev) => prev + 1);
+      const now = Date.now();
+      setTotalTime(Math.floor((now - workoutStartTimeRef.current) / 1000));
+      setCurrentTime(Math.floor((now - restStartTimeRef.current) / 1000));
     }, 1000);
 
     return () => {
@@ -381,6 +473,47 @@ const AddWorkout = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active") {
+        const now = Date.now();
+        setTotalTime(Math.floor((now - workoutStartTimeRef.current) / 1000));
+        setCurrentTime(Math.floor((now - restStartTimeRef.current) / 1000));
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (isSavingRef.current) {
+        return;
+      }
+      e.preventDefault();
+      Alert.alert(
+        t("add_workout_modal_exit_confirm_title") || "Exit Workout?",
+        t("add_workout_modal_exit_confirm_message") || "Are you sure you want to leave? Your progress will be discarded.",
+        [
+          { text: t("common_cancel") || "Cancel", style: "cancel", onPress: () => {} },
+          {
+            text: t("common_ok") || "OK",
+            style: "destructive",
+            onPress: () => {
+              void clearWorkoutDraft(); // Clear draft when voluntarily exiting!
+              navigation.dispatch(e.data.action);
+            },
+          },
+        ],
+      );
+    });
+
+    return unsubscribe;
+  }, [navigation, t]);
 
   useEffect(() => {
     const showEvent =
@@ -406,6 +539,7 @@ const AddWorkout = () => {
   }, [activePage]);
 
   const goToPage = (page: number) => {
+    logPress("Add Workout Modal Page Switch", { page });
     setActivePage(page);
     Keyboard.dismiss();
   };
@@ -458,11 +592,14 @@ const AddWorkout = () => {
   };
 
   const handleLap = () => {
+    logPress("Add Workout Modal Lap/Rest Button");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    restStartTimeRef.current = Date.now();
     setCurrentTime(0);
   };
 
   const addExercise = () => {
+    logPress("Add Workout Modal Add Exercise Button");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setExercises([
       ...exercises,
@@ -474,6 +611,7 @@ const AddWorkout = () => {
   };
 
   const removeExercise = (index: number) => {
+    logPress("Add Workout Modal Remove Exercise Button", { index });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (exercises.length === 1) {
       Alert.alert(t("common_error"), t("common_validation_need_one_exercise"));
@@ -490,6 +628,7 @@ const AddWorkout = () => {
   };
 
   const addSet = (exerciseIndex: number) => {
+    logPress("Add Workout Modal Add Set Button", { exerciseIndex });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newExercises = [...exercises];
     const lastSet =
@@ -505,6 +644,7 @@ const AddWorkout = () => {
   };
 
   const removeSet = (exerciseIndex: number, setIndex: number) => {
+    logPress("Add Workout Modal Remove Set Button", { exerciseIndex, setIndex });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (exercises[exerciseIndex].sets.length === 1) {
       Alert.alert(t("common_error"), t("common_validation_need_one_set"));
@@ -536,6 +676,7 @@ const AddWorkout = () => {
   };
 
   const handleSave = async () => {
+    logPress("Add Workout Modal Save Workout Button");
     const hasEmptyExerciseName = exercises.some(
       (ex) => !ex.exerciseName.trim(),
     );
@@ -586,6 +727,9 @@ const AddWorkout = () => {
       setLoading(false);
 
       if (result.success) {
+        logEvent("Firestore", "Add Workout Sync Success", { isOffline: !!result.data?.offline, durationSeconds: totalTime });
+        isSavingRef.current = true;
+        void clearWorkoutDraft();
         const isOffline = result.data?.offline;
 
         Alert.alert(
@@ -611,11 +755,13 @@ const AddWorkout = () => {
         );
       } else {
         if (result.code === "SYNC_CONFLICT") {
+          logError("Add Workout Save", "Sync Conflict");
           Alert.alert(
             t("add_workout_modal_sync_conflict_title"),
             t("add_workout_modal_sync_conflict_message"),
           );
         } else {
+          logError("Add Workout Save", result.msg || "Save Error", { code: result.code });
           Alert.alert(
             t("common_error"),
             result.msg || t("add_workout_modal_error_save"),
@@ -623,6 +769,7 @@ const AddWorkout = () => {
         }
       }
     } catch (err: any) {
+      logError("Add Workout Catch Save", err);
       setLoading(false);
       Alert.alert(
         t("common_error"),
@@ -647,7 +794,7 @@ const AddWorkout = () => {
     <ModalWrapper>
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
         <View style={styles.container}>
